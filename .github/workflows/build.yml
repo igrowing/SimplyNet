@@ -1,4 +1,4 @@
-name: Build APK
+name: Build & Test
 
 on:
   push:
@@ -8,8 +8,34 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  test:
+    name: Unit Tests
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Run unit tests
+        run: flutter test --reporter expanded
+
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+    needs: test          # only build if tests pass
     steps:
       - uses: actions/checkout@v4
 
