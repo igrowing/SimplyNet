@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:simply_net/providers/scan_provider.dart';
 import 'package:simply_net/services/network_scanner.dart';
 import 'package:simply_net/services/network_utils.dart';
+import 'package:network_discovery/network_discovery.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -95,6 +96,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     return null;
   }
+
 
   /// Infer prefix from IP address pattern when system info unavailable.
   /// This is a heuristic: 192.168.*.* -> /24, 10.*.*.* -> /24, etc.
