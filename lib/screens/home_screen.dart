@@ -5,7 +5,6 @@ import 'package:provider/provider.dart';
 import 'package:simply_net/providers/scan_provider.dart';
 import 'package:simply_net/services/network_scanner.dart';
 import 'package:simply_net/services/network_utils.dart';
-import 'package:network_discovery/network_discovery.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});

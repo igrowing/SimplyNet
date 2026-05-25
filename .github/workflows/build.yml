@@ -35,7 +35,7 @@ jobs:
   build:
     name: Build APK
     runs-on: ubuntu-latest
-    needs: test          # only build if tests pass
+    needs: test
     steps:
       - uses: actions/checkout@v4
 
@@ -57,8 +57,69 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
+      # ── DEBUG: show environment & project structure ──────────────────────
+      - name: Debug environment
+        run: |
+          echo "=== Flutter version ==="
+          flutter --version
+
+          echo "=== FLUTTER_ROOT ==="
+          echo "$FLUTTER_ROOT"
+
+          echo "=== Java version ==="
+          java -version
+
+          echo "=== Android SDK ==="
+          echo "$ANDROID_HOME"
+          ls "$ANDROID_HOME/build-tools/" 2>/dev/null || echo "no build-tools"
+
+          echo "=== Gradle wrapper ==="
+          cat android/gradle/wrapper/gradle-wrapper.properties
+
+          echo "=== android/settings.gradle.kts ==="
+          cat android/settings.gradle.kts
+
+          echo "=== android/app/build.gradle.kts ==="
+          cat android/app/build.gradle.kts
+
+          echo "=== AndroidManifest.xml ==="
+          cat android/app/src/main/AndroidManifest.xml
+
+          echo "=== All Kotlin/Java source files ==="
+          find android -name "*.kt" -o -name "*.java" | sort
+          for f in $(find android -name "*.kt" -o -name "*.java" | sort); do
+            echo "--- $f ---"
+            cat "$f"
+          done
+
+          echo "=== .flutter-plugins (if exists) ==="
+          cat .flutter-plugins 2>/dev/null || echo "not found"
+
+          echo "=== .flutter-plugins-dependencies (if exists) ==="
+          cat .flutter-plugins-dependencies 2>/dev/null || echo "not found"
+
+          echo "=== pubspec.yaml flutter section ==="
+          grep -A5 "^flutter:" pubspec.yaml
+
+      # ── Scan for v1 embedding triggers before build ──────────────────────
+      - name: Scan for v1 embedding references
+        run: |
+          echo "=== Searching for v1 embedding patterns ==="
+          echo "--- FlutterApplication ---"
+          grep -r "io.flutter.app.FlutterApplication" android/ || echo "NONE"
+          echo "--- FlutterActivity (v1 import path) ---"
+          grep -r "io.flutter.app.FlutterActivity" android/ || echo "NONE"
+          echo "--- PluginRegistry.Registrar ---"
+          grep -r "PluginRegistry.Registrar" android/ || echo "NONE"
+          grep -r "PluginRegistry\.Registrar" android/ || echo "NONE"
+          echo "--- registerWith(Registrar ---"
+          grep -r "registerWith" android/ || echo "NONE"
+          echo "--- flutterEmbedding meta-data ---"
+          grep -r "flutterEmbedding" android/ || echo "NONE"
+          echo "=== Done scanning ==="
+
       - name: Build APK
-        run: flutter build apk --release
+        run: flutter build apk --release --verbose 2>&1 | head -200
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
