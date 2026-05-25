@@ -1,0 +1,6 @@
+flutter_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/simplynet.png"
+  adaptive_icon_background: "#e0f0e0"
+  # adaptive_icon_foreground: "assets/icon/icon_foreground.png"
