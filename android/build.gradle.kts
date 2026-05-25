@@ -10,6 +10,7 @@ rootProject.layout.buildDirectory.value(newBuildDir)
 subprojects {
     val newSubBuildDir: Directory = newBuildDir.dir(project.name)
     project.layout.buildDirectory.value(newSubBuildDir)
+
 }
 subprojects {
     project.evaluationDependsOn(":app")
