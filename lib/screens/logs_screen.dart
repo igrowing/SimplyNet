@@ -33,7 +33,7 @@ class _LogsScreenState extends State<LogsScreen> {
           ? const _EmptyLogs()
           : ListView.separated(
               itemCount: prov.logs.length,
-              separatorBuilder: (_, __) =>
+              separatorBuilder: (_, _) =>
                   const Divider(height: 1, thickness: 0.5),
               itemBuilder: (ctx, i) => _LogTile(
                 entry: prov.logs[i],
@@ -116,14 +116,14 @@ class _EmptyLogs extends StatelessWidget {
         children: [
           Icon(Icons.article,
               size: 72,
-              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.2)),
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.2)),
           const SizedBox(height: 16),
           Text('No logs yet',
               style: TextStyle(
                   color: Theme.of(context)
                       .colorScheme
                       .onSurface
-                      .withOpacity(0.5))),
+                      .withValues(alpha: 0.5))),
         ],
       ),
     );

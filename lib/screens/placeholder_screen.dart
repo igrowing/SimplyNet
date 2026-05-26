@@ -19,7 +19,7 @@ class PlaceholderScreen extends StatelessWidget {
                 color: Theme.of(context)
                     .colorScheme
                     .primary
-                    .withOpacity(0.35)),
+                    .withValues(alpha: 0.35)),
             const SizedBox(height: 16),
             const Text('Coming soon',
                 style: TextStyle(
@@ -30,7 +30,7 @@ class PlaceholderScreen extends StatelessWidget {
                     color: Theme.of(context)
                         .colorScheme
                         .onSurface
-                        .withOpacity(0.5))),
+                        .withValues(alpha: 0.5))),
           ],
         ),
       ),

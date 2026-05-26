@@ -29,7 +29,7 @@ class SimplyNetApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => LogProvider()),
       ],
       child: Consumer<SettingsProvider>(
-        builder: (_, settings, __) {
+        builder: (_, settings, _) {
           // Validate font scale: ensure it's positive and reasonable
           double scale = settings.settings.fontScale;
           if (scale <= 0 || scale.isNaN || scale.isInfinite) {

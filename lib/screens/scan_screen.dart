@@ -92,7 +92,7 @@ class _ScanScreenState extends State<ScanScreen> {
                 ? _EmptyState(isValid: scan.isValidTarget)
                 : ListView.separated(
                     itemCount: scan.results.length,
-                    separatorBuilder: (_, __) =>
+                    separatorBuilder: (_, _) =>
                         const Divider(height: 1, thickness: 0.5),
                     itemBuilder: (ctx, i) {
                       final host = scan.results[i];
@@ -211,7 +211,7 @@ class _ScanRow extends StatelessWidget {
                         color: Theme.of(context)
                             .colorScheme
                             .onSurface
-                            .withOpacity(0.7)),
+                            .withValues(alpha: 0.7)),
                     overflow: TextOverflow.ellipsis),
               ),
             if (settings.resolveNames)
@@ -224,7 +224,7 @@ class _ScanRow extends StatelessWidget {
                       color: Theme.of(context)
                           .colorScheme
                           .onSurface
-                          .withOpacity(0.6)),
+                          .withValues(alpha: 0.6)),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -249,7 +249,7 @@ class _EmptyState extends StatelessWidget {
         children: [
           Icon(Icons.network_check,
               size: 72,
-              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.2)),
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.2)),
           const SizedBox(height: 16),
           Text(
             isValid ? 'Starting scan…' : 'Enter a valid CIDR first',
@@ -257,7 +257,7 @@ class _EmptyState extends StatelessWidget {
                 color: Theme.of(context)
                     .colorScheme
                     .onSurface
-                    .withOpacity(0.5)),
+                    .withValues(alpha: 0.5)),
           ),
         ],
       ),

@@ -69,7 +69,7 @@ class NetworkToolsScreen extends StatelessWidget {
       body: ListView.separated(
         padding: const EdgeInsets.all(12),
         itemCount: tools.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        separatorBuilder: (_, _) => const SizedBox(height: 10),
         itemBuilder: (_, i) => tools[i],
       ),
     );
@@ -103,7 +103,7 @@ class _ToolCard extends StatelessWidget {
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.12),
+                  color: color.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(icon, color: color, size: 26),
@@ -122,7 +122,7 @@ class _ToolCard extends StatelessWidget {
                             color: Theme.of(context)
                                 .colorScheme
                                 .onSurface
-                                .withOpacity(0.6),
+                                .withValues(alpha: 0.6),
                             fontSize: 13)),
                   ],
                 ),
@@ -131,7 +131,7 @@ class _ToolCard extends StatelessWidget {
                   color: Theme.of(context)
                       .colorScheme
                       .onSurface
-                      .withOpacity(0.3)),
+                      .withValues(alpha: 0.3)),
             ],
           ),
         ),
@@ -266,7 +266,7 @@ class _SpeedTestState extends State<SpeedTestScreen> {
                           color: Theme.of(context)
                               .colorScheme
                               .onSurface
-                              .withOpacity(0.45))),
+                              .withValues(alpha: 0.45))),
                 ),
             ],
           ),
@@ -295,7 +295,7 @@ class _SpeedGauge extends StatelessWidget {
         Container(
           width: 80, height: 80,
           decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
+            color: color.withValues(alpha: 0.1),
             shape: BoxShape.circle,
           ),
           child: Column(
@@ -319,7 +319,7 @@ class _SpeedGauge extends StatelessWidget {
                 color: Theme.of(context)
                     .colorScheme
                     .onSurface
-                    .withOpacity(0.5))),
+                    .withValues(alpha: 0.5))),
       ],
     );
   }
@@ -415,7 +415,7 @@ class _PublicIpState extends State<PublicIpScreen> {
                                             color: Theme.of(context)
                                                 .colorScheme
                                                 .onSurface
-                                                .withOpacity(0.6))),
+                                                .withValues(alpha: 0.6))),
                                   ),
                                   Expanded(
                                     flex: 5,
@@ -600,7 +600,7 @@ class _IpCameraScanState extends State<IpCameraScanScreen> {
                 ? const Center(child: Text('No cameras found.'))
                 : ListView.separated(
                     itemCount: _results.length,
-                    separatorBuilder: (_, __) =>
+                    separatorBuilder: (_, _) =>
                         const Divider(height: 1, thickness: 0.5),
                     itemBuilder: (ctx, i) {
                       final h = _results[i];
@@ -671,7 +671,9 @@ class _WhoisState extends State<WhoisScreen> {
           final ns = (data['nameservers'] as List?) ?? [];
           if (ns.isNotEmpty) {
             buf.writeln('\nNameservers:');
-            for (final n in ns) buf.writeln('  ${n['ldhName']}');
+            for (final n in ns) {
+              buf.writeln('  ${n['ldhName']}');
+            }
           }
 
           // Registrar
@@ -795,7 +797,7 @@ class _WhoisState extends State<WhoisScreen> {
                         color: Theme.of(context)
                             .colorScheme
                             .onSurface
-                            .withOpacity(0.4))),
+                            .withValues(alpha: 0.4))),
               ),
             ),
         ],
@@ -964,7 +966,7 @@ class _PingState extends State<PingScreen> {
                           color: Theme.of(context)
                               .colorScheme
                               .onSurface
-                              .withOpacity(0.4)),
+                              .withValues(alpha: 0.4)),
                     ),
                   )
                 : Padding(
@@ -976,7 +978,7 @@ class _PingState extends State<PingScreen> {
                           textColor: Theme.of(context)
                               .colorScheme
                               .onSurface
-                              .withOpacity(0.6)),
+                              .withValues(alpha: 0.6)),
                       child: const SizedBox.expand(),
                     ),
                   ),
@@ -1004,7 +1006,7 @@ class _StatChip extends StatelessWidget {
                 color: Theme.of(context)
                     .colorScheme
                     .onSurface
-                    .withOpacity(0.55))),
+                    .withValues(alpha: 0.55))),
       ],
     );
   }
@@ -1040,7 +1042,7 @@ class _PingGraphPainter extends CustomPainter {
     final dotPaint = Paint()..color = color;
     final timeoutPaint = Paint()..color = Colors.red;
     final gridPaint = Paint()
-      ..color = textColor.withOpacity(0.2)
+      ..color = textColor.withValues(alpha: 0.2)
       ..strokeWidth = 0.5;
 
     final textPainter = TextPainter(textDirection: TextDirection.ltr);

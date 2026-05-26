@@ -81,8 +81,8 @@ class _HomeScreenState extends State<HomeScreen> {
         for (final addr in iface.addresses) {
           if (!addr.isLoopback && addr.address.isNotEmpty) {
             // Infer subnet prefix from IP address pattern
-            int prefix = inferPrefixFromAddress(addr.address);
-            final network = networkAddress(addr.address, prefix);
+            int prefix = _inferPrefixFromAddress(addr.address);
+            final network = _networkAddress(addr.address, prefix);
             debugPrint(
               'Detected interface "${iface.name}": ${addr.address}/$prefix',
             );
@@ -96,7 +96,61 @@ class _HomeScreenState extends State<HomeScreen> {
     return null;
   }
 
+  /// Infer prefix from IP address pattern when system info unavailable.
+  /// This is a heuristic: 192.168.*.* -> /24, 10.*.*.* -> /24, etc.
+  int _inferPrefixFromAddress(String ip) {
+    final parts = ip.split('.');
+    if (parts.length != 4) return 24;
 
+    try {
+      final firstOctet = int.parse(parts[0]);
+
+      // Common private network patterns
+      if (firstOctet == 10) return 24; // 10.0.0.0/8 typically used as /24
+      if (firstOctet == 172) return 24; // 172.16.0.0/12 typically used as /24
+      if (firstOctet == 192) return 24; // 192.168.0.0/16 typically used as /24
+    } catch (_) {}
+
+    return 24; // Safe default
+  }
+
+  /// Returns the network address (zeroed host bits) for given IP and prefix length.
+  /// Example: _networkAddress('192.168.1.100', 24) -> '192.168.1.0'
+  String _networkAddress(String ip, int prefix) {
+    try {
+      final octets = ip.split('.').map(int.parse).toList();
+      if (octets.length != 4) {
+        debugPrint('Invalid IP format: $ip');
+        return ip;
+      }
+
+      if (prefix < 0 || prefix > 32) {
+        debugPrint('Invalid prefix length: $prefix');
+        return ip;
+      }
+
+      // Convert IP to 32-bit integer
+      final ipInt =
+          (octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3];
+
+      // Create netmask by shifting left by (32 - prefix) and AND'ing
+      final mask = prefix == 0 ? 0 : (0xFFFFFFFF << (32 - prefix)) & 0xFFFFFFFF;
+
+      // Apply mask to get network address
+      final net = ipInt & mask;
+
+      // Convert back to dotted-decimal notation
+      final result =
+          '${(net >> 24) & 0xFF}.'
+          '${(net >> 16) & 0xFF}.'
+          '${(net >> 8) & 0xFF}.'
+          '${net & 0xFF}';
+      return result;
+    } catch (e) {
+      debugPrint('Error calculating network address for $ip/$prefix: $e');
+      return ip;
+    }
+  }
 
   void _onChanged(String v) {
     context.read<ScanProvider>().setTarget(v);

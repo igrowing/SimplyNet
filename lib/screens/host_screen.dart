@@ -335,7 +335,7 @@ class _HostScreenState extends State<HostScreen> {
                         color: Theme.of(context)
                             .colorScheme
                             .onSurface
-                            .withOpacity(0.5))),
+                            .withValues(alpha: 0.5))),
               )
             else
               ..._openPorts.map((p) => Padding(
@@ -354,7 +354,7 @@ class _HostScreenState extends State<HostScreen> {
                                 color: Theme.of(context)
                                     .colorScheme
                                     .onSurface
-                                    .withOpacity(0.65))),
+                                    .withValues(alpha: 0.65))),
                         const Spacer(),
                         InkWell(
                           onTap: () => _copy(context, p.port.toString()),
@@ -410,7 +410,7 @@ class _HostScreenState extends State<HostScreen> {
                           color: Theme.of(context)
                               .colorScheme
                               .onSurface
-                              .withOpacity(0.4))),
+                              .withValues(alpha: 0.4))),
                 )
               : Stack(
                   children: [
@@ -470,7 +470,7 @@ class _CopyableRow extends StatelessWidget {
                     color: Theme.of(context)
                         .colorScheme
                         .onSurface
-                        .withOpacity(0.6))),
+                        .withValues(alpha: 0.6))),
           ),
           Expanded(
             flex: 5,
