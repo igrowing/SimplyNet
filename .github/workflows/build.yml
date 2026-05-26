@@ -112,9 +112,13 @@ jobs:
       - name: Scan for v1 embedding references
         run: |
           echo "=== v1 embedding scan ==="
-          grep -r "io.flutter.app.Flutter\|PluginRegistry\.Registrar\|registerWith(Registrar\|flutterEmbedding" android/ \
-            && (echo "❌ v1 embedding found — build will fail" && exit 1) \
-            || echo "✅ no v1 embedding references"
+          # flutterEmbedding value="2" is the correct v2 marker — only flag value="1"
+          if grep -rE                'io\.flutter\.app\.Flutter|PluginRegistry\.Registrar|registerWith\(Registrar|flutterEmbedding.*value.*"1"'                android/; then
+            echo "❌ v1 embedding references found — build will fail"
+            exit 1
+          else
+            echo "✅ no v1 embedding references"
+          fi
 
       # ── Build ─────────────────────────────────────────────────
       - name: Build APK
