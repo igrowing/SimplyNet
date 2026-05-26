@@ -70,10 +70,10 @@ jobs:
         run: flutter pub get
 
       # ── Version bump logic ───────────────────────────────────
-      # main branch  →  version as-is from pubspec.yaml
-      # other branch →  <semver><letter><build_number>
-      #                 e.g. 0.1.0a42   (letter = 'a' always for pre-release)
-      #                 build_number = total git commit count (monotonically increasing)
+      # main branch  →  version as-is from pubspec.yaml  e.g. 0.1.0+15
+      # other branch →  semver pre-release format         e.g. 0.1.0-a.15+15
+      #                 Dart pubspec requires semver: major.minor.patch[-pre.id][+build]
+      #                 Pre-release uses hyphen separator: 0.1.0-a.15
       - name: Compute version
         id: version
         run: |
@@ -89,7 +89,8 @@ jobs:
           else
             # Sanitise branch name for use in filenames (replace / and non-alnum with -)
             SAFE_BRANCH=$(echo "$BRANCH" | tr '/' '-' | tr -cd '[:alnum:]-_')
-            VERSION_NAME="${BASE_VERSION}a${BUILD_NUM}"
+            # Dart pubspec semver: pre-release uses hyphen, dot-separated identifiers
+            VERSION_NAME="${BASE_VERSION}-a.${BUILD_NUM}"
             echo "version_name=$VERSION_NAME"  >> $GITHUB_OUTPUT
             echo "build_number=$BUILD_NUM"      >> $GITHUB_OUTPUT
             echo "safe_branch=$SAFE_BRANCH"     >> $GITHUB_OUTPUT
