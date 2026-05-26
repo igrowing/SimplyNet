@@ -154,6 +154,10 @@ class NetworkTools {
         8443 => 'https-alt',
         9200 => 'elasticsearch',
         27017 => 'mongodb',
+        1080 => 'socks',
+        1194 => 'openvpn',
+        1723 => 'pptp',
+        8888 => 'http-alt2',
         _ => 'unknown',
       };
 }

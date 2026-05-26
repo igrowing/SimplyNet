@@ -17,14 +17,6 @@ class ScanProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> detectNetwork() async {
-    final found = await NetworkScanner.detectNetwork();
-    if (found != null) {
-      _target = found;
-      notifyListeners();
-    }
-  }
-
   // ── Scan state ────────────────────────────────────────────────────────────
   List<HostResult> _results = [];
   List<HostResult> get results => _sortedResults();

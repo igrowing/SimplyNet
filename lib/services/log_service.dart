@@ -63,11 +63,6 @@ class LogService {
     return entry;
   }
 
-  static Future<void> appendToLog(String filePath, String content) async {
-    final file = File(filePath);
-    await file.writeAsString(content, mode: FileMode.append);
-  }
-
   // ── Read ───────────────────────────────────────────────────────────────────
 
   static Future<String> readLog(String filePath) async {

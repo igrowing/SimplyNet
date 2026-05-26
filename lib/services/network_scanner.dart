@@ -28,25 +28,6 @@ class NetworkScanner {
 
   static bool isValidCidr(String cidr) => parseCidr(cidr) != null;
 
-  /// Detect current device IP and subnet.
-  static Future<String?> detectNetwork() async {
-    try {
-      final interfaces = await NetworkInterface.list(
-        type: InternetAddressType.IPv4,
-        includeLoopback: false,
-      );
-      for (final iface in interfaces) {
-        for (final addr in iface.addresses) {
-          if (!addr.isLoopback && addr.type == InternetAddressType.IPv4) {
-            // Guess /24 – ideally we'd read netmask from the OS
-            return '${addr.address}/24';
-          }
-        }
-      }
-    } catch (_) {}
-    return null;
-  }
-
   /// Read /proc/net/arp for IP → MAC mappings (Android only).
   static Map<String, String> _readArpTable() {
     final map = <String, String>{};
