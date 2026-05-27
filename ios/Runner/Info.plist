@@ -75,5 +75,8 @@
 		<string>_https._tcp</string>
 		<string>_ssh._tcp</string>
 	</array>
+
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>SimplyNet needs location access to read your WiFi network information (SSID and subnet) for accurate network scanning. No location data is stored or transmitted.</string>
 </dict>
 </plist>

@@ -1,8 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:simply_net/providers/scan_provider.dart';
 import 'package:simply_net/services/network_scanner.dart';
 import 'package:simply_net/services/lan_detector.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -37,6 +39,13 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_detecting) return;
     setState(() => _detecting = true);
     try {
+      // Android 10+ requires location permission to read WiFi IP / subnet mask
+      if (!kIsWeb) {
+        final status = await Permission.locationWhenInUse.status;
+        if (status.isDenied) {
+          await Permission.locationWhenInUse.request();
+        }
+      }
       final cidr = await _detectLanCidr();
       if (cidr != null && mounted) {
         context.read<ScanProvider>().setTarget(cidr);
