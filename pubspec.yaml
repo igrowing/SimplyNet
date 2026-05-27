@@ -30,14 +30,25 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  shared_preferences: ^2.1.0
+  shared_preferences: ^2.5.0
   provider: ^6.1.5+1
   url_launcher: ^6.3.2
   intl: ^0.20.2
   http: ^1.6.0
   path_provider: ^2.1.5
-  network_info_plus: ^6.0.1
-  permission_handler: ^11.3.1
+
+  # ── KGP warning note ────────────────────────────────────────────────────────
+  # Flutter warns that network_info_plus, shared_preferences_android, and
+  # url_launcher_android apply the Kotlin Gradle Plugin (KGP) manually in their
+  # own build files. This is a warning today; future Flutter versions may make
+  # it an error. The fix must come from the plugin authors (upstream), not here.
+  # Track: https://github.com/fluttercommunity/plus_plugins/issues (network_info_plus)
+  #        https://github.com/flutter/packages (shared_preferences, url_launcher)
+  # Action: when these plugins release versions that use Flutter's built-in Kotlin
+  # support, bump their constraints here to pick up the fix automatically.
+  # ────────────────────────────────────────────────────────────────────────────
+  network_info_plus: ^6.1.4
+  permission_handler: ^12.0.1
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
