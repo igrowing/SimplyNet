@@ -32,6 +32,9 @@ class ScanProvider extends ChangeNotifier {
   StreamSubscription? _sub;
   final StringBuffer _logBuffer = StringBuffer();
 
+  // Notifier so LogProvider can refresh when a new log is written
+  final ValueNotifier<int> logVersion = ValueNotifier(0);
+
   void toggleSort(ScanSortColumn col) {
     if (_sortColumn == col) {
       _sortAsc = !_sortAsc;
@@ -73,30 +76,50 @@ class ScanProvider extends ChangeNotifier {
     _results = [];
     _isScanning = true;
     _logBuffer.clear();
-    _logBuffer.writeln('Scan started: $_target');
+    _logBuffer.writeln('=== Scan started: $_target @ ${DateTime.now().toIso8601String()} ===');
     notifyListeners();
 
     _sub = NetworkScanner.scan(_target, resolveNames: resolveNames).listen(
       (host) {
         _results.add(host);
-        _logBuffer.writeln('${host.ip}\t${host.mac}\t${host.hostname}');
+        _logBuffer.writeln('FOUND  ${host.ip}\t${host.mac}\t${host.hostname}\t${host.manufacturer}');
         notifyListeners();
       },
       onDone: () async {
         _isScanning = false;
-        _logBuffer.writeln('\nScan complete. ${_results.length} hosts found.');
+        _logBuffer.writeln('\nScan complete. ${_results.length} host(s) found.');
+        _logBuffer.writeln('=== End: ${DateTime.now().toIso8601String()} ===');
         notifyListeners();
         if (logging) {
-          await LogService.createLog(
-            function: 'scan',
-            content: _logBuffer.toString(),
-            summary: 'Scan $_target — ${_results.length} hosts',
-          );
+          try {
+            await LogService.createLog(
+              function: 'scan',
+              content: _logBuffer.toString(),
+              summary: 'Scan $_target — ${_results.length} host(s) found',
+            );
+            logVersion.value++;
+          } catch (e) {
+            debugPrint('LogService.createLog failed: $e');
+          }
         }
       },
-      onError: (_) {
+      onError: (Object e, StackTrace st) async {
         _isScanning = false;
+        _logBuffer.writeln('\nScan ERROR: $e');
+        _logBuffer.writeln(st.toString());
         notifyListeners();
+        if (logging) {
+          try {
+            await LogService.createLog(
+              function: 'scan_error',
+              content: _logBuffer.toString(),
+              summary: 'Scan $_target — ERROR: $e',
+            );
+            logVersion.value++;
+          } catch (le) {
+            debugPrint('LogService.createLog (error path) failed: $le');
+          }
+        }
       },
     );
   }
@@ -110,6 +133,7 @@ class ScanProvider extends ChangeNotifier {
   @override
   void dispose() {
     _sub?.cancel();
+    logVersion.dispose();
     super.dispose();
   }
 }

@@ -6,18 +6,15 @@ import 'package:network_info_plus/network_info_plus.dart';
 /// using the actual subnet mask reported by the OS via network_info_plus,
 /// with a multi-stage fallback chain for non-WiFi / edge-case environments.
 ///
-/// Detection strategy (each stage tried in order):
+/// Detection stages (tried in order):
 ///   1. network_info_plus → getWifiIP() + getWifiSubmask()
 ///      → real IP + real mask, most accurate on WiFi (Android / iOS / desktop)
-///   2. network_info_plus → getWifiGatewayIP() alone
-///      → derive /24 from gateway when mask unavailable (Android 15+ bug)
+///   2. network_info_plus → getWifiGatewayIP() / getWifiIP() without mask
+///      → fallback when mask unavailable (Android 15+ bug)
 ///   3. dart:io NetworkInterface enumeration
 ///      → works on non-WiFi (Ethernet, USB tethering, VPN)
-///   4. Heuristic /24 from device IP pattern
-///      → last resort — always returns something
+///   4. Heuristic /24 from device IP — last resort
 
-/// Primary entry point. Returns null only on web (NetworkInterface not
-/// available in browser security context).
 Future<String?> detectLanCidr() async {
   if (kIsWeb) {
     debugPrint('LAN detection skipped: unavailable on web');
@@ -26,24 +23,23 @@ Future<String?> detectLanCidr() async {
 
   // ── Stage 1: network_info_plus (WiFi with real subnet mask) ───────────────
   try {
-    final info = NetworkInfo();
+    final info    = NetworkInfo();
     final ip      = await info.getWifiIP();
     final submask = await info.getWifiSubmask();
 
     if (ip != null && ip.isNotEmpty && submask != null && submask.isNotEmpty) {
-      final prefix = subnetMaskToPrefix(submask);
+      final prefix  = subnetMaskToPrefix(submask);
       final network = networkAddress(ip, prefix);
       debugPrint('LAN detect [stage 1 — WiFi+mask]: $ip / $submask → $network/$prefix');
       return '$network/$prefix';
     }
 
-    // ── Stage 2: gateway IP only (mask unavailable) ────────────────────────
+    // ── Stage 2: gateway / device IP without real mask ────────────────────
     String? gatewayIp;
     try { gatewayIp = await info.getWifiGatewayIP(); } catch (_) {}
     final sourceIp = ip ?? gatewayIp;
 
     if (sourceIp != null && sourceIp.isNotEmpty) {
-      // Use gateway to find network: strip host octet, assume /24
       final prefix  = inferPrefixFromAddress(sourceIp);
       final network = networkAddress(sourceIp, prefix);
       debugPrint('LAN detect [stage 2 — gateway/ip]: $sourceIp → $network/$prefix');
@@ -80,27 +76,39 @@ Future<String?> detectLanCidr() async {
 
 /// Convert a dotted-decimal subnet mask to a CIDR prefix length.
 ///
+/// Counts contiguous leading 1-bits across all four octets.
+/// Returns 24 (safe default) for any invalid or non-contiguous mask.
+///
 /// Examples:
 ///   "255.255.255.0"   → 24
 ///   "255.255.0.0"     → 16
 ///   "255.255.255.128" → 25
-///   invalid/null      → 24 (safe default)
+///   "255.0.255.0"     → 24  (non-contiguous — rejected)
+///   ""                → 24  (invalid — rejected)
 @visibleForTesting
 int subnetMaskToPrefix(String mask) {
   try {
     final octets = mask.split('.').map(int.parse).toList();
     if (octets.length != 4) return 24;
     int bits = 0;
+    bool seenZero = false; // true once we encounter the first 0-bit
     for (final octet in octets) {
       if (octet < 0 || octet > 255) return 24;
-      // Count leading 1-bits in this octet
-      int v = octet;
-      while (v & 0x80 != 0) {
-        bits++;
-        v = (v << 1) & 0xFF;
+      if (seenZero) {
+        // After the first 0-bit, every remaining octet must be all-zeros
+        if (octet != 0) return 24;
+      } else {
+        int v = octet;
+        while (v & 0x80 != 0) {
+          bits++;
+          v = (v << 1) & 0xFF;
+        }
+        if (v != 0) {
+          // A 1-bit after a 0-bit within the same octet → non-contiguous
+          return 24;
+        }
+        if (octet != 0xFF) seenZero = true; // this octet contained a 0-bit
       }
-      // After a 0-bit, all remaining bits must also be 0 (valid mask)
-      if (v != 0) return 24; // non-contiguous mask → fall back
     }
     return bits;
   } catch (_) {
@@ -108,10 +116,9 @@ int subnetMaskToPrefix(String mask) {
   }
 }
 
-/// Infer prefix from IP address class when no mask is available (heuristic).
+/// Infer prefix from IP address class when no mask is available.
 ///
 /// All RFC-1918 ranges → /24 (most common SOHO deployment).
-/// Falls back to /24 for unknown or invalid addresses.
 @visibleForTesting
 int inferPrefixFromAddress(String ip) {
   final parts = ip.split('.');

@@ -2,6 +2,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:simply_net/services/lan_detector.dart';
 
 void main() {
+  // Initialize Flutter binding once so network_info_plus plugin
+  // channels are available (detectLanCidr tests need this).
+  setUpAll(() => TestWidgetsFlutterBinding.ensureInitialized());
+
   // ──────────────────────────────────────────────────────────────────────────
   // subnetMaskToPrefix
   // ──────────────────────────────────────────────────────────────────────────
@@ -17,16 +21,20 @@ void main() {
       expect(subnetMaskToPrefix('0.0.0.0'),         equals(0));
     });
 
-    test('non-contiguous mask falls back to 24', () {
-      expect(subnetMaskToPrefix('255.0.255.0'), equals(24));
-      expect(subnetMaskToPrefix('255.128.0.1'), equals(24));
+    test('non-contiguous masks fall back to 24', () {
+      // 255.0.255.0 — octet 3 is non-zero after a zero octet
+      expect(subnetMaskToPrefix('255.0.255.0'),  equals(24));
+      // 255.128.0.1 — last octet has a 1-bit after zero bits in octets 2-3
+      expect(subnetMaskToPrefix('255.128.0.1'),  equals(24));
+      // 0.255.0.0 — starts with a zero octet then has 1-bits
+      expect(subnetMaskToPrefix('0.255.0.0'),    equals(24));
     });
 
     test('invalid strings fall back to 24', () {
-      expect(subnetMaskToPrefix(''),           equals(24));
-      expect(subnetMaskToPrefix('255.255'),    equals(24));
+      expect(subnetMaskToPrefix(''),            equals(24));
+      expect(subnetMaskToPrefix('255.255'),     equals(24));
       expect(subnetMaskToPrefix('abc.def.g.h'), equals(24));
-      expect(subnetMaskToPrefix('256.0.0.0'),  equals(24));
+      expect(subnetMaskToPrefix('256.0.0.0'),   equals(24));
     });
   });
 
@@ -99,8 +107,8 @@ void main() {
     });
 
     test('invalid IP octets return ip unchanged', () {
-      expect(networkAddress('192.168.1',     24), equals('192.168.1'));
-      expect(networkAddress('192.168.x.1',   24), equals('192.168.x.1'));
+      expect(networkAddress('192.168.1',   24), equals('192.168.1'));
+      expect(networkAddress('192.168.x.1', 24), equals('192.168.x.1'));
     });
   });
 
@@ -110,7 +118,7 @@ void main() {
   group('detectLanCidr', () {
     test('returns null or a valid CIDR string', () async {
       final result = await detectLanCidr();
-      if (result == null) return; // web or no interface
+      if (result == null) return;
 
       final cidrRe = RegExp(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/\d{1,2}$');
       expect(result, matches(cidrRe),

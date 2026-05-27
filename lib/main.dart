@@ -26,15 +26,20 @@ class SimplyNetApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => SettingsProvider()..load()),
         ChangeNotifierProvider(create: (_) => ScanProvider()),
-        ChangeNotifierProvider(create: (_) => LogProvider()),
+        // LogProvider subscribes to ScanProvider.logVersion so it
+        // refreshes automatically whenever a scan finishes and writes a log.
+        ChangeNotifierProxyProvider<ScanProvider, LogProvider>(
+          create: (_) => LogProvider(),
+          update: (_, scanProv, logProv) {
+            logProv!.listenToScanProvider(scanProv);
+            return logProv;
+          },
+        ),
       ],
       child: Consumer<SettingsProvider>(
         builder: (_, settings, _) {
-          // Validate font scale: ensure it's positive and reasonable
           double scale = settings.settings.fontScale;
-          if (scale <= 0 || scale.isNaN || scale.isInfinite) {
-            scale = 1.0; // Fallback to medium size if corrupted
-          }
+          if (scale <= 0 || scale.isNaN || scale.isInfinite) scale = 1.0;
           return MaterialApp(
             title: 'SimplyNet',
             debugShowCheckedModeBanner: false,
@@ -43,13 +48,12 @@ class SimplyNetApp extends StatelessWidget {
             darkTheme: _buildTheme(Brightness.dark, scale),
             initialRoute: '/',
             routes: {
-              '/': (_) => const HomeScreen(),
-              '/scan': (_) => const ScanScreen(),
-              '/logs': (_) => const LogsScreen(),
+              '/':              (_) => const HomeScreen(),
+              '/scan':          (_) => const ScanScreen(),
+              '/logs':          (_) => const LogsScreen(),
               '/network_tools': (_) => const NetworkToolsScreen(),
-              '/wifi_tools': (_) =>
-                  const PlaceholderScreen(title: 'WiFi Tools'),
-              '/settings': (_) => const SettingsScreen(),
+              '/wifi_tools':    (_) => const PlaceholderScreen(title: 'WiFi Tools'),
+              '/settings':      (_) => const SettingsScreen(),
             },
           );
         },
@@ -59,15 +63,11 @@ class SimplyNetApp extends StatelessWidget {
 
   ThemeData _buildTheme(Brightness brightness, double fontScale) {
     const seed = Color(0xFF1976D2);
-    // Ensure font scale is valid
     fontScale = fontScale.clamp(0.5, 2.0);
-    
     final base = ThemeData(
       useMaterial3: true,
       colorScheme: ColorScheme.fromSeed(
-        seedColor: seed,
-        brightness: brightness,
-      ),
+          seedColor: seed, brightness: brightness),
       appBarTheme: const AppBarTheme(
         backgroundColor: seed,
         foregroundColor: Colors.white,
@@ -78,7 +78,6 @@ class SimplyNetApp extends StatelessWidget {
         style: FilledButton.styleFrom(backgroundColor: seed),
       ),
     );
-    // Apply font scale to every text style in the theme
     final scaled = base.textTheme.apply(fontSizeFactor: fontScale);
     return base.copyWith(
       textTheme: scaled,
