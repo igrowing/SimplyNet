@@ -202,8 +202,14 @@ class _ResizableHeader extends StatelessWidget {
           width: 8,
           color: bg,
           child: Center(
-            child: Container(width: 1.5, height: 16,
-                color: Theme.of(context).dividerColor),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.chevron_left, size: 10, color: Theme.of(context).dividerColor),
+                Container(width: 1.5, height: 8, color: Theme.of(context).dividerColor),
+                Icon(Icons.chevron_right, size: 10, color: Theme.of(context).dividerColor),
+              ],
+            ),
           ),
         ),
       );
