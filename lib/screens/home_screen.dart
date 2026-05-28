@@ -90,9 +90,30 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'SimplyNet',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.asset(
+              'assets/simplynet.png',
+              height: 32,
+              width: 32,
+            ),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: const [
+                Text(
+                  'SimplyNet',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  'v0.1.1',
+                  style: TextStyle(fontSize: 11),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
       body: OrientationBuilder(

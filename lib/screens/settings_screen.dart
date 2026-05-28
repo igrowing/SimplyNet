@@ -74,18 +74,15 @@ class SettingsScreen extends StatelessWidget {
               segments: [
                 ButtonSegment(
                   value: AppFontSize.small,
-                  label: Text('Small',
-                      style: TextStyle(fontSize: 11 * s.fontScale)),
+                  label: const Text('Small'),
                 ),
                 ButtonSegment(
                   value: AppFontSize.medium,
-                  label: Text('Medium',
-                      style: TextStyle(fontSize: 13 * s.fontScale)),
+                  label: const Text('Medium'),
                 ),
                 ButtonSegment(
                   value: AppFontSize.large,
-                  label: Text('Large',
-                      style: TextStyle(fontSize: 15 * s.fontScale)),
+                  label: const Text('Large'),
                 ),
               ],
               selected: {s.fontSize},
