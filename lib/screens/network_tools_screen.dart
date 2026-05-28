@@ -516,17 +516,22 @@ class _PublicIpState extends State<PublicIpScreen> {
                   padding: const EdgeInsets.all(16),
                   children: (_info ?? {})
                       .entries
-                      .map((e) => ListTile(
-                            dense: true,
-                            title: Text(e.key,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 13)),
-                            trailing: SelectableText(e.value,
-                                style: const TextStyle(
-                                    fontFamily: 'monospace',
-                                    fontSize: 13)),
-                          ))
+                      .expand((e) => [
+                            Padding(
+                              padding: const EdgeInsets.only(top: 12, bottom: 4),
+                              child: Text(e.key,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13)),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: SelectableText(e.value,
+                                  style: const TextStyle(
+                                      fontFamily: 'monospace',
+                                      fontSize: 13)),
+                            ),
+                          ])
                       .toList(),
                 ),
     );
