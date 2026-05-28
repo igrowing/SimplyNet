@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:simply_net/models/host_result.dart';
 import 'package:simply_net/services/network_scanner.dart';
 import 'package:simply_net/services/network_tools.dart';
@@ -156,6 +157,22 @@ class _SpeedRecord {
     required this.uploadMbps,
     required this.pingMs,
   });
+
+  // Serialize to JSON for storage
+  Map<String, dynamic> toJson() => {
+    'timestamp': timestamp.toIso8601String(),
+    'downloadMbps': downloadMbps,
+    'uploadMbps': uploadMbps,
+    'pingMs': pingMs,
+  };
+
+  // Deserialize from JSON
+  factory _SpeedRecord.fromJson(Map<String, dynamic> json) => _SpeedRecord(
+    timestamp: DateTime.parse(json['timestamp'] as String),
+    downloadMbps: json['downloadMbps'] as double,
+    uploadMbps: json['uploadMbps'] as double,
+    pingMs: json['pingMs'] as double,
+  );
 }
 
 class SpeedTestScreen extends StatefulWidget {
@@ -172,8 +189,69 @@ class _SpeedTestState extends State<SpeedTestScreen> {
   String _status = 'Ready';
   double _progress = 0;
 
-  // Speed history (session only — not persisted across app restart)
+  // Speed history (persisted to SharedPreferences)
   final List<_SpeedRecord> _history = [];
+  static const String _storageKey = 'speed_test_history';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHistory();
+  }
+
+  Future<void> _loadHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString(_storageKey);
+      if (json != null) {
+        final list = (jsonDecode(json) as List)
+            .map((e) => _SpeedRecord.fromJson(e as Map<String, dynamic>))
+            .toList();
+        setState(() => _history.addAll(list));
+      }
+    } catch (e) {
+      debugPrint('Failed to load speed test history: $e');
+    }
+  }
+
+  Future<void> _saveHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = jsonEncode(_history.map((r) => r.toJson()).toList());
+      await prefs.setString(_storageKey, json);
+    } catch (e) {
+      debugPrint('Failed to save speed test history: $e');
+    }
+  }
+
+  Future<void> _clearHistory() async {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Clear History?'),
+        content: const Text('This will permanently delete all measurement records.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              setState(() => _history.clear());
+              try {
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.remove(_storageKey);
+              } catch (e) {
+                debugPrint('Failed to clear history: $e');
+              }
+              if (context.mounted) Navigator.pop(ctx);
+            },
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+  }
 
   Future<void> _runTest() async {
     setState(() {
@@ -229,6 +307,9 @@ class _SpeedTestState extends State<SpeedTestScreen> {
         _testing = false;
         _history.insert(0, record); // newest first
       });
+      
+      // Save history to persistent storage
+      await _saveHistory();
     } catch (e) {
       setState(() {
         _status = 'Error: $e';
@@ -305,11 +386,22 @@ class _SpeedTestState extends State<SpeedTestScreen> {
           const Divider(),
 
           // ── History section ─────────────────────────────────────────
-          Text('Previous Measurements',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(fontWeight: FontWeight.bold, color: primary)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Previous Measurements',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(fontWeight: FontWeight.bold, color: primary)),
+              if (_history.isNotEmpty)
+                TextButton.icon(
+                  onPressed: _clearHistory,
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  label: const Text('Clear'),
+                ),
+            ],
+          ),
           const SizedBox(height: 8),
           if (_history.isEmpty)
             Padding(
