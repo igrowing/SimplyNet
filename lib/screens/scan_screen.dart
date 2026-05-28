@@ -13,12 +13,16 @@ class ScanScreen extends StatefulWidget {
 }
 
 class _ScanScreenState extends State<ScanScreen> {
+  // Per-column widths (flex units) — user can drag to resize
+  double _wIp   = 3;
+  double _wMac  = 3;
+  double _wHost = 4;
+
   @override
   void initState() {
     super.initState();
-    // Auto-start scan when screen opens
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final scan = context.read<ScanProvider>();
+      final scan     = context.read<ScanProvider>();
       final settings = context.read<SettingsProvider>().settings;
       if (!scan.isScanning && scan.isValidTarget) {
         scan.startScan(
@@ -29,9 +33,22 @@ class _ScanScreenState extends State<ScanScreen> {
     });
   }
 
+  void _toggleScan() {
+    final scan     = context.read<ScanProvider>();
+    final settings = context.read<SettingsProvider>().settings;
+    if (scan.isScanning) {
+      scan.stopScan();
+    } else if (scan.isValidTarget) {
+      scan.startScan(
+        resolveNames: settings.resolveNames,
+        logging: settings.loggingEnabled,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final scan = context.watch<ScanProvider>();
+    final scan     = context.watch<ScanProvider>();
     final settings = context.watch<SettingsProvider>().settings;
 
     return Scaffold(
@@ -45,32 +62,25 @@ class _ScanScreenState extends State<ScanScreen> {
           ],
         ),
         actions: [
-          // Re-run button (cycled arrow), disabled while scanning
+          // Single toggle button: round-arrow (idle) ↔ square-stop (running)
           IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Re-scan',
-            onPressed: scan.isScanning || !scan.isValidTarget
-                ? null
-                : () => scan.startScan(
-                      resolveNames: settings.resolveNames,
-                      logging: settings.loggingEnabled,
-                    ),
-          ),
-          // Stop button shown while scanning
-          if (scan.isScanning)
-            IconButton(
-              icon: const Icon(Icons.stop_circle_outlined),
-              tooltip: 'Stop scan',
-              onPressed: scan.stopScan,
+            icon: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: scan.isScanning
+                  ? const Icon(Icons.stop_rounded,
+                      key: ValueKey('stop'), size: 28)
+                  : const Icon(Icons.refresh_rounded,
+                      key: ValueKey('refresh'), size: 26),
             ),
+            tooltip: scan.isScanning ? 'Stop scan' : 'Re-scan',
+            onPressed: scan.isValidTarget ? _toggleScan : null,
+          ),
         ],
       ),
       body: Column(
         children: [
-          // Progress indicator
           if (scan.isScanning) const LinearProgressIndicator(),
 
-          // Host count
           if (scan.results.isNotEmpty || scan.isScanning)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -83,10 +93,15 @@ class _ScanScreenState extends State<ScanScreen> {
               ),
             ),
 
-          // Table header
-          _ScanHeader(scan: scan, settings: settings),
+          // Resizable header
+          _ResizableHeader(
+            scan: scan,
+            showMac: settings.showMac,
+            wIp: _wIp, wMac: _wMac, wHost: _wHost,
+            onResize: (ip, mac, host) =>
+                setState(() { _wIp = ip; _wMac = mac; _wHost = host; }),
+          ),
 
-          // Results
           Expanded(
             child: scan.results.isEmpty && !scan.isScanning
                 ? _EmptyState(isValid: scan.isValidTarget)
@@ -99,6 +114,7 @@ class _ScanScreenState extends State<ScanScreen> {
                       return _ScanRow(
                         host: host,
                         settings: settings,
+                        wIp: _wIp, wMac: _wMac, wHost: _wHost,
                         onTap: () => Navigator.push(
                           ctx,
                           MaterialPageRoute(
@@ -114,120 +130,159 @@ class _ScanScreenState extends State<ScanScreen> {
   }
 }
 
-// ── Table header ─────────────────────────────────────────────────────────────
+// ── Resizable column header ───────────────────────────────────────────────────
 
-class _ScanHeader extends StatelessWidget {
+class _ResizableHeader extends StatelessWidget {
   final ScanProvider scan;
-  final dynamic settings;
-  const _ScanHeader({required this.scan, required this.settings});
+  final bool showMac;
+  final double wIp, wMac, wHost;
+  final void Function(double ip, double mac, double host) onResize;
+
+  const _ResizableHeader({
+    required this.scan,
+    required this.showMac,
+    required this.wIp,
+    required this.wMac,
+    required this.wHost,
+    required this.onResize,
+  });
 
   @override
   Widget build(BuildContext context) {
     final bg = Theme.of(context).colorScheme.surfaceContainerHighest;
+
+    Widget headerCell(
+      String label,
+      ScanSortColumn col,
+      double flex,
+    ) {
+      final active = scan.sortColumn == col;
+      return Expanded(
+        flex: flex.round().clamp(1, 20),
+        child: InkWell(
+          onTap: () => scan.toggleSort(col),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(label,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w600, fontSize: 12)),
+                if (active)
+                  Icon(
+                    scan.sortAsc
+                        ? Icons.arrow_upward
+                        : Icons.arrow_downward,
+                    size: 12,
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Drag divider between two columns: adjusts widths
+    Widget divider(
+      double leftFlex,
+      double rightFlex,
+      void Function(double, double) onDrag,
+    ) {
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragUpdate: (d) {
+          const unit = 0.01;
+          final delta = d.delta.dx * unit;
+          final newLeft  = (leftFlex  + delta).clamp(0.5, 10.0);
+          final newRight = (rightFlex - delta).clamp(0.5, 10.0);
+          onDrag(newLeft, newRight);
+        },
+        child: Container(
+          width: 8,
+          color: bg,
+          child: Center(
+            child: Container(width: 1.5, height: 16,
+                color: Theme.of(context).dividerColor),
+          ),
+        ),
+      );
+    }
+
     return Container(
       color: bg,
       child: Row(
         children: [
-          _HeaderCell(label: 'IP', col: ScanSortColumn.ip, scan: scan, flex: 5),
-          if (settings.showMac)
-            _HeaderCell(label: 'MAC', col: ScanSortColumn.mac, scan: scan, flex: 5),
-          if (settings.resolveNames)
-            _HeaderCell(label: 'Hostname', col: ScanSortColumn.hostname,
-                scan: scan, flex: 6),
+          headerCell('IP', ScanSortColumn.ip, wIp),
+          if (showMac) ...[
+            divider(wIp, wMac,
+                (l, r) => onResize(l, r, wHost)),
+            headerCell('MAC', ScanSortColumn.mac, wMac),
+            divider(wMac, wHost,
+                (l, r) => onResize(wIp, l, r)),
+          ] else
+            divider(wIp, wHost,
+                (l, r) => onResize(l, wMac, r)),
+          headerCell('Hostname', ScanSortColumn.hostname, wHost),
         ],
       ),
     );
   }
 }
 
-class _HeaderCell extends StatelessWidget {
-  final String label;
-  final ScanSortColumn col;
-  final ScanProvider scan;
-  final int flex;
-  const _HeaderCell({
-    required this.label, required this.col,
-    required this.scan, required this.flex,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final active = scan.sortColumn == col;
-    final primary = Theme.of(context).colorScheme.primary;
-    return Expanded(
-      flex: flex,
-      child: InkWell(
-        onTap: () => scan.toggleSort(col),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          child: Row(
-            children: [
-              Text(label,
-                  style: TextStyle(
-                    fontWeight: active ? FontWeight.bold : FontWeight.normal,
-                    fontSize: 13,
-                    color: active ? primary : null,
-                  )),
-              if (active)
-                Icon(
-                  scan.sortAsc
-                      ? Icons.keyboard_arrow_up
-                      : Icons.keyboard_arrow_down,
-                  size: 16,
-                  color: primary,
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ── Table row ─────────────────────────────────────────────────────────────────
+// ── Row ───────────────────────────────────────────────────────────────────────
 
 class _ScanRow extends StatelessWidget {
   final HostResult host;
   final dynamic settings;
+  final double wIp, wMac, wHost;
   final VoidCallback onTap;
-  const _ScanRow({required this.host, required this.settings, required this.onTap});
+
+  const _ScanRow({
+    required this.host,
+    required this.settings,
+    required this.wIp,
+    required this.wMac,
+    required this.wHost,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 2),
         child: Row(
           children: [
-            Expanded(flex: 5,
-                child: Text(host.ip, style: const TextStyle(fontSize: 13))),
+            Expanded(
+              flex: wIp.round().clamp(1, 20),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                child: Text(host.ip,
+                    style: const TextStyle(fontFamily: 'monospace', fontSize: 13)),
+              ),
+            ),
             if (settings.showMac)
               Expanded(
-                flex: 5,
-                child: Text(host.mac,
-                    style: TextStyle(
-                        fontSize: 12,
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurface
-                            .withValues(alpha: 0.7)),
-                    overflow: TextOverflow.ellipsis),
+                flex: wMac.round().clamp(1, 20),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                  child: Text(host.mac,
+                      style: const TextStyle(fontFamily: 'monospace', fontSize: 11)),
+                ),
               ),
-            if (settings.resolveNames)
-              Expanded(
-                flex: 6,
+            Expanded(
+              flex: wHost.round().clamp(1, 20),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                 child: Text(
-                  host.hostname.isEmpty ? '–' : host.hostname,
-                  style: TextStyle(
-                      fontSize: 12,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withValues(alpha: 0.6)),
+                  host.hostname.isEmpty ? host.manufacturer : host.hostname,
+                  style: const TextStyle(fontSize: 12),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
+            ),
           ],
         ),
       ),
@@ -247,18 +302,17 @@ class _EmptyState extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.network_check,
-              size: 72,
-              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.2)),
-          const SizedBox(height: 16),
+          Icon(Icons.search_off_rounded,
+              size: 56,
+              color: Theme.of(context).colorScheme.outline),
+          const SizedBox(height: 12),
           Text(
-            isValid ? 'Starting scan…' : 'Enter a valid CIDR first',
-            style: TextStyle(
-                color: Theme.of(context)
-                    .colorScheme
-                    .onSurface
-                    .withValues(alpha: 0.5)),
+            isValid ? 'No hosts found' : 'No network target set',
+            style: Theme.of(context).textTheme.titleMedium,
           ),
+          if (!isValid)
+            const Text('Set a target on the Home screen',
+                style: TextStyle(fontSize: 12)),
         ],
       ),
     );

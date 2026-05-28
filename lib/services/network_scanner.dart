@@ -5,18 +5,18 @@ import 'package:simply_net/models/host_result.dart';
 import 'package:simply_net/services/oui_service.dart';
 
 class NetworkScanner {
-  static const _pingTimeout = Duration(milliseconds: 800);
-  static const _tcpTimeout = Duration(milliseconds: 400);
-  static const _parallelism = 64;
+  static const _pingTimeout  = Duration(milliseconds: 800);
+  static const _tcpTimeout   = Duration(milliseconds: 400);
+  static const _parallelism  = 64;
 
-  /// Parse a CIDR string. Returns (baseIp, prefixLength) or null if invalid.
+  // ── CIDR helpers ──────────────────────────────────────────────────────────
+
   static (String, int)? parseCidr(String cidr) {
     final parts = cidr.trim().split('/');
     if (parts.length != 2) return null;
-    final ip = parts[0].trim();
+    final ip     = parts[0].trim();
     final prefix = int.tryParse(parts[1].trim());
     if (prefix == null || prefix < 0 || prefix > 32) return null;
-    // Validate IP
     final octets = ip.split('.');
     if (octets.length != 4) return null;
     for (final o in octets) {
@@ -28,7 +28,11 @@ class NetworkScanner {
 
   static bool isValidCidr(String cidr) => parseCidr(cidr) != null;
 
-  /// Read /proc/net/arp for IP → MAC mappings (Android only).
+  // ── ARP table ─────────────────────────────────────────────────────────────
+  // Reads /proc/net/arp for IP→MAC on Android.
+  // After a successful ICMP probe the kernel populates this table automatically,
+  // so we don't need to parse ICMP replies ourselves.
+
   static Map<String, String> _readArpTable() {
     final map = <String, String>{};
     try {
@@ -37,7 +41,7 @@ class NetworkScanner {
       for (final line in file.readAsLinesSync().skip(1)) {
         final parts = line.trim().split(RegExp(r'\s+'));
         if (parts.length >= 4) {
-          final ip = parts[0];
+          final ip  = parts[0];
           final mac = parts[3].toUpperCase();
           if (mac != '00:00:00:00:00:00' && mac.length == 17) {
             map[ip] = mac;
@@ -49,10 +53,10 @@ class NetworkScanner {
   }
 
   static List<String> _expandCidr(String baseIp, int prefix) {
-    final octets = baseIp.split('.').map(int.parse).toList();
-    final base = (octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3];
-    final mask = prefix == 0 ? 0 : (0xFFFFFFFF << (32 - prefix)) & 0xFFFFFFFF;
-    final net = base & mask;
+    final octets  = baseIp.split('.').map(int.parse).toList();
+    final base    = (octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3];
+    final mask    = prefix == 0 ? 0 : (0xFFFFFFFF << (32 - prefix)) & 0xFFFFFFFF;
+    final net       = base & mask;
     final broadcast = net | (~mask & 0xFFFFFFFF);
     final hosts = <String>[];
     for (var i = net + 1; i < broadcast; i++) {
@@ -61,20 +65,72 @@ class NetworkScanner {
     return hosts;
   }
 
-  /// Scan a CIDR range, yielding HostResult for each live host.
+  // ── Hostname resolution ───────────────────────────────────────────────────
+  // Strategy (in order, first non-empty wins):
+  //   1. Reverse DNS (PTR record) — proper way to turn an IP into a hostname.
+  //      Uses InternetAddress.reverse() which issues a real PTR query.
+  //   2. mDNS via Process.run('avahi-resolve') on Linux/Android — resolves
+  //      .local names on the local network without a DNS server.
+  //   3. Forward nslookup fallback (old system-level DNS).
+
+  static Future<String> resolveHostname(String ip) async {
+    // 1. Reverse DNS (PTR)
+    try {
+      final ia      = InternetAddress(ip);
+      final results = await ia.reverse().timeout(const Duration(seconds: 2));
+      final name    = results.host;
+      if (name.isNotEmpty && name != ip) return name;
+    } catch (_) {}
+
+    // 2. avahi-resolve (available on many Android/Linux devices via Avahi daemon)
+    if (!kIsWeb) {
+      try {
+        final r = await Process.run(
+          'avahi-resolve', ['-a', ip],
+          runInShell: true,
+        ).timeout(const Duration(seconds: 2));
+        if (r.exitCode == 0) {
+          final parts = (r.stdout as String).trim().split(RegExp(r'\s+'));
+          if (parts.length >= 2 && parts[1].isNotEmpty) return parts[1];
+        }
+      } catch (_) {}
+    }
+
+    // 3. nslookup fallback
+    if (!kIsWeb) {
+      try {
+        final r = await Process.run(
+          'nslookup', [ip],
+          runInShell: true,
+        ).timeout(const Duration(seconds: 2));
+        if (r.exitCode == 0) {
+          for (final line in (r.stdout as String).split('\n')) {
+            // "name = somehost.local." line
+            if (line.contains('name =')) {
+              final name = line.split('=').last.trim().replaceAll(RegExp(r'\.$'), '');
+              if (name.isNotEmpty && name != ip) return name;
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    return '';
+  }
+
+  // ── Main scan ─────────────────────────────────────────────────────────────
+
   static Stream<HostResult> scan(String cidr, {bool resolveNames = true}) async* {
     final parsed = parseCidr(cidr);
     if (parsed == null) return;
     final (baseIp, prefix) = parsed;
-    final hosts = _expandCidr(baseIp, prefix);
+    final hosts    = _expandCidr(baseIp, prefix);
     final arpTable = _readArpTable();
 
-    // Process in parallel batches
     final chunks = <Future<HostResult?>>[];
     for (var i = 0; i < hosts.length; i++) {
       chunks.add(_probeHost(hosts[i], arpTable, resolveNames));
-      
-      // Yield results when we have a full batch
+
       if (chunks.length >= _parallelism || i == hosts.length - 1) {
         final results = await Future.wait(chunks);
         for (final result in results) {
@@ -92,20 +148,16 @@ class NetworkScanner {
   ) async {
     bool alive = false;
 
-    // On web, Process API is unavailable. Skip ping and only try TCP.
     if (!kIsWeb) {
-      // 1. ICMP via ping process (desktop/mobile only)
       try {
         final result = await Process.run(
-          'ping',
-          ['-c', '1', '-W', '1', ip],
+          'ping', ['-c', '1', '-W', '1', ip],
           runInShell: true,
         ).timeout(_pingTimeout);
         alive = result.exitCode == 0;
       } catch (_) {}
     }
 
-    // 2. TCP probe fallback (works on all platforms, though may fail due to CORS on web)
     if (!alive) {
       for (final port in [80, 443, 22, 445, 8080]) {
         try {
@@ -119,21 +171,23 @@ class NetworkScanner {
 
     if (!alive) return null;
 
-    final mac = arpTable[ip] ?? 'N/A';
+    // After ping, the kernel should have populated the ARP table.
+    // Re-read it on miss so we capture fresh entries.
+    String mac = arpTable[ip] ?? '';
+    if (mac.isEmpty) {
+      mac = _readArpTable()[ip] ?? 'N/A';
+    }
+
     String hostname = '';
     if (resolveNames) {
-      try {
-        final addrs = await InternetAddress.lookup(ip);
-        hostname = addrs.isNotEmpty ? addrs.first.host : '';
-        if (hostname == ip) hostname = '';
-      } catch (_) {}
+      hostname = await resolveHostname(ip);
     }
 
     final manufacturer = OuiService.lookup(mac);
 
     return HostResult(
       ip: ip,
-      mac: mac,
+      mac: mac.isEmpty ? 'N/A' : mac,
       hostname: hostname,
       manufacturer: manufacturer,
       isUp: true,

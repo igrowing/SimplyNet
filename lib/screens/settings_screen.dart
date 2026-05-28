@@ -39,6 +39,33 @@ class SettingsScreen extends StatelessWidget {
             ),
           ),
 
+          // Screen on timeout
+          _SegmentedTile(
+            icon: Icons.screen_lock_portrait_outlined,
+            label: 'Screen On Timeout',
+            child: SegmentedButton<AppScreenTimeout>(
+              segments: const [
+                ButtonSegment(
+                  value: AppScreenTimeout.system,
+                  icon: Icon(Icons.phone_android),
+                  label: Text('System'),
+                ),
+                ButtonSegment(
+                  value: AppScreenTimeout.triple,
+                  icon: Icon(Icons.timer_3_select),
+                  label: Text('3× System'),
+                ),
+                ButtonSegment(
+                  value: AppScreenTimeout.stayOn,
+                  icon: Icon(Icons.lock_open_outlined),
+                  label: Text('Stay On'),
+                ),
+              ],
+              selected: {s.screenTimeout},
+              onSelectionChanged: (v) => prov.setScreenTimeout(v.first),
+            ),
+          ),
+
           // Font size
           _SegmentedTile(
             icon: Icons.text_fields,
@@ -69,7 +96,6 @@ class SettingsScreen extends StatelessWidget {
           const Divider(height: 24),
           _SectionHeader('Scanning'),
 
-          // Show MAC
           SwitchListTile(
             secondary: const Icon(Icons.router_outlined),
             title: const Text('Show MAC Address'),
@@ -78,16 +104,14 @@ class SettingsScreen extends StatelessWidget {
             onChanged: prov.setShowMac,
           ),
 
-          // Resolve names
           SwitchListTile(
             secondary: const Icon(Icons.dns_outlined),
             title: const Text('Resolve Hostnames'),
-            subtitle: const Text('Perform DNS/reverse-DNS during scan'),
+            subtitle: const Text('Perform reverse-DNS + mDNS during scan'),
             value: s.resolveNames,
             onChanged: prov.setResolveNames,
           ),
 
-          // Logging
           SwitchListTile(
             secondary: const Icon(Icons.save_alt),
             title: const Text('Enable Logging'),
@@ -112,7 +136,7 @@ class SettingsScreen extends StatelessWidget {
   }
 }
 
-// ── Segmented setting tile (label + icon above the control) ──────────────────
+// ── Segmented setting tile ────────────────────────────────────────────────────
 
 class _SegmentedTile extends StatelessWidget {
   final IconData icon;
@@ -144,10 +168,7 @@ class _SegmentedTile extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: child,
-          ),
+          SizedBox(width: double.infinity, child: child),
         ],
       ),
     );
