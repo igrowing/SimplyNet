@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 /// Wrappers for diagnostic network tools.
 /// Each returns a Stream<String> so callers can display output progressively.
@@ -361,5 +362,3 @@ class SpeedResult {
 // ── Uint8List for UDP ─────────────────────────────────────────────────────────
 // (dart:typed_data is already in scope via dart:io on mobile; explicit import
 //  added here so the file is self-contained)
-// ignore: depend_on_referenced_packages
-import 'dart:typed_data';
