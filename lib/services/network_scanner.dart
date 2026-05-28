@@ -118,6 +118,45 @@ class NetworkScanner {
     return '';
   }
 
+  // ── MAC resolution ───────────────────────────────────────────────────────
+  // Tries multiple methods to resolve IP → MAC address:
+  // 1. ARP table (/proc/net/arp)
+  // 2. arping command (active ARP query)
+  // 3. arp command fallback
+
+  static Future<String> _resolveMac(String ip, Map<String, String> arpTable) async {
+    // 1. Try pre-populated ARP table
+    if (arpTable.containsKey(ip)) {
+      return arpTable[ip]!;
+    }
+
+    // 2. Re-read ARP table (kernel may have populated after ping)
+    var mac = _readArpTable()[ip];
+    if (mac != null && mac.isNotEmpty) return mac;
+
+    // 3. Try arping command (active ARP query)
+    if (!kIsWeb) {
+      try {
+        final result = await Process.run(
+          'arping', ['-c', '1', ip],
+          runInShell: true,
+        ).timeout(const Duration(seconds: 1));
+        if (result.exitCode == 0) {
+          // arping output contains MAC address, extract it
+          final macMatch = RegExp(r'([0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2})')
+              .firstMatch(result.stdout as String);
+          if (macMatch != null) {
+            return macMatch.group(1)!.toUpperCase();
+          }
+        }
+      } catch (_) {}
+    }
+
+    // 4. Final ARP table check
+    mac = _readArpTable()[ip];
+    return mac ?? 'N/A';
+  }
+
   // ── Main scan ─────────────────────────────────────────────────────────────
 
   static Stream<HostResult> scan(String cidr, {bool resolveNames = true}) async* {
@@ -171,12 +210,8 @@ class NetworkScanner {
 
     if (!alive) return null;
 
-    // After ping, the kernel should have populated the ARP table.
-    // Re-read it on miss so we capture fresh entries.
-    String mac = arpTable[ip] ?? '';
-    if (mac.isEmpty) {
-      mac = _readArpTable()[ip] ?? 'N/A';
-    }
+    // Resolve MAC address using multiple fallback strategies
+    final mac = await _resolveMac(ip, arpTable);
 
     String hostname = '';
     if (resolveNames) {
@@ -187,7 +222,7 @@ class NetworkScanner {
 
     return HostResult(
       ip: ip,
-      mac: mac.isEmpty ? 'N/A' : mac,
+      mac: mac,
       hostname: hostname,
       manufacturer: manufacturer,
       isUp: true,
