@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -746,66 +747,60 @@ class _PingGraphPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (timings.isEmpty) return;
 
-    final paint = Paint()
+    final linePaint = Paint()
       ..color = Colors.lightGreenAccent
       ..strokeWidth = 2
-      ..style = PaintingStyle.stroke;
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
 
-    final barPaint = Paint()
-      ..color = Colors.lightGreenAccent.withValues(alpha: 0.6)
-      ..style = PaintingStyle.fill;
+    final dotPaint = Paint()..color = Colors.lightGreenAccent;
+    final gridPaint = Paint()
+      ..color = Colors.lightGreenAccent.withValues(alpha: 0.2)
+      ..strokeWidth = 0.5;
 
-    final axisTextStyle = const TextStyle(
-      color: Colors.lightGreenAccent,
-      fontSize: 9,
-    );
-
-    const padding = 40.0;
-    const barWidth = 8.0;
-    final graphWidth = size.width - padding * 2;
-    final graphHeight = size.height - padding * 2;
+    const padding = 35.0;
+    final chartW = size.width - padding;
+    final chartH = size.height - padding;
     final range = maxMs - minMs;
-    final scale = range > 0 ? graphHeight / range : 1.0;
+    final scale = range > 0 ? chartH / range : 1.0;
 
-    // Draw Y-axis
-    canvas.drawLine(Offset(padding, padding), Offset(padding, size.height - padding), paint);
+    // Draw grid lines and Y-axis labels
+    for (var i = 0; i <= 4; i++) {
+      final y = padding / 2 + chartH * (1 - i / 4);
+      canvas.drawLine(Offset(padding, y), Offset(size.width - 4, y), gridPaint);
 
-    // Draw X-axis
-    canvas.drawLine(Offset(padding, size.height - padding), Offset(size.width - padding, size.height - padding), paint);
-
-    // Draw Y-axis labels
-    final step = (maxMs / 5).ceilToDouble();
-    for (var i = 0; i <= 5; i++) {
-      final value = i * step;
-      if (value > maxMs + 1) break;
-      final y = size.height - padding - (value - minMs) * scale;
-      canvas.drawLine(Offset(padding - 5, y), Offset(padding, y), paint);
-
+      final label = ((maxMs - minMs) * i / 4 + minMs).toStringAsFixed(0);
       final textPainter = TextPainter(
-        text: TextSpan(text: '${value.toInt()}ms', style: axisTextStyle),
+        text: TextSpan(
+            text: '${label}ms',
+            style: const TextStyle(color: Colors.lightGreenAccent, fontSize: 8)),
         textDirection: TextDirection.ltr,
       );
       textPainter.layout();
-      textPainter.paint(canvas, Offset(padding - 35, y - 5));
+      textPainter.paint(canvas, Offset(2, y - textPainter.height / 2));
     }
 
-    // Draw bars for each ping
-    final barSpacing = timings.length > 1 ? graphWidth / (timings.length - 1) : 0;
+    // Draw line path connecting all samples
+    final step = timings.length > 1 ? chartW / (timings.length - 1) : 0;
+    final path = Path();
+    bool moved = false;
+
     for (var i = 0; i < timings.length; i++) {
-      final x = padding + i * barSpacing;
-      final value = timings[i];
-      final height = (value - minMs) * scale;
-      final y = size.height - padding - height;
+      final x = padding + i * step;
+      final sample = timings[i];
+      final y = padding / 2 + chartH * (1 - (sample - minMs) * scale);
 
-      // Bar
-      canvas.drawRect(
-        Rect.fromLTWH(x - barWidth / 2, y, barWidth, height),
-        barPaint,
-      );
-
-      // Dot at top
-      canvas.drawCircle(Offset(x, y), 2, paint);
+      if (!moved) {
+        path.moveTo(x, y);
+        moved = true;
+      } else {
+        path.lineTo(x, y);
+      }
+      // Dot at each sample point
+      canvas.drawCircle(Offset(x, y), 3, dotPaint);
     }
+
+    canvas.drawPath(path, linePaint);
   }
 
   @override

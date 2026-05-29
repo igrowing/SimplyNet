@@ -3,7 +3,7 @@ class HostResult {
   String mac;
   final String hostname;
   String manufacturer;
-  final String deviceType;
+  String deviceType;
   final bool isUp;
 
   HostResult({

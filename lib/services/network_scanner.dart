@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:simply_net/models/host_result.dart';
+import 'package:simply_net/services/log_service.dart';
 import 'package:simply_net/services/oui_service.dart';
 
 class NetworkScanner {
@@ -33,29 +34,89 @@ class NetworkScanner {
   // After a successful ICMP probe the kernel populates this table automatically,
   // so we don't need to parse ICMP replies ourselves.
 
-  static Map<String, String> _readArpTable() {
+  // static Map<String, String> _readArpTable() {
+  //   final map = <String, String>{};
+  //   try {
+  //     final file = File('/proc/net/arp');
+  //     if (!file.existsSync()) 
+  //     {
+  //       // TODO: Add logging to LogService (_logBuffer?) instead of silently failing
+  //       // _logBuffer.writeln('ARP table file not found: ${file.path}');
+  //       return map;
+  //     }
+  //     for (final line in file.readAsLinesSync().skip(1)) {
+  //       final parts = line.trim().split(RegExp(r'\s+'));
+  //       if (parts.length >= 4) {
+  //         final ip  = parts[0];
+  //         final mac = parts[3].toUpperCase();
+  //         if (mac != '00:00:00:00:00:00' && mac.length == 17) {
+  //           map[ip] = mac;
+  //         }
+  //       }
+  //     }
+  //   } catch (_) {
+  //     // TODO: Add logging to LogService (_logBuffer?) instead of silently failing
+  //     //_logBuffer.writeln('Failed to read ARP table: $e');
+  //   }
+  //   return map;
+  // }
+  static Future<Map<String, String>> _readArpTable() async {
     final map = <String, String>{};
     try {
-      final file = File('/proc/net/arp');
-      if (!file.existsSync()) 
-      {
-        // TODO: Add logging to LogService (_logBuffer?) instead of silently failing
-        // _logBuffer.writeln('ARP table file not found: ${file.path}');
-        return map;
-      }
-      for (final line in file.readAsLinesSync().skip(1)) {
-        final parts = line.trim().split(RegExp(r'\s+'));
-        if (parts.length >= 4) {
-          final ip  = parts[0];
-          final mac = parts[3].toUpperCase();
-          if (mac != '00:00:00:00:00:00' && mac.length == 17) {
-            map[ip] = mac;
+      ProcessResult result;
+      
+      if (Platform.isIOS) {
+        // iOS: use BSD-style arp command
+        // Format: "hostname (192.168.1.1) at aa:bb:cc:dd:ee:ff on en0"
+        result = await Process.run('arp', ['-a']);
+        if (result.exitCode == 0) {
+          final re = RegExp(r'\((\d+\.\d+\.\d+\.\d+)\)\s+at\s+([0-9a-f:]{17})', caseSensitive: false);
+          final out = (result.stdout ?? '').toString().split('\n');
+          for (final line in out) {
+            final m = re.firstMatch(line.trim());
+            if (m != null) {
+              final ip = m.group(1)!;
+              final mac = m.group(2)!.toUpperCase();
+              if (mac != '00:00:00:00:00:00') map[ip] = mac;
+            }
           }
+          return map;
+        } else {
+          await LogService.createLog(
+            function: 'network_scanner._readArpTable',
+            content: 'Failed to run arp -a on iOS: exit code ${result.exitCode}',
+            summary: 'ARP table read failed on iOS',
+          );
+        }
+      } else {
+        // Android and other platforms: use ip neigh show
+        result = await Process.run('ip', ['neigh', 'show']);
+        if (result.exitCode == 0) {
+          final re = RegExp(r'^(\S+).*?lladdr\s+([0-9a-f:]{17})', caseSensitive: false);
+          final out = (result.stdout ?? '').toString().split('\n');
+          for (final line in out) {
+            final m = re.firstMatch(line.trim());
+            if (m != null) {
+              final ip = m.group(1)!;
+              final mac = m.group(2)!.toUpperCase();
+              if (mac != '00:00:00:00:00:00') map[ip] = mac;
+            }
+          }
+          return map;
+        } else {
+          await LogService.createLog(
+            function: 'network_scanner._readArpTable',
+            content: 'Failed to run ip neigh show: exit code ${result.exitCode}',
+            summary: 'ARP table read failed',
+          );
         }
       }
-    } catch (_) {
-      // TODO: Add logging to LogService (_logBuffer?) instead of silently failing
-      //_logBuffer.writeln('Failed to read ARP table: $e');
+    } catch (error) {
+      await LogService.createLog(
+        function: 'network_scanner._readArpTable',
+        content: 'Exception while reading ARP table: $error',
+        summary: 'ARP table read error',
+      );
     }
     return map;
   }
@@ -132,37 +193,95 @@ class NetworkScanner {
   // 2. arping command (active ARP query)
   // 3. arp command fallback
 
-  static Future<String> _resolveMac(String ip, Map<String, String> arpTable) async {
-    // 1. Try pre-populated ARP table
-    if (arpTable.containsKey(ip)) {
-      return arpTable[ip]!;
+  // static Future<String> _resolveMac(String ip, Map<String, String> arpTable) async {
+  //   // 1. Try pre-populated ARP table
+  //   if (arpTable.containsKey(ip)) {
+  //     return arpTable[ip]!;
+  //   }
+
+  //   // 2. Re-read ARP table (kernel may have populated after ping)
+  //   var mac = await _readArpTable()[ip];
+  //   if (mac != null && mac.isNotEmpty) return mac;
+
+  //   // 3. Try arping command (active ARP query)
+  //   if (!kIsWeb) {
+  //     try {
+  //       final result = await Process.run(
+  //         'arping', ['-c', '1', ip],
+  //         runInShell: true,
+  //       ).timeout(const Duration(seconds: 1));
+  //       if (result.exitCode == 0) {
+  //         // arping output contains MAC address, extract it
+  //         final macMatch = RegExp(r'([0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2})')
+  //             .firstMatch(result.stdout as String);
+  //         if (macMatch != null) {
+  //           return macMatch.group(1)!.toUpperCase();
+  //         }
+  //       }
+  //     } catch (_) {}
+  //   }
+
+  //   // 4. Final ARP table check
+  //   mac = _readArpTable()[ip];
+  //   return mac ?? 'N/A';
+  // }
+
+  // ── Device type detection ──────────────────────────────────────────────────
+  // Infers device type from manufacturer name (OUI lookup).
+  // Can be extended with port-based detection (e.g., 554 = IP Camera).
+
+  static String _detectDeviceType(String manufacturer) {
+    if (manufacturer.isEmpty) return '';
+    
+    final lower = manufacturer.toLowerCase();
+    
+    // Smart TV / Media devices
+    if (lower.contains('samsung') || lower.contains('lg') || lower.contains('vizio') || 
+        lower.contains('sony') || lower.contains('roku') || lower.contains('apple tv')) {
+      return 'Smart TV';
     }
-
-    // 2. Re-read ARP table (kernel may have populated after ping)
-    var mac = _readArpTable()[ip];
-    if (mac != null && mac.isNotEmpty) return mac;
-
-    // 3. Try arping command (active ARP query)
-    if (!kIsWeb) {
-      try {
-        final result = await Process.run(
-          'arping', ['-c', '1', ip],
-          runInShell: true,
-        ).timeout(const Duration(seconds: 1));
-        if (result.exitCode == 0) {
-          // arping output contains MAC address, extract it
-          final macMatch = RegExp(r'([0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2})')
-              .firstMatch(result.stdout as String);
-          if (macMatch != null) {
-            return macMatch.group(1)!.toUpperCase();
-          }
-        }
-      } catch (_) {}
+    
+    // IoT / Smart Home
+    if (lower.contains('amazon') || lower.contains('echo') || lower.contains('google') ||
+        lower.contains('nest') || lower.contains('philips hue') || lower.contains('tp-link')) {
+      return 'Smart Home';
     }
-
-    // 4. Final ARP table check
-    mac = _readArpTable()[ip];
-    return mac ?? 'N/A';
+    
+    // Printers
+    if (lower.contains('printer') || lower.contains('xerox') || lower.contains('canon') ||
+        lower.contains('hp') || lower.contains('epson') || lower.contains('ricoh')) {
+      return 'Printer';
+    }
+    
+    // IP Cameras
+    if (lower.contains('camera') || lower.contains('hikvision') || lower.contains('axis') ||
+        lower.contains('dahua') || lower.contains('uniview')) {
+      return 'IP Camera';
+    }
+    
+    // Networking equipment
+    if (lower.contains('cisco') || lower.contains('router') || lower.contains('netgear') ||
+        lower.contains('d-link') || lower.contains('asus') || lower.contains('ubiquiti') ||
+        lower.contains('arista') || lower.contains('juniper') || lower.contains('fortinet')) {
+      return 'Network Device';
+    }
+    
+    // Mobile devices
+    if (lower.contains('apple') || lower.contains('iphone') || lower.contains('ipad')) {
+      return 'Apple Device';
+    }
+    if (lower.contains('samsung') && lower.contains('mobile')) {
+      return 'Android Device';
+    }
+    
+    // Workstations / Computers
+    if (lower.contains('intel') || lower.contains('realtek') || lower.contains('broadcom') ||
+        lower.contains('atheros') || lower.contains('qualcomm')) {
+      return 'Computer';
+    }
+    
+    // Default: Unknown
+    return '';
   }
 
   // ── Main scan ─────────────────────────────────────────────────────────────
@@ -188,9 +307,9 @@ class NetworkScanner {
       }
     }
 
-    // Read freash arp table
-    final arpTable = _readArpTable();
-    // Fill results with MAC addresses from ARP table and with manufacturer names from OUI lookup
+    // Read fresh ARP table after all IPs have been pinged
+    final arpTable = await _readArpTable();
+    // Fill results with MAC addresses, manufacturer names, and device types
     for (final host in allResults) {
       final mac = arpTable[host.ip];
       if (mac != null && mac.isNotEmpty) {
@@ -200,6 +319,8 @@ class NetworkScanner {
         host.mac = host.mac != '' ? host.mac : 'N/A';
         host.manufacturer = host.manufacturer != '' ? host.manufacturer : '';
       }
+      // Detect device type from manufacturer
+      host.deviceType = _detectDeviceType(host.manufacturer);
       yield host;
     }
   }
