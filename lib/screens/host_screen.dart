@@ -29,6 +29,7 @@ class _HostScreenState extends State<HostScreen> {
   // Ping count
   int _pingCount = 10;
   final TextEditingController _pingCountCtrl = TextEditingController(text: '10');
+  final List<double> _pingTimings = []; // Track ping response times (ms)
 
   // ── Port scan state ───────────────────────────────────────────────────────
   bool _portScanning = true;
@@ -136,6 +137,7 @@ class _HostScreenState extends State<HostScreen> {
       _activeTool  = tool;
       _diagRunning = true;
       _diagOutput.clear();
+      _pingTimings.clear(); // Clear previous ping data
     });
 
     final count = int.tryParse(_pingCountCtrl.text) ?? 10;
@@ -148,6 +150,22 @@ class _HostScreenState extends State<HostScreen> {
     _diagSub = stream.listen(
       (chunk) {
         setState(() => _diagOutput.write(chunk));
+        
+        // Extract ping timings from output
+        if (tool == _DiagTool.ping) {
+          final timeRegex = RegExp(r'time=(\d+(?:\.\d+)?)ms');
+          final matches = timeRegex.allMatches(chunk);
+          for (final match in matches) {
+            final ms = double.tryParse(match.group(1) ?? '0') ?? 0;
+            if (ms > 0 && !_pingTimings.contains(ms)) {
+              _pingTimings.add(ms);
+            }
+          }
+          if (matches.isNotEmpty) {
+            setState(() {}); // Update graph when new data arrives
+          }
+        }
+        
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (_diagScroll.hasClients) {
             _diagScroll.animateTo(
@@ -544,7 +562,7 @@ class _HostScreenState extends State<HostScreen> {
           ),
           const SizedBox(height: 8),
 
-          // Output label + running indicator
+          // Output label + running indicator + stop button
           if (_activeTool != null)
             Row(children: [
               Expanded(
@@ -559,11 +577,26 @@ class _HostScreenState extends State<HostScreen> {
                   width: 12, height: 12,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
-                const SizedBox(width: 4),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 36,
+                  height: 36,
+                  child: IconButton(
+                    icon: const Icon(Icons.stop_rounded),
+                    iconSize: 18,
+                    style: IconButton.styleFrom(
+                      backgroundColor: Theme.of(context).colorScheme.error,
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.zero,
+                    ),
+                    onPressed: _stopDiag,
+                    tooltip: 'Stop',
+                  ),
+                ),
               ],
             ]),
 
-          // Output terminal
+          // Output display (graph for ping, text for others)
           Expanded(
             child: Container(
               margin: const EdgeInsets.only(top: 6),
@@ -574,32 +607,20 @@ class _HostScreenState extends State<HostScreen> {
                     : const Color(0xFF1E1E1E),
                 borderRadius: BorderRadius.circular(6),
               ),
-              child: SingleChildScrollView(
-                controller: _diagScroll,
-                child: Text(
-                  _diagOutput.toString(),
-                  style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 11,
-                      color: Colors.lightGreenAccent),
-                ),
-              ),
+              child: _activeTool == _DiagTool.ping && _pingTimings.isNotEmpty
+                  ? _PingGraphWidget(timings: _pingTimings)
+                  : SingleChildScrollView(
+                      controller: _diagScroll,
+                      child: Text(
+                        _diagOutput.toString(),
+                        style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 11,
+                            color: Colors.lightGreenAccent),
+                      ),
+                    ),
             ),
           ),
-
-          // Stop button — shown at the bottom while a diag is running
-          if (_diagRunning)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: OutlinedButton.icon(
-                icon: const Icon(Icons.stop_rounded, size: 16),
-                label: const Text('Stop'),
-                style: OutlinedButton.styleFrom(
-                    foregroundColor:
-                        Theme.of(context).colorScheme.error),
-                onPressed: _stopDiag,
-              ),
-            ),
         ],
       ),
     );
@@ -657,5 +678,140 @@ class _CopyableRow extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+// ── Ping Graph Widget ─────────────────────────────────────────────────────────
+
+class _PingGraphWidget extends StatelessWidget {
+  final List<double> timings;
+
+  const _PingGraphWidget({required this.timings});
+
+  @override
+  Widget build(BuildContext context) {
+    if (timings.isEmpty) {
+      return const Center(
+        child: Text('Waiting for ping results...',
+            style: TextStyle(color: Colors.lightGreenAccent, fontSize: 12)),
+      );
+    }
+
+    final maxMs = timings.reduce((a, b) => a > b ? a : b);
+    final minMs = timings.reduce((a, b) => a < b ? a : b);
+    final avgMs = timings.reduce((a, b) => a + b) / timings.length;
+
+    return Padding(
+      padding: const EdgeInsets.all(8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Stats line
+          Text(
+            'Min: ${minMs.toStringAsFixed(1)}ms  Avg: ${avgMs.toStringAsFixed(1)}ms  Max: ${maxMs.toStringAsFixed(1)}ms',
+            style: const TextStyle(
+                fontSize: 10, color: Colors.lightGreenAccent),
+          ),
+          const SizedBox(height: 8),
+
+          // Graph
+          Expanded(
+            child: CustomPaint(
+              painter: _PingGraphPainter(
+                timings: timings,
+                maxMs: maxMs,
+                minMs: minMs,
+              ),
+              size: Size.infinite,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PingGraphPainter extends CustomPainter {
+  final List<double> timings;
+  final double maxMs;
+  final double minMs;
+
+  _PingGraphPainter({
+    required this.timings,
+    required this.maxMs,
+    required this.minMs,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (timings.isEmpty) return;
+
+    final paint = Paint()
+      ..color = Colors.lightGreenAccent
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
+
+    final barPaint = Paint()
+      ..color = Colors.lightGreenAccent.withValues(alpha: 0.6)
+      ..style = PaintingStyle.fill;
+
+    final axisTextStyle = const TextStyle(
+      color: Colors.lightGreenAccent,
+      fontSize: 9,
+    );
+
+    const padding = 40.0;
+    const barWidth = 8.0;
+    final graphWidth = size.width - padding * 2;
+    final graphHeight = size.height - padding * 2;
+    final range = maxMs - minMs;
+    final scale = range > 0 ? graphHeight / range : 1.0;
+
+    // Draw Y-axis
+    canvas.drawLine(Offset(padding, padding), Offset(padding, size.height - padding), paint);
+
+    // Draw X-axis
+    canvas.drawLine(Offset(padding, size.height - padding), Offset(size.width - padding, size.height - padding), paint);
+
+    // Draw Y-axis labels
+    final step = (maxMs / 5).ceilToDouble();
+    for (var i = 0; i <= 5; i++) {
+      final value = i * step;
+      if (value > maxMs + 1) break;
+      final y = size.height - padding - (value - minMs) * scale;
+      canvas.drawLine(Offset(padding - 5, y), Offset(padding, y), paint);
+
+      final textPainter = TextPainter(
+        text: TextSpan(text: '${value.toInt()}ms', style: axisTextStyle),
+        textDirection: TextDirection.ltr,
+      );
+      textPainter.layout();
+      textPainter.paint(canvas, Offset(padding - 35, y - 5));
+    }
+
+    // Draw bars for each ping
+    final barSpacing = timings.length > 1 ? graphWidth / (timings.length - 1) : 0;
+    for (var i = 0; i < timings.length; i++) {
+      final x = padding + i * barSpacing;
+      final value = timings[i];
+      final height = (value - minMs) * scale;
+      final y = size.height - padding - height;
+
+      // Bar
+      canvas.drawRect(
+        Rect.fromLTWH(x - barWidth / 2, y, barWidth, height),
+        barPaint,
+      );
+
+      // Dot at top
+      canvas.drawCircle(Offset(x, y), 2, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_PingGraphPainter oldDelegate) {
+    return oldDelegate.timings != timings ||
+        oldDelegate.maxMs != maxMs ||
+        oldDelegate.minMs != minMs;
   }
 }

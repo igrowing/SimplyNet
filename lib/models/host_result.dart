@@ -1,8 +1,8 @@
 class HostResult {
   final String ip;
-  final String mac;
+  String mac;
   final String hostname;
-  final String manufacturer;
+  String manufacturer;
   final String deviceType;
   final bool isUp;
 

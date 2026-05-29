@@ -283,7 +283,7 @@ class _SpeedTestState extends State<SpeedTestScreen> {
 
       // Upload (10 MB)
       const ulBytes = 10 * 1024 * 1024;
-      final payload = List.generate(ulBytes, (i) => i & 0xFF);
+      final payload = List.generate(ulBytes, (byteIndex) => byteIndex & 0xFF);
       final ulSw = Stopwatch()..start();
       await http.post(
         Uri.parse('https://speed.cloudflare.com/__up'),
@@ -769,16 +769,16 @@ class _IpCameraScanState extends State<IpCameraScanScreen> {
                     itemCount: _results.length,
                     separatorBuilder: (_, _) =>
                         const Divider(height: 1, thickness: 0.5),
-                    itemBuilder: (ctx, i) {
-                      final h = _results[i];
+                    itemBuilder: (ctx, itemIndex) {
+                      final cameraHost = _results[itemIndex];
                       return ListTile(
                         leading: const Icon(Icons.videocam,
                             color: Colors.orange),
-                        title: Text(h.ip,
+                        title: Text(cameraHost.ip,
                             style: const TextStyle(
                                 fontWeight: FontWeight.bold)),
                         subtitle: Text(
-                          [h.manufacturer, h.hostname]
+                          [cameraHost.manufacturer, cameraHost.hostname]
                               .where((s) => s.isNotEmpty)
                               .join(' · '),
                           style: const TextStyle(fontSize: 12),
@@ -1194,13 +1194,13 @@ class _PingGraphPainter extends CustomPainter {
 
     for (var i = 0; i < samples.length; i++) {
       final x = padding + i * step;
-      final s = samples[i];
-      if (s == null) {
+      final sample = samples[i];
+      if (sample == null) {
         canvas.drawCircle(Offset(x, padding / 2 + chartH * 0.5), 4, timeoutPaint);
         moved = false;
         continue;
       }
-      final y = padding / 2 + chartH * (1 - (s - minVal) / (maxVal - minVal));
+      final y = padding / 2 + chartH * (1 - (sample - minVal) / (maxVal - minVal));
       if (!moved) { path.moveTo(x, y); moved = true; }
       else          { path.lineTo(x, y); }
       canvas.drawCircle(Offset(x, y), 3, dotPaint);

@@ -47,25 +47,25 @@ class ScanProvider extends ChangeNotifier {
 
   List<HostResult> _sortedResults() {
     final list = List<HostResult>.from(_results);
-    list.sort((a, b) {
-      int cmp;
+    list.sort((firstHost, secondHost) {
+      int comparison;
       switch (_sortColumn) {
         case ScanSortColumn.ip:
-          cmp = _ipCompare(a.ip, b.ip);
+          comparison = _ipCompare(firstHost.ip, secondHost.ip);
         case ScanSortColumn.mac:
-          cmp = a.mac.compareTo(b.mac);
+          comparison = firstHost.mac.compareTo(secondHost.mac);
         case ScanSortColumn.hostname:
-          cmp = a.hostname.compareTo(b.hostname);
+          comparison = firstHost.hostname.compareTo(secondHost.hostname);
       }
-      return _sortAsc ? cmp : -cmp;
+      return _sortAsc ? comparison : -comparison;
     });
     return list;
   }
 
   int _ipCompare(String a, String b) {
     int toInt(String ip) {
-      final p = ip.split('.').map(int.parse).toList();
-      return (p[0] << 24) | (p[1] << 16) | (p[2] << 8) | p[3];
+      final ipOctets = ip.split('.').map(int.parse).toList();
+      return (ipOctets[0] << 24) | (ipOctets[1] << 16) | (ipOctets[2] << 8) | ipOctets[3];
     }
     return toInt(a).compareTo(toInt(b));
   }

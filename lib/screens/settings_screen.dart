@@ -9,11 +9,14 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final prov = context.watch<SettingsProvider>();
-    final s = prov.settings;
+    final settings = prov.settings;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Settings', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Settings',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
       ),
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 8),
@@ -27,14 +30,23 @@ class SettingsScreen extends StatelessWidget {
             label: 'Theme',
             child: SegmentedButton<AppTheme>(
               segments: const [
-                ButtonSegment(value: AppTheme.light,
-                    icon: Icon(Icons.light_mode), label: Text('Light')),
-                ButtonSegment(value: AppTheme.dark,
-                    icon: Icon(Icons.dark_mode), label: Text('Dark')),
-                ButtonSegment(value: AppTheme.system,
-                    icon: Icon(Icons.brightness_auto), label: Text('Auto')),
+                ButtonSegment(
+                  value: AppTheme.light,
+                  icon: Icon(Icons.light_mode),
+                  label: Text('Light'),
+                ),
+                ButtonSegment(
+                  value: AppTheme.dark,
+                  icon: Icon(Icons.dark_mode),
+                  label: Text('Dark'),
+                ),
+                ButtonSegment(
+                  value: AppTheme.system,
+                  icon: Icon(Icons.brightness_auto),
+                  label: Text('Auto'),
+                ),
               ],
-              selected: {s.theme},
+              selected: {settings.theme},
               onSelectionChanged: (v) => prov.setTheme(v.first),
             ),
           ),
@@ -61,7 +73,7 @@ class SettingsScreen extends StatelessWidget {
                   label: Text('Stay On'),
                 ),
               ],
-              selected: {s.screenTimeout},
+              selected: {settings.screenTimeout},
               onSelectionChanged: (v) => prov.setScreenTimeout(v.first),
             ),
           ),
@@ -85,7 +97,7 @@ class SettingsScreen extends StatelessWidget {
                   label: const Text('Large'),
                 ),
               ],
-              selected: {s.fontSize},
+              selected: {settings.fontSize},
               onSelectionChanged: (v) => prov.setFontSize(v.first),
             ),
           ),
@@ -97,7 +109,7 @@ class SettingsScreen extends StatelessWidget {
             secondary: const Icon(Icons.router_outlined),
             title: const Text('Show MAC Address'),
             subtitle: const Text('Display MAC column in scan results'),
-            value: s.showMac,
+            value: settings.showMac,
             onChanged: prov.setShowMac,
           ),
 
@@ -105,7 +117,7 @@ class SettingsScreen extends StatelessWidget {
             secondary: const Icon(Icons.dns_outlined),
             title: const Text('Resolve Hostnames'),
             subtitle: const Text('Perform reverse-DNS + mDNS during scan'),
-            value: s.resolveNames,
+            value: settings.resolveNames,
             onChanged: prov.setResolveNames,
           ),
 
@@ -113,7 +125,7 @@ class SettingsScreen extends StatelessWidget {
             secondary: const Icon(Icons.save_alt),
             title: const Text('Enable Logging'),
             subtitle: const Text('Save scan and tool output to log files'),
-            value: s.loggingEnabled,
+            value: settings.loggingEnabled,
             onChanged: prov.setLoggingEnabled,
           ),
 
@@ -155,13 +167,18 @@ class _SegmentedTile extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(icon, size: 20,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant),
+              Icon(
+                icon,
+                size: 20,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
               const SizedBox(width: 10),
-              Text(label,
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        fontWeight: FontWeight.w500,
-                      )),
+              Text(
+                label,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w500),
+              ),
             ],
           ),
           const SizedBox(height: 10),

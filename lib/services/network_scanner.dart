@@ -20,8 +20,8 @@ class NetworkScanner {
     final octets = ip.split('.');
     if (octets.length != 4) return null;
     for (final o in octets) {
-      final v = int.tryParse(o);
-      if (v == null || v < 0 || v > 255) return null;
+      final octetValue = int.tryParse(o);
+      if (octetValue == null || octetValue < 0 || octetValue > 255) return null;
     }
     return (ip, prefix);
   }
@@ -37,7 +37,12 @@ class NetworkScanner {
     final map = <String, String>{};
     try {
       final file = File('/proc/net/arp');
-      if (!file.existsSync()) return map;
+      if (!file.existsSync()) 
+      {
+        // TODO: Add logging to LogService (_logBuffer?) instead of silently failing
+        // _logBuffer.writeln('ARP table file not found: ${file.path}');
+        return map;
+      }
       for (final line in file.readAsLinesSync().skip(1)) {
         final parts = line.trim().split(RegExp(r'\s+'));
         if (parts.length >= 4) {
@@ -48,7 +53,10 @@ class NetworkScanner {
           }
         }
       }
-    } catch (_) {}
+    } catch (_) {
+      // TODO: Add logging to LogService (_logBuffer?) instead of silently failing
+      //_logBuffer.writeln('Failed to read ARP table: $e');
+    }
     return map;
   }
 
@@ -85,12 +93,12 @@ class NetworkScanner {
     // 2. avahi-resolve (available on many Android/Linux devices via Avahi daemon)
     if (!kIsWeb) {
       try {
-        final r = await Process.run(
+        final avahiResult = await Process.run(
           'avahi-resolve', ['-a', ip],
           runInShell: true,
         ).timeout(const Duration(seconds: 2));
-        if (r.exitCode == 0) {
-          final parts = (r.stdout as String).trim().split(RegExp(r'\s+'));
+        if (avahiResult.exitCode == 0) {
+          final parts = (avahiResult.stdout as String).trim().split(RegExp(r'\s+'));
           if (parts.length >= 2 && parts[1].isNotEmpty) return parts[1];
         }
       } catch (_) {}
@@ -99,12 +107,12 @@ class NetworkScanner {
     // 3. nslookup fallback
     if (!kIsWeb) {
       try {
-        final r = await Process.run(
+        final nslookupResult = await Process.run(
           'nslookup', [ip],
           runInShell: true,
         ).timeout(const Duration(seconds: 2));
-        if (r.exitCode == 0) {
-          for (final line in (r.stdout as String).split('\n')) {
+        if (nslookupResult.exitCode == 0) {
+          for (final line in (nslookupResult.stdout as String).split('\n')) {
             // "name = somehost.local." line
             if (line.contains('name =')) {
               final name = line.split('=').last.trim().replaceAll(RegExp(r'\.$'), '');
@@ -164,25 +172,40 @@ class NetworkScanner {
     if (parsed == null) return;
     final (baseIp, prefix) = parsed;
     final hosts    = _expandCidr(baseIp, prefix);
-    final arpTable = _readArpTable();
 
+    // Peek all IPs in the LAN to collect MACs in ARP table, then resolve hostnames in parallel.
     final chunks = <Future<HostResult?>>[];
+    final allResults = <HostResult>[];
     for (var i = 0; i < hosts.length; i++) {
-      chunks.add(_probeHost(hosts[i], arpTable, resolveNames));
+      chunks.add(_probeHost(hosts[i], resolveNames));
 
       if (chunks.length >= _parallelism || i == hosts.length - 1) {
         final results = await Future.wait(chunks);
         for (final result in results) {
-          if (result != null) yield result;
+          if (result != null) allResults.add(result);
         }
         chunks.clear();
       }
+    }
+
+    // Read freash arp table
+    final arpTable = _readArpTable();
+    // Fill results with MAC addresses from ARP table and with manufacturer names from OUI lookup
+    for (final host in allResults) {
+      final mac = arpTable[host.ip];
+      if (mac != null && mac.isNotEmpty) {
+        host.mac = mac;
+        host.manufacturer = OuiService.lookup(mac);
+      } else {
+        host.mac = host.mac != '' ? host.mac : 'N/A';
+        host.manufacturer = host.manufacturer != '' ? host.manufacturer : '';
+      }
+      yield host;
     }
   }
 
   static Future<HostResult?> _probeHost(
     String ip,
-    Map<String, String> arpTable,
     bool resolveNames,
   ) async {
     bool alive = false;
@@ -210,21 +233,16 @@ class NetworkScanner {
 
     if (!alive) return null;
 
-    // Resolve MAC address using multiple fallback strategies
-    final mac = await _resolveMac(ip, arpTable);
-
     String hostname = '';
     if (resolveNames) {
       hostname = await resolveHostname(ip);
     }
 
-    final manufacturer = OuiService.lookup(mac);
-
     return HostResult(
       ip: ip,
-      mac: mac,
+      mac: "",  // to be filled later from ARP table
       hostname: hostname,
-      manufacturer: manufacturer,
+      manufacturer: "", // tobe filled later from OUI lookup when MAC is known
       isUp: true,
     );
   }
