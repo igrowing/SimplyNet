@@ -532,7 +532,7 @@ class _HostScreenState extends State<HostScreen> {
                   isDense: true,
                   contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                   border: OutlineInputBorder(),
-                  labelText: '×',
+                  labelText: ' times ',
                 ),
                 onChanged: (v) => _pingCount = int.tryParse(v) ?? 10,
               ),
@@ -545,13 +545,6 @@ class _HostScreenState extends State<HostScreen> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              OutlinedButton.icon(
-                icon: const Icon(Icons.manage_search, size: 16),
-                label: const Text('NS-lookup'),
-                onPressed: _diagRunning
-                    ? null
-                    : () => _runDiag(_DiagTool.nslookup),
-              ),
               OutlinedButton.icon(
                 icon: const Icon(Icons.route, size: 16),
                 label: const Text('Traceroute'),
