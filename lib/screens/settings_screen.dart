@@ -78,30 +78,6 @@ class SettingsScreen extends StatelessWidget {
             ),
           ),
 
-          // Font size
-          _SegmentedTile(
-            icon: Icons.text_fields,
-            label: 'Font Size',
-            child: SegmentedButton<AppFontSize>(
-              segments: [
-                ButtonSegment(
-                  value: AppFontSize.small,
-                  label: const Text('Small'),
-                ),
-                ButtonSegment(
-                  value: AppFontSize.medium,
-                  label: const Text('Medium'),
-                ),
-                ButtonSegment(
-                  value: AppFontSize.large,
-                  label: const Text('Large'),
-                ),
-              ],
-              selected: {settings.fontSize},
-              onSelectionChanged: (v) => prov.setFontSize(v.first),
-            ),
-          ),
-
           const Divider(height: 24),
           _SectionHeader('Scanning'),
 
