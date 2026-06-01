@@ -65,8 +65,6 @@ class IpCameraDetector {
     10554, // RTSP (alt)
     37777, // Dahua / Reolink proprietary
     37778, // Dahua / Reolink proprietary
-    9000,  // Dahua / Reolink alt
-    9001,  // Dahua / Reolink alt
     1935,  // RTMP streaming
     34567, // XMEye / Generic DVR
     34599, // XMEye / Generic DVR
@@ -74,7 +72,7 @@ class IpCameraDetector {
 
   /// Ports that host web interfaces on many device types.
   /// Require extra evidence (manufacturer name or HTTP banner).
-  static const genericPorts = [80, 443, 8080, 8443, 8000, 81, 82, 83, 84, 85];
+  static const genericPorts = [80, 443, 8080, 8443, 8000, 9000, 9001, 81, 82, 83, 84, 85];
 
   /// All ports to probe per host during a scan.
   static const allPorts = [...specificPorts, ...genericPorts];
@@ -266,7 +264,6 @@ class IpCameraDetector {
     Duration portTimeout = const Duration(milliseconds: 800),
   }) async {
     final results = <CameraCandidate>[];
-    final seenIps = <String>{};
 
     // Probe all ports concurrently
     final portFutures = allPorts.map((port) async {
@@ -365,10 +362,10 @@ class IpCameraDetector {
     final seenIps = <String>{};
 
     // Run WS-Discovery in parallel with port scanning
-    final wsResults = <CameraCandidate>[];
-    final wsFuture  = wsDiscoveryScan(listenDuration: wsDiscoveryDuration)
-        .toList()
-        .catchError((_) => <CameraCandidate>[]);
+    // Temporarily disabled, required refinement of the method.
+    // final wsFuture  = wsDiscoveryScan(listenDuration: wsDiscoveryDuration)
+    //     .toList()
+    //     .catchError((_) => <CameraCandidate>[]);
 
     int done = 0;
     for (var i = 0; i < hosts.length; i += parallelism) {
@@ -388,11 +385,12 @@ class IpCameraDetector {
       onProgress?.call(done, hosts.length);
     }
 
-    // Emit any WS-Discovery results that weren't already found by port scan
-    final ws = await wsFuture;
-    for (final c in ws) {
-      if (seenIps.add(c.ip)) yield c;
-    }
+    // // Emit any WS-Discovery results that weren't already found by port scan
+    // Temporarily disabled, required refinement of the method.
+    // final ws = await wsFuture;
+    // for (final c in ws) {
+    //   if (seenIps.add(c.ip)) yield c;
+    // }
   }
 
   /// Expand a CIDR string to a list of host IP strings.
