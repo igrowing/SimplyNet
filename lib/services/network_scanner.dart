@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:simply_net/models/host_result.dart';
 import 'package:simply_net/services/log_service.dart';
 import 'package:simply_net/services/oui_service.dart';
-import 'package:get_mac_address/get_mac_address.dart';
 
 class NetworkScanner {
   static const _pingTimeout  = Duration(milliseconds: 800);
