@@ -121,6 +121,82 @@ class NetworkScanner {
     return map;
   }
 
+  // ── Self MAC resolution ──────────────────────────────────────────────────
+  // The device's own IP never appears in ARP/neighbour tables because those
+  // only list *remote* neighbours.  However, dart:io NetworkInterface.list()
+  // gives us the interface addresses AND the hardware (MAC) address directly,
+  // with no shell command needed.
+  //
+  // We build a Map<ip, mac> from all interfaces so the scan loop can look up
+  // "self" just like any other ARP entry.
+
+  static Map<String, String>? _selfMacCache; // populated once per scan
+
+  static Future<Map<String, String>> _getSelfMacs() async {
+    if (_selfMacCache != null) return _selfMacCache!;
+    final map = <String, String>{};
+    try {
+      final interfaces = await NetworkInterface.list(
+        includeLoopback: false,
+        type: InternetAddressType.IPv4,
+      );
+      for (final iface in interfaces) {
+        // NetworkInterface exposes the raw MAC bytes as a Uint8List in
+        // the `rawAddress` of the interface (Dart ≥ 3.x).
+        // Earlier SDKs don't expose MAC via NetworkInterface directly, so
+        // we fall back to parsing /proc/net/if_inet6 / /sys/class/net.
+        // Primary path: iface.rawAddress is the interface-level hardware addr.
+        // NOTE: iface.rawAddress is actually the first address's bytes, not
+        // the MAC.  The reliable cross-platform source is /sys/class/net/<name>/address
+        // (Android/Linux) or `ifconfig` output (iOS/macOS).  We try both.
+
+        for (final addr in iface.addresses) {
+          final ip = addr.address;
+          // Try /sys/class/net/<ifname>/address (Linux/Android)
+          try {
+            final f = File('/sys/class/net/${iface.name}/address');
+            if (f.existsSync()) {
+              final raw = f.readAsStringSync().trim().toUpperCase();
+              if (raw.length == 17 && raw != '00:00:00:00:00:00') {
+                map[ip] = raw;
+                continue;
+              }
+            }
+          } catch (_) {}
+
+          // Fallback: ifconfig -a (iOS / macOS)
+          try {
+            final result = await Process.run(
+              'ifconfig', [iface.name],
+              runInShell: true,
+            ).timeout(const Duration(seconds: 2));
+            if (result.exitCode == 0) {
+              final out = result.stdout as String;
+              // macOS:  "ether aa:bb:cc:dd:ee:ff"
+              // Linux:  "HWaddr aa:bb:cc:dd:ee:ff"
+              final m = RegExp(
+                r'(?:ether|HWaddr)\s+([0-9a-f]{2}(?::[0-9a-f]{2}){5})',
+                caseSensitive: false,
+              ).firstMatch(out);
+              if (m != null) {
+                final mac = m.group(1)!.toUpperCase();
+                if (mac != '00:00:00:00:00:00') map[ip] = mac;
+              }
+            }
+          } catch (_) {}
+        }
+      }
+    } catch (e) {
+      await LogService.createLog(
+        function: 'network_scanner._getSelfMacs',
+        content:  'Exception: $e',
+        summary:  'Self MAC resolution failed',
+      );
+    }
+    _selfMacCache = map;
+    return map;
+  }
+
   static List<String> _expandCidr(String baseIp, int prefix) {
     final octets  = baseIp.split('.').map(int.parse).toList();
     final base    = (octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3];
@@ -307,8 +383,15 @@ class NetworkScanner {
       }
     }
 
-    // Read fresh ARP table after all IPs have been pinged
-    final arpTable = await _readArpTable();
+    // Read fresh ARP table after all IPs have been pinged.
+    final arpTable  = await _readArpTable();
+    // Overlay self MACs — the device's own IPs are never in the neighbour
+    // table, so we fetch them from the network interfaces directly.
+    final selfMacs  = await _getSelfMacs();
+    _selfMacCache   = null; // reset cache for next scan
+    for (final entry in selfMacs.entries) {
+      arpTable.putIfAbsent(entry.key, () => entry.value);
+    }
     // Fill results with MAC addresses, manufacturer names, and device types
     for (final host in allResults) {
       final mac = arpTable[host.ip];

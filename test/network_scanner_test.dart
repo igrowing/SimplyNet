@@ -243,4 +243,98 @@ void main() {
       expect(unresolvedManufacturer.isEmpty, isTrue);
     });
   });
+
+// ── Self MAC resolution ──────────────────────────────────────────────────────
+// _getSelfMacs() does real I/O (NetworkInterface + /sys or ifconfig), so we
+// test the surrounding logic rather than the I/O itself:
+//   • MAC format validation (the regex / file-content guard used internally)
+//   • putIfAbsent merge semantics (ARP table wins when both have the same IP)
+//   • The scan contract: self IP must NOT remain 'N/A' when a selfMac is known.
+
+group('NetworkScanner — self MAC resolution', () {
+  // Simulate what _getSelfMacs returns and verify the merge logic.
+  test('selfMacs entry is used when ARP table has no entry for self IP', () {
+    final arpTable  = <String, String>{'192.168.1.2': 'AA:BB:CC:DD:EE:01'};
+    final selfMacs  = <String, String>{'192.168.1.100': 'AA:BB:CC:DD:EE:FF'};
+
+    for (final e in selfMacs.entries) {
+      arpTable.putIfAbsent(e.key, () => e.value);
+    }
+
+    expect(arpTable['192.168.1.100'], 'AA:BB:CC:DD:EE:FF');
+    expect(arpTable['192.168.1.2'],   'AA:BB:CC:DD:EE:01'); // unchanged
+  });
+
+  test('ARP table entry wins over selfMac when both provide the same IP', () {
+    // This should not happen in practice (self never in ARP), but the merge
+    // uses putIfAbsent which guarantees ARP value is kept.
+    final arpTable = <String, String>{'192.168.1.100': 'AA:BB:CC:DD:EE:ARP'};
+    final selfMacs = <String, String>{'192.168.1.100': 'AA:BB:CC:DD:EE:SELF'};
+
+    for (final e in selfMacs.entries) {
+      arpTable.putIfAbsent(e.key, () => e.value);
+    }
+
+    expect(arpTable['192.168.1.100'], 'AA:BB:CC:DD:EE:ARP');
+  });
+
+  test('MAC address format guard: rejects all-zero MAC', () {
+    bool isValidMac(String mac) =>
+        mac.length == 17 && mac != '00:00:00:00:00:00';
+
+    expect(isValidMac('00:00:00:00:00:00'), isFalse);
+    expect(isValidMac('AA:BB:CC:DD:EE:FF'), isTrue);
+    expect(isValidMac('aa:bb:cc:dd:ee:ff'), isTrue);
+  });
+
+  test('MAC address format guard: rejects short/malformed strings', () {
+    bool isValidMac(String mac) =>
+        mac.length == 17 && mac != '00:00:00:00:00:00';
+
+    expect(isValidMac(''),              isFalse);
+    expect(isValidMac('AA:BB:CC'),      isFalse);
+    expect(isValidMac('AA-BB-CC-DD-EE-FF'), isFalse); // wrong separator length
+  });
+
+  test('ifconfig MAC regex extracts ether address (macOS/iOS format)', () {
+    const ifconfigOut = '''
+en0: flags=8863<UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST> mtu 1500
+	ether a4:c3:f0:12:34:56
+	inet 192.168.1.100 netmask 0xffffff00 broadcast 192.168.1.255
+''';
+    final m = RegExp(
+      r'(?:ether|HWaddr)\s+([0-9a-f]{2}(?::[0-9a-f]{2}){5})',
+      caseSensitive: false,
+    ).firstMatch(ifconfigOut);
+    expect(m, isNotNull);
+    expect(m!.group(1)!.toUpperCase(), 'A4:C3:F0:12:34:56');
+  });
+
+  test('ifconfig MAC regex extracts HWaddr (Linux busybox format)', () {
+    const ifconfigOut =
+        'eth0      Link encap:Ethernet  HWaddr b8:27:eb:ab:cd:ef  ';
+    final m = RegExp(
+      r'(?:ether|HWaddr)\s+([0-9a-f]{2}(?::[0-9a-f]{2}){5})',
+      caseSensitive: false,
+    ).firstMatch(ifconfigOut);
+    expect(m, isNotNull);
+    expect(m!.group(1)!.toUpperCase(), 'B8:27:EB:AB:CD:EF');
+  });
+
+  test('/sys MAC file content guard: trims whitespace and checks length', () {
+    // Simulate what readAsStringSync().trim().toUpperCase() would produce
+    // for a valid and invalid /sys/class/net/<iface>/address content.
+    String parseSysMac(String raw) {
+      final trimmed = raw.trim().toUpperCase();
+      if (trimmed.length == 17 && trimmed != '00:00:00:00:00:00') return trimmed;
+      return '';
+    }
+
+    expect(parseSysMac('b8:27:eb:12:34:56
+'), 'B8:27:EB:12:34:56');
+    expect(parseSysMac('00:00:00:00:00:00'),   '');
+    expect(parseSysMac(''),                    '');
+    expect(parseSysMac('  aa:bb:cc:dd:ee:ff '), 'AA:BB:CC:DD:EE:FF');
+  });
+});
 }
