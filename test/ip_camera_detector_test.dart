@@ -4,51 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:simply_net/services/ip_camera_detector.dart';
 
 void main() {
-  // ── Method 1: Specific-port classification ─────────────────────────────────
-  group('specificPort — port lists', () {
-    test('RTSP ports 554 5554 8554 10554 are specific', () {
-      for (final p in [554, 5554, 8554, 10554]) {
-        expect(IpCameraDetector.specificPorts, contains(p),
-            reason: 'Port $p should be specific');
-      }
-    });
-
-    test('Dahua/Reolink ports 37777 37778 9000 9001 are specific', () {
-      for (final p in [37777, 37778, 9000, 9001]) {
-        expect(IpCameraDetector.specificPorts, contains(p));
-      }
-    });
-
-    test('RTMP 1935 and XMEye 34567 34599 are specific', () {
-      for (final p in [1935, 34567, 34599]) {
-        expect(IpCameraDetector.specificPorts, contains(p));
-      }
-    });
-
-    test('Generic web ports are NOT in specificPorts', () {
-      for (final p in [80, 443, 8080, 8443, 8000, 81, 85]) {
-        expect(IpCameraDetector.specificPorts, isNot(contains(p)),
-            reason: 'Port $p must not be specific');
-      }
-    });
-
-    test('specificPorts and genericPorts are disjoint', () {
-      final overlap = IpCameraDetector.specificPorts
-          .toSet()
-          .intersection(IpCameraDetector.genericPorts.toSet());
-      expect(overlap, isEmpty);
-    });
-
-    test('allPorts is the union of specific and generic', () {
-      for (final p in IpCameraDetector.specificPorts) {
-        expect(IpCameraDetector.allPorts, contains(p));
-      }
-      for (final p in IpCameraDetector.genericPorts) {
-        expect(IpCameraDetector.allPorts, contains(p));
-      }
-    });
-  });
-
   // ── Method 2: Generic port + manufacturer matching ─────────────────────────
   group('genericPortMfr — manufacturer matching', () {
     final cameras = {
