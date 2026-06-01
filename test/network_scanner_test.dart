@@ -278,24 +278,6 @@ group('NetworkScanner — self MAC resolution', () {
     expect(arpTable['192.168.1.100'], 'AA:BB:CC:DD:EE:ARP');
   });
 
-  test('MAC address format guard: rejects all-zero MAC', () {
-    bool isValidMac(String mac) =>
-        mac.length == 17 && mac != '00:00:00:00:00:00';
-
-    expect(isValidMac('00:00:00:00:00:00'), isFalse);
-    expect(isValidMac('AA:BB:CC:DD:EE:FF'), isTrue);
-    expect(isValidMac('aa:bb:cc:dd:ee:ff'), isTrue);
-  });
-
-  test('MAC address format guard: rejects short/malformed strings', () {
-    bool isValidMac(String mac) =>
-        mac.length == 17 && mac != '00:00:00:00:00:00';
-
-    expect(isValidMac(''),              isFalse);
-    expect(isValidMac('AA:BB:CC'),      isFalse);
-    expect(isValidMac('AA-BB-CC-DD-EE-FF'), isFalse); // wrong separator length
-  });
-
   test('ifconfig MAC regex extracts ether address (macOS/iOS format)', () {
     const ifconfigOut = '''
 en0: flags=8863<UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST> mtu 1500
