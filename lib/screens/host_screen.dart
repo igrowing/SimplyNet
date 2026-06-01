@@ -180,7 +180,6 @@ class _HostScreenState extends State<HostScreen> {
           final (tail, _) = parsePingTimings(_diagOutput.toString(), _parsedUpTo);
           if (tail.isNotEmpty) setState(() => _pingTimings.addAll(tail));
         }
-        }
         setState(() => _diagRunning = false);
         final settings = context.read<SettingsProvider>().settings;
         if (settings.loggingEnabled) {
