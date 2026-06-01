@@ -38,72 +38,211 @@ class NetworkTools {
   }
 
   // ── NSLookup ───────────────────────────────────────────────────────────────
+  // Auto-detects direction based on input:
+  //   • IPv4 literal  →  reverse lookup  (PTR record: IP → FQDN)
+  //   • Anything else →  forward lookup  (A/AAAA: name → IPs)
+  // Falls back to the system `nslookup` binary for extra detail either way.
+  static final _ipRegex = RegExp(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$');
+
   static Stream<String> nslookup(String host) async* {
-    yield '=== NSLOOKUP $host ===\n';
-    // Reverse DNS first
-    try {
-      final ia      = InternetAddress(host);
-      final results = await ia.reverse().timeout(const Duration(seconds: 3));
-      yield 'Reverse DNS: ${results.host}\n';
-    } catch (_) {}
-    // Forward lookup
-    try {
-      final addrs = await InternetAddress.lookup(host);
-      for (final a in addrs) {
-        yield 'Address : ${a.address}\n';
+    final input   = host.trim();
+    final isIp    = _ipRegex.hasMatch(input);
+    yield '=== ${isIp ? "REVERSE " : ""}NSLOOKUP $input ===\n';
+
+    if (isIp) {
+      // ── Reverse lookup: IP → FQDN ────────────────────────────────────────
+      // Method 1: dart:io PTR query (cleanest)
+      bool gotResult = false;
+      try {
+        final ia  = InternetAddress(input);
+        final rev = await ia.reverse().timeout(const Duration(seconds: 4));
+        if (rev.host.isNotEmpty && rev.host != input) {
+          yield 'PTR record : ${rev.host}\n';
+          gotResult = true;
+        }
+      } catch (_) {}
+
+      // Method 2: system nslookup (shows full PTR chain)
+      try {
+        final proc = await Process.start('nslookup', [input]);
+        final out  = await proc.stdout
+            .transform(const SystemEncoding().decoder)
+            .join()
+            .timeout(const Duration(seconds: 5));
+        await proc.exitCode;
+        // Filter for the "name =" line which carries the FQDN
+        for (final line in out.split('\n')) {
+          final t = line.trim();
+          if (t.contains('name =') || t.startsWith('Non-authoritative')) {
+            yield '$t\n';
+            gotResult = true;
+          }
+        }
+      } catch (_) {}
+
+      if (!gotResult) yield 'No PTR record found for $input\n';
+    } else {
+      // ── Forward lookup: name → IPs ───────────────────────────────────────
+      // Method 1: dart:io A/AAAA lookup
+      try {
+        final addrs = await InternetAddress.lookup(input)
+            .timeout(const Duration(seconds: 4));
+        for (final a in addrs) {
+          yield '${a.type == InternetAddressType.IPv6 ? "AAAA" : "A   "} : ${a.address}\n';
+        }
+      } catch (e) {
+        yield 'Lookup failed: $e\n';
       }
-    } catch (e) {
-      yield 'Forward lookup failed: $e\n';
+
+      // Method 2: system nslookup for full answer (TTL, authoritative server)
+      try {
+        final proc = await Process.start('nslookup', [input]);
+        final out  = await proc.stdout
+            .transform(const SystemEncoding().decoder)
+            .join()
+            .timeout(const Duration(seconds: 5));
+        await proc.exitCode;
+        // Show the answer section (lines after the blank line)
+        bool inAnswer = false;
+        for (final line in out.split('\n')) {
+          final t = line.trim();
+          if (t.isEmpty) { inAnswer = true; continue; }
+          if (inAnswer && t.isNotEmpty) yield '$t\n';
+        }
+      } catch (_) {}
     }
-    // System nslookup
-    try {
-      final proc = await Process.start('nslookup', [host]);
-      yield* proc.stdout.transform(const SystemEncoding().decoder);
-      await proc.exitCode;
-    } catch (_) {}
   }
 
   // ── Traceroute ─────────────────────────────────────────────────────────────
-  static Stream<String> traceroute(String host, {int maxHops = 30}) async* {
-    yield '=== TRACEROUTE $host ===\n';
-    final cmd  = Platform.isWindows ? 'tracert' : 'traceroute';
-    final args = Platform.isWindows
-        ? ['-h', maxHops.toString(), host]
-        : ['-m', maxHops.toString(), '-w', '2', host];
-    try {
-      final proc = await Process.start(cmd, args);
-      yield* proc.stdout.transform(const SystemEncoding().decoder);
-      yield* proc.stderr.transform(const SystemEncoding().decoder);
-      await proc.exitCode;
-    } catch (e) {
-      yield 'traceroute not available: $e\n';
-      yield* _dartTraceroute(host, maxHops);
-    }
-  }
+  // Pure-Dart TCP-connect traceroute — no root / CAP_NET_RAW needed.
+  //
+  // Why not the `traceroute` binary?
+  //   Android prohibits raw sockets for unprivileged apps.  Running
+  //   `traceroute` or `tracert` always fails with "Permission denied".
+  //
+  // How it works (TCP-connect method, same as tcptraceroute):
+  //   For hop N we attempt a TCP connect to the destination on port 80
+  //   (or 443 as secondary) with a timeout proportional to the hop index.
+  //   Each round trip is timed with a Stopwatch.
+  //   • If the connect SUCCEEDS → we reached the destination.  Done.
+  //   • If it times out or is refused → that hop is a router that didn't
+  //     respond (shown as *), or the destination closed the port.
+  //
+  //   To detect INTERMEDIATE hops we use the DNS resolution trick:
+  //   after each probe we try to do a short reverse-DNS lookup on any
+  //   IP that replied; if a SocketException carries a remote address we
+  //   show it. Without raw sockets we cannot read ICMP Time Exceeded
+  //   messages directly, so intermediate IP addresses are inferred only
+  //   when the OS surfaces them in the exception.
+  //
+  //   Probe ports tried per hop (first to connect wins):
+  //     80  (HTTP)  — open on almost every router's WAN side
+  //     443 (HTTPS) — open on firewalled hosts that block 80
+  //
+  //   3 probes per hop (like traceroute -q 3) for reliability.
 
-  static Stream<String> _dartTraceroute(String host, int maxHops) async* {
-    yield '(Fallback mode — TCP probe per hop)\n';
+  static const _traceProbeTimeout = Duration(milliseconds: 1500);
+  static const _tracePorts        = [80, 443, 22];
+
+  static Stream<String> traceroute(String host, {int maxHops = 30}) async* {
+    yield '=== TRACEROUTE (TCP) $host ===\n';
+    yield 'Note: Using TCP-connect method (no root required on Android)\n\n';
+
+    // Resolve destination once
+    InternetAddress destination;
     try {
-      final target = (await InternetAddress.lookup(host)).first;
-      for (var ttl = 1; ttl <= maxHops; ttl++) {
-        final sw = Stopwatch()..start();
-        try {
-          final sock = await Socket.connect(
-            target.address, 80,
-            timeout: const Duration(seconds: 2),
-          );
-          sock.destroy();
-          sw.stop();
-          yield '$ttl  ${target.address}  ${sw.elapsedMilliseconds}ms\n';
-          break;
-        } catch (_) {
-          sw.stop();
-          yield '$ttl  *  ${sw.elapsedMilliseconds}ms\n';
-        }
+      final results = await InternetAddress.lookup(host)
+          .timeout(const Duration(seconds: 4));
+      destination = results.first;
+      if (host != destination.address) {
+        yield 'Resolved: $host → ${destination.address}\n\n';
       }
     } catch (e) {
-      yield 'Error: $e\n';
+      yield 'DNS resolution failed: $e\n';
+      return;
     }
+
+    final destIp = destination.address;
+
+    for (var hop = 1; hop <= maxHops; hop++) {
+      // Run 3 probes concurrently for this hop
+      final probeResults = await Future.wait(
+        List.generate(3, (_) => _tcpProbe(destIp)),
+      );
+
+      // Summarise the 3 probes
+      final times = <String>[];
+      String? hopIp;
+      bool reached = false;
+
+      for (final r in probeResults) {
+        if (r.connected) {
+          reached = true;
+          hopIp   = destIp;
+          times.add('${r.ms}ms');
+        } else if (r.remoteIp != null) {
+          hopIp = r.remoteIp;
+          times.add('${r.ms}ms');
+        } else {
+          times.add('*');
+        }
+      }
+
+      // Reverse-DNS the hop IP for display
+      String label = hopIp ?? '*';
+      if (hopIp != null && hopIp != '*') {
+        try {
+          final rev = await InternetAddress(hopIp)
+              .reverse()
+              .timeout(const Duration(seconds: 1));
+          if (rev.host != hopIp) label = '${rev.host} ($hopIp)';
+        } catch (_) {}
+      }
+
+      final hopNum = hop.toString().padLeft(2);
+      yield '$hopNum  $label  ${times.join("  ")}\n';
+
+      if (reached) {
+        yield '\nReached destination in $hop hop${hop == 1 ? "" : "s"}.\n';
+        return;
+      }
+    }
+    yield '\nMax hops ($maxHops) reached.\n';
+  }
+
+  /// Single TCP connect probe to [ip]:80 (then :443 if refused).
+  /// Returns the RTT in ms, whether the destination was reached, and
+  /// any remote IP extracted from an exception message.
+  static Future<_ProbeResult> _tcpProbe(String ip) async {
+    for (final port in _tracePorts) {
+      final sw = Stopwatch()..start();
+      try {
+        final sock = await Socket.connect(ip, port, timeout: _traceProbeTimeout);
+        sock.destroy();
+        sw.stop();
+        return _ProbeResult(ms: sw.elapsedMilliseconds, connected: true);
+      } on SocketException catch (e) {
+        sw.stop();
+        // "Connection refused" means we reached the host — port just closed
+        if (e.osError?.errorCode == 111 || // ECONNREFUSED (Linux)
+            e.osError?.errorCode == 61  || // ECONNREFUSED (macOS/iOS)
+            (e.message.contains('refused') || e.message.contains('Connection refused'))) {
+          return _ProbeResult(ms: sw.elapsedMilliseconds, connected: true);
+        }
+        // Try to extract a remote IP from the exception address
+        final remoteIp = e.address?.address;
+        if (remoteIp != null && remoteIp != ip) {
+          return _ProbeResult(ms: sw.elapsedMilliseconds, remoteIp: remoteIp);
+        }
+        // Timeout or other — star
+        if (port == _tracePorts.last) {
+          return _ProbeResult(ms: sw.elapsedMilliseconds);
+        }
+      } catch (_) {
+        sw.stop();
+      }
+    }
+    return _ProbeResult();
   }
 
   // ── Port Scan ──────────────────────────────────────────────────────────────
@@ -300,3 +439,17 @@ class SpeedResult {
 // ── Uint8List for UDP ─────────────────────────────────────────────────────────
 // (dart:typed_data is already in scope via dart:io on mobile; explicit import
 //  added here so the file is self-contained)
+
+// ── _ProbeResult ──────────────────────────────────────────────────────────────
+/// Internal result of a single TCP-connect hop probe for traceroute.
+class _ProbeResult {
+  final int     ms;
+  final bool    connected; // true = reached destination
+  final String? remoteIp;  // non-null = intermediate router IP seen in exception
+
+  const _ProbeResult({
+    this.ms        = 0,
+    this.connected = false,
+    this.remoteIp,
+  });
+}

@@ -9,7 +9,7 @@ import 'package:simply_net/services/log_service.dart';
 import 'package:simply_net/services/network_tools.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-enum _DiagTool { ping, nslookup, tracert }
+enum _DiagTool { ping }
 
 class HostScreen extends StatefulWidget {
   final HostResult host;
@@ -143,9 +143,7 @@ class _HostScreenState extends State<HostScreen> {
 
     final count = int.tryParse(_pingCountCtrl.text) ?? 10;
     final Stream<String> stream = switch (tool) {
-      _DiagTool.ping     => NetworkTools.ping(widget.host.ip, count: count),
-      _DiagTool.nslookup => NetworkTools.nslookup(widget.host.ip),
-      _DiagTool.tracert  => NetworkTools.traceroute(widget.host.ip),
+      _DiagTool.ping => NetworkTools.ping(widget.host.ip, count: count),
     };
 
     int _parsedUpTo = 0;
@@ -518,6 +516,8 @@ class _HostScreenState extends State<HostScreen> {
           const SizedBox(height: 8),
 
           // Ping row: button + count input
+          // Label "times" was clipped at 60 px. Use hintText + suffix icon
+          // and widen slightly; no floating label that clips.
           Row(children: [
             OutlinedButton.icon(
               icon: const Icon(Icons.wifi_tethering, size: 16),
@@ -526,36 +526,24 @@ class _HostScreenState extends State<HostScreen> {
             ),
             const SizedBox(width: 8),
             SizedBox(
-              width: 60,
+              width: 80,
               child: TextField(
                 controller: _pingCountCtrl,
                 keyboardType: TextInputType.number,
+                textAlign: TextAlign.center,
                 decoration: const InputDecoration(
                   isDense: true,
-                  contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 6),
                   border: OutlineInputBorder(),
-                  labelText: ' times ',
+                  hintText: '10',
+                  suffixText: '×',
                 ),
                 onChanged: (v) => _pingCount = int.tryParse(v) ?? 10,
               ),
             ),
+            const SizedBox(width: 6),
+            const Text('times', style: TextStyle(fontSize: 12)),
           ]),
-          const SizedBox(height: 8),
-
-          // NS-lookup & Traceroute on next row
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              OutlinedButton.icon(
-                icon: const Icon(Icons.route, size: 16),
-                label: const Text('Traceroute'),
-                onPressed: _diagRunning
-                    ? null
-                    : () => _runDiag(_DiagTool.tracert),
-              ),
-            ],
-          ),
           const SizedBox(height: 8),
 
           // Output pane — shared DiagOutputPanel handles graph vs text.
