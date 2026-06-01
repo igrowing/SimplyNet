@@ -330,8 +330,7 @@ en0: flags=8863<UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST> mtu 1500
       return '';
     }
 
-    expect(parseSysMac('b8:27:eb:12:34:56
-'), 'B8:27:EB:12:34:56');
+    expect(parseSysMac('b8:27:eb:12:34:56'), 'B8:27:EB:12:34:56');
     expect(parseSysMac('00:00:00:00:00:00'),   '');
     expect(parseSysMac(''),                    '');
     expect(parseSysMac('  aa:bb:cc:dd:ee:ff '), 'AA:BB:CC:DD:EE:FF');
