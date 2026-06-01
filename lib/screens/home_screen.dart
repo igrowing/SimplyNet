@@ -115,7 +115,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
-              children: const [
+              children: [
                 Text(
                   'SimplyNet',
                   style: TextStyle(fontWeight: FontWeight.bold),
