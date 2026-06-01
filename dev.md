@@ -95,3 +95,18 @@ rename --appname "Quantum Satis" --bundleId com.quantumsatis.simplynet
 ```
 
 Then verify all changes manually before submitting to stores!
+
+
+# TODO
+* Enhance device detection list: qnap, fritz, eero, samsung mobile, redmi mobile, huawei mobile, espressif, hui zhou camera reolin dahua, 
+* in every text output window make text selectable and copyable.
+* run long processes in background, putting the notification. So OS cannot close/freeze the app. Notify in the notification when the long process is completed.
+* LAF refactoring:
+  * On the right part of the app header in the main screen add icon/pictogram of information (i). Click on it should open a page with readme.md well presenting markdown formatting.
+  * Move the settings from a dedicated button on the home screen main list to a "gear" icon button on the left of the (i) information pictogram, discussed above, in the home screen header.
+  * Group visually under label "Scan" the "network target" text box, "scan" and "logs" buttons.
+  * Move all buttons from "network tools" screen to visually groupped under label "Network tools". Put them by 2 in a row. Keep the button iconm name and subtitle as it is.
+  * Remove "Wifi tools" button.
+  * add 2 new tools to network tools:
+    * Wi-Fi interferrence: Show a screen with channels for 2.4GHz band and RSSI power for active SSIDs per each channel So user can see which channels are more noisy and which are safe to use. Swipe left to change the screen representation for 5GHz channels.
+    * Show a table with essential cellular data like Rx/Tx power, current base connected name and distance, provider, etc.

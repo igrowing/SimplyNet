@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:simply_net/models/host_result.dart';
 import 'package:simply_net/services/log_service.dart';
 import 'package:simply_net/services/oui_service.dart';
+import 'package:get_mac_address/get_mac_address.dart';
 
 class NetworkScanner {
   static const _pingTimeout  = Duration(milliseconds: 800);
@@ -30,36 +31,6 @@ class NetworkScanner {
   static bool isValidCidr(String cidr) => parseCidr(cidr) != null;
 
   // ── ARP table ─────────────────────────────────────────────────────────────
-  // Reads /proc/net/arp for IP→MAC on Android.
-  // After a successful ICMP probe the kernel populates this table automatically,
-  // so we don't need to parse ICMP replies ourselves.
-
-  // static Map<String, String> _readArpTable() {
-  //   final map = <String, String>{};
-  //   try {
-  //     final file = File('/proc/net/arp');
-  //     if (!file.existsSync()) 
-  //     {
-  //       // TODO: Add logging to LogService (_logBuffer?) instead of silently failing
-  //       // _logBuffer.writeln('ARP table file not found: ${file.path}');
-  //       return map;
-  //     }
-  //     for (final line in file.readAsLinesSync().skip(1)) {
-  //       final parts = line.trim().split(RegExp(r'\s+'));
-  //       if (parts.length >= 4) {
-  //         final ip  = parts[0];
-  //         final mac = parts[3].toUpperCase();
-  //         if (mac != '00:00:00:00:00:00' && mac.length == 17) {
-  //           map[ip] = mac;
-  //         }
-  //       }
-  //     }
-  //   } catch (_) {
-  //     // TODO: Add logging to LogService (_logBuffer?) instead of silently failing
-  //     //_logBuffer.writeln('Failed to read ARP table: $e');
-  //   }
-  //   return map;
-  // }
   static Future<Map<String, String>> _readArpTable() async {
     final map = <String, String>{};
     try {
@@ -134,6 +105,7 @@ class NetworkScanner {
 
   static Future<Map<String, String>> _getSelfMacs() async {
     if (_selfMacCache != null) return _selfMacCache!;
+
     final map = <String, String>{};
     try {
       final interfaces = await NetworkInterface.list(
@@ -152,38 +124,11 @@ class NetworkScanner {
 
         for (final addr in iface.addresses) {
           final ip = addr.address;
-          // Try /sys/class/net/<ifname>/address (Linux/Android)
+          String? macAddress;
           try {
-            final f = File('/sys/class/net/${iface.name}/address');
-            if (f.existsSync()) {
-              final raw = f.readAsStringSync().trim().toUpperCase();
-              if (raw.length == 17 && raw != '00:00:00:00:00:00') {
-                map[ip] = raw;
-                continue;
-              }
-            }
+            macAddress = await GetMacAddress().getMacAddress().timeout(const Duration(seconds: 2));
           } catch (_) {}
-
-          // Fallback: ifconfig -a (iOS / macOS)
-          try {
-            final result = await Process.run(
-              'ifconfig', [iface.name],
-              runInShell: true,
-            ).timeout(const Duration(seconds: 2));
-            if (result.exitCode == 0) {
-              final out = result.stdout as String;
-              // macOS:  "ether aa:bb:cc:dd:ee:ff"
-              // Linux:  "HWaddr aa:bb:cc:dd:ee:ff"
-              final m = RegExp(
-                r'(?:ether|HWaddr)\s+([0-9a-f]{2}(?::[0-9a-f]{2}){5})',
-                caseSensitive: false,
-              ).firstMatch(out);
-              if (m != null) {
-                final mac = m.group(1)!.toUpperCase();
-                if (mac != '00:00:00:00:00:00') map[ip] = mac;
-              }
-            }
-          } catch (_) {}
+          map[ip] = macAddress ?? 'N/A';
         }
       }
     } catch (e) {
@@ -390,7 +335,7 @@ class NetworkScanner {
     final selfMacs  = await _getSelfMacs();
     _selfMacCache   = null; // reset cache for next scan
     for (final entry in selfMacs.entries) {
-      arpTable.putIfAbsent(entry.key, () => entry.value);
+      arpTable.update(entry.key, (value) => entry.value);
     }
     // Fill results with MAC addresses, manufacturer names, and device types
     for (final host in allResults) {
