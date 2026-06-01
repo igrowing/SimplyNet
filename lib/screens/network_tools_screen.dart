@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
+// import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:simply_net/models/host_result.dart';
-import 'package:simply_net/services/network_scanner.dart';
+// import 'package:simply_net/models/host_result.dart';
+// import 'package:simply_net/services/network_scanner.dart';
 import 'package:simply_net/services/ip_camera_detector.dart';
 import 'package:simply_net/services/network_tools.dart';
 import 'package:simply_net/providers/scan_provider.dart';

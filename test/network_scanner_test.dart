@@ -115,7 +115,7 @@ void main() {
     });
 
     test('ARP table line parsing', () {
-      const arpLine = 'IP address       HW type     Flags       HW address            Mask     Device';
+      //               IP address       HW type     Flags       HW address            Mask     Device
       const arpEntry = '192.168.1.100    0x1         0x2         00:1a:2b:3c:4d:5e     *        eth0';
       
       // Simulate ARP parsing logic
