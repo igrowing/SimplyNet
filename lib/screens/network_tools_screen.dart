@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -11,6 +10,7 @@ import 'package:simply_net/services/network_scanner.dart';
 import 'package:simply_net/services/ip_camera_detector.dart';
 import 'package:simply_net/services/network_tools.dart';
 import 'package:simply_net/providers/scan_provider.dart';
+import 'package:simply_net/widgets/diag_widgets.dart';
 import 'package:provider/provider.dart';
 
 class NetworkToolsScreen extends StatelessWidget {
@@ -61,6 +61,22 @@ class NetworkToolsScreen extends StatelessWidget {
         color: Colors.teal,
         onTap: () => Navigator.push(
             context, MaterialPageRoute(builder: (_) => const PingScreen())),
+      ),
+      _ToolCard(
+        icon: Icons.route,
+        title: 'Traceroute',
+        subtitle: 'Trace the path to any host, hop by hop',
+        color: Colors.deepOrange,
+        onTap: () => Navigator.push(
+            context, MaterialPageRoute(builder: (_) => const TracerouteScreen())),
+      ),
+      _ToolCard(
+        icon: Icons.manage_search,
+        title: 'NS Lookup',
+        subtitle: 'Forward and reverse DNS resolution',
+        color: Colors.indigo,
+        onTap: () => Navigator.push(
+            context, MaterialPageRoute(builder: (_) => const NslookupScreen())),
       ),
     ];
 
@@ -986,21 +1002,21 @@ class _WhoisState extends State<WhoisScreen> {
 class PingScreen extends StatefulWidget {
   const PingScreen({super.key});
   @override
-  State<PingScreen> createState() => _PingState();
+  State<PingScreen> createState() => _PingScreenState();
 }
 
-class _PingState extends State<PingScreen> {
-  final _ctrl = TextEditingController();
-  final List<double?> _samples = [];
-  bool _running = false;
-  Timer? _timer;
-  double? _min, _max, _avg;
-  int _sent = 0, _received = 0;
-  final ScrollController _scroll = ScrollController();
+class _PingScreenState extends State<PingScreen> {
+  final _ctrl        = TextEditingController();
+  final _diagOutput  = StringBuffer();
+  final _pingTimings = <double>[];
+  StreamSubscription<String>? _sub;
+  bool   _running    = false;
+  int    _parsedUpTo = 0;
+  final _scroll      = ScrollController();
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _sub?.cancel();
     _ctrl.dispose();
     _scroll.dispose();
     super.dispose();
@@ -1008,67 +1024,42 @@ class _PingState extends State<PingScreen> {
 
   void _toggle() {
     if (_running) {
-      _timer?.cancel();
+      _sub?.cancel();
       setState(() => _running = false);
     } else {
       final host = _ctrl.text.trim();
       if (host.isEmpty) return;
       FocusScope.of(context).unfocus();
       setState(() {
-        _running = true;
-        _samples.clear();
-        _sent = 0; _received = 0;
-        _min = null; _max = null; _avg = null;
+        _running    = true;
+        _parsedUpTo = 0;
+        _diagOutput.clear();
+        _pingTimings.clear();
       });
-      _scheduleNext(host);
+      _sub = NetworkTools.ping(host, count: 50).listen(
+        (chunk) {
+          setState(() {
+            _diagOutput.write(chunk);
+            final (newMs, cursor) =
+                parsePingTimings(_diagOutput.toString(), _parsedUpTo);
+            _pingTimings.addAll(newMs);
+            _parsedUpTo = cursor;
+          });
+        },
+        onDone: () {
+          final (tail, _) =
+              parsePingTimings(_diagOutput.toString(), _parsedUpTo);
+          setState(() {
+            _pingTimings.addAll(tail);
+            _running = false;
+          });
+        },
+      );
     }
-  }
-
-  void _scheduleNext(String host) {
-    _timer = Timer(const Duration(milliseconds: 800), () => _doPing(host));
-  }
-
-  Future<void> _doPing(String host) async {
-    if (!_running || !mounted) return;
-    _sent++;
-    double? ms;
-    final sw = Stopwatch()..start();
-    try {
-      final result = await Process.run(
-        'ping', ['-c', '1', '-W', '2', host],
-        runInShell: true,
-      ).timeout(const Duration(seconds: 3));
-      sw.stop();
-      if (result.exitCode == 0) {
-        ms = sw.elapsedMilliseconds.toDouble();
-        _received++;
-        _min = _min == null ? ms : math.min(_min!, ms);
-        _max = _max == null ? ms : math.max(_max!, ms);
-        _avg = (_samples.whereType<double>().fold(0.0, (a, b) => a + b) + ms) /
-            _received;
-      }
-    } catch (_) { sw.stop(); }
-    if (!mounted) return;
-    setState(() => _samples.add(ms));
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scroll.hasClients) {
-        _scroll.animateTo(
-          _scroll.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 150),
-          curve: Curves.easeOut,
-        );
-      }
-    });
-    if (_running) _scheduleNext(host);
   }
 
   @override
   Widget build(BuildContext context) {
-    final primary = Theme.of(context).colorScheme.primary;
-    final loss = _sent > 0
-        ? ((_sent - _received) / _sent * 100).toStringAsFixed(0)
-        : '0';
-
     return Scaffold(
       appBar: AppBar(
           title: const Text('Ping',
@@ -1077,72 +1068,58 @@ class _PingState extends State<PingScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _ctrl,
-                    textInputAction: TextInputAction.go,
-                    onSubmitted: (_) => _toggle(),
-                    enabled: !_running,
-                    decoration: InputDecoration(
-                      hintText: 'IP address or hostname',
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                      isDense: true,
-                    ),
+            child: Row(children: [
+              Expanded(
+                child: TextField(
+                  controller: _ctrl,
+                  textInputAction: TextInputAction.go,
+                  onSubmitted: (_) => _toggle(),
+                  enabled: !_running,
+                  decoration: InputDecoration(
+                    hintText: 'IP address or hostname',
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    isDense: true,
                   ),
                 ),
-                const SizedBox(width: 8),
-                FilledButton.icon(
-                  onPressed: _toggle,
-                  icon: Icon(_running ? Icons.stop : Icons.play_arrow),
-                  label: Text(_running ? 'Stop' : 'Go'),
-                  style: FilledButton.styleFrom(
-                      backgroundColor: _running ? Colors.red : primary),
-                ),
-              ],
-            ),
-          ),
-          if (_samples.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  _StatChip('Min',  _min != null ? '${_min!.toStringAsFixed(0)}ms' : '–'),
-                  _StatChip('Avg',  _avg != null ? '${_avg!.toStringAsFixed(0)}ms' : '–'),
-                  _StatChip('Max',  _max != null ? '${_max!.toStringAsFixed(0)}ms' : '–'),
-                  _StatChip('Loss', '$loss%'),
-                  _StatChip('Sent', '$_sent'),
-                ],
               ),
-            ),
+              const SizedBox(width: 8),
+              FilledButton.icon(
+                onPressed: _toggle,
+                icon: Icon(_running ? Icons.stop : Icons.play_arrow),
+                label: Text(_running ? 'Stop' : 'Go'),
+                style: FilledButton.styleFrom(
+                    backgroundColor: _running
+                        ? Theme.of(context).colorScheme.error
+                        : Theme.of(context).colorScheme.primary),
+              ),
+            ]),
+          ),
           Expanded(
-            child: _samples.isEmpty
-                ? Center(
-                    child: Text(
-                      _running ? 'Pinging…' : 'Enter a host and press Go',
-                      style: TextStyle(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurface
-                              .withValues(alpha: 0.4)),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: _ctrl.text.isEmpty && !_running && _pingTimings.isEmpty
+                  ? Center(
+                      child: Text(
+                        'Enter a host and press Go',
+                        style: TextStyle(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurface
+                                .withValues(alpha: 0.4)),
+                      ),
+                    )
+                  : DiagOutputPanel(
+                      toolLabel:        'PING',
+                      target:           _ctrl.text.trim(),
+                      output:           _diagOutput.toString(),
+                      isRunning:        _running,
+                      isPing:           true,
+                      pingTimings:      _pingTimings,
+                      scrollController: _scroll,
+                      onStop:           _running ? _toggle : null,
                     ),
-                  )
-                : Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: CustomPaint(
-                      painter: _PingGraphPainter(
-                          samples: _samples,
-                          color: primary,
-                          textColor: Theme.of(context)
-                              .colorScheme
-                              .onSurface
-                              .withValues(alpha: 0.6)),
-                      child: const SizedBox.expand(),
-                    ),
-                  ),
+            ),
           ),
         ],
       ),
@@ -1150,94 +1127,234 @@ class _PingState extends State<PingScreen> {
   }
 }
 
-class _StatChip extends StatelessWidget {
-  final String label;
-  final String value;
-  const _StatChip(this.label, this.value);
+// ════════════════════════════════════════════════════════════════════════════
+//  TRACEROUTE
+// ════════════════════════════════════════════════════════════════════════════
+
+class TracerouteScreen extends StatefulWidget {
+  const TracerouteScreen({super.key});
+  @override
+  State<TracerouteScreen> createState() => _TracerouteScreenState();
+}
+
+class _TracerouteScreenState extends State<TracerouteScreen> {
+  final _ctrl       = TextEditingController();
+  final _diagOutput = StringBuffer();
+  final _scroll     = ScrollController();
+  StreamSubscription<String>? _sub;
+  bool _running = false;
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    _ctrl.dispose();
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _run() {
+    final host = _ctrl.text.trim();
+    if (host.isEmpty) return;
+    FocusScope.of(context).unfocus();
+    _sub?.cancel();
+    setState(() { _running = true; _diagOutput.clear(); });
+    _sub = NetworkTools.traceroute(host).listen(
+      (chunk) {
+        setState(() => _diagOutput.write(chunk));
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scroll.hasClients) {
+            _scroll.animateTo(_scroll.position.maxScrollExtent,
+                duration: const Duration(milliseconds: 100),
+                curve: Curves.easeOut);
+          }
+        });
+      },
+      onDone: () => setState(() => _running = false),
+    );
+  }
+
+  void _stop() {
+    _sub?.cancel();
+    setState(() => _running = false);
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-        Text(label,
-            style: TextStyle(
-                fontSize: 11,
-                color: Theme.of(context)
-                    .colorScheme
-                    .onSurface
-                    .withValues(alpha: 0.55))),
-      ],
+    return Scaffold(
+      appBar: AppBar(
+          title: const Text('Traceroute',
+              style: TextStyle(fontWeight: FontWeight.bold))),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(children: [
+              Expanded(
+                child: TextField(
+                  controller: _ctrl,
+                  textInputAction: TextInputAction.go,
+                  onSubmitted: (_) => _running ? null : _run(),
+                  enabled: !_running,
+                  decoration: InputDecoration(
+                    hintText: 'IP address or hostname',
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    isDense: true,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.icon(
+                onPressed: _running ? _stop : _run,
+                icon: Icon(_running ? Icons.stop : Icons.play_arrow),
+                label: Text(_running ? 'Stop' : 'Trace'),
+                style: FilledButton.styleFrom(
+                    backgroundColor: _running
+                        ? Theme.of(context).colorScheme.error
+                        : Theme.of(context).colorScheme.primary),
+              ),
+            ]),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: _diagOutput.isEmpty && !_running
+                  ? Center(
+                      child: Text('Enter a host and press Trace',
+                          style: TextStyle(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurface
+                                  .withValues(alpha: 0.4))),
+                    )
+                  : DiagOutputPanel(
+                      toolLabel:        'TRACEROUTE',
+                      target:           _ctrl.text.trim(),
+                      output:           _diagOutput.toString(),
+                      isRunning:        _running,
+                      scrollController: _scroll,
+                      onStop:           _running ? _stop : null,
+                    ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
 
-class _PingGraphPainter extends CustomPainter {
-  final List<double?> samples;
-  final Color color;
-  final Color textColor;
+// ════════════════════════════════════════════════════════════════════════════
+//  NSLOOKUP
+// ════════════════════════════════════════════════════════════════════════════
 
-  const _PingGraphPainter({
-    required this.samples, required this.color, required this.textColor,
-  });
+class NslookupScreen extends StatefulWidget {
+  const NslookupScreen({super.key});
+  @override
+  State<NslookupScreen> createState() => _NslookupScreenState();
+}
+
+class _NslookupScreenState extends State<NslookupScreen> {
+  final _ctrl       = TextEditingController();
+  final _diagOutput = StringBuffer();
+  final _scroll     = ScrollController();
+  StreamSubscription<String>? _sub;
+  bool _running = false;
 
   @override
-  void paint(Canvas canvas, Size size) {
-    if (samples.isEmpty) return;
-    final validSamples = samples.whereType<double>().toList();
-    if (validSamples.isEmpty) return;
+  void dispose() {
+    _sub?.cancel();
+    _ctrl.dispose();
+    _scroll.dispose();
+    super.dispose();
+  }
 
-    final maxVal    = validSamples.reduce(math.max) * 1.2;
-    const minVal    = 0.0;
-    final linePaint = Paint()
-      ..color = color
-      ..strokeWidth = 2
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-    final dotPaint     = Paint()..color = color;
-    final timeoutPaint = Paint()..color = Colors.red;
-    final gridPaint    = Paint()
-      ..color = textColor.withValues(alpha: 0.2)
-      ..strokeWidth = 0.5;
-    final textPainter = TextPainter(textDirection: TextDirection.ltr);
+  void _run() {
+    final host = _ctrl.text.trim();
+    if (host.isEmpty) return;
+    FocusScope.of(context).unfocus();
+    _sub?.cancel();
+    setState(() { _running = true; _diagOutput.clear(); });
+    _sub = NetworkTools.nslookup(host).listen(
+      (chunk) {
+        setState(() => _diagOutput.write(chunk));
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scroll.hasClients) {
+            _scroll.animateTo(_scroll.position.maxScrollExtent,
+                duration: const Duration(milliseconds: 100),
+                curve: Curves.easeOut);
+          }
+        });
+      },
+      onDone: () => setState(() => _running = false),
+    );
+  }
 
-    const padding = 40.0;
-    final chartW  = size.width - padding;
-    final chartH  = size.height - padding;
-
-    for (var i = 0; i <= 4; i++) {
-      final y = padding / 2 + chartH * (1 - i / 4);
-      canvas.drawLine(Offset(padding, y), Offset(size.width - 4, y), gridPaint);
-      final label = ((maxVal - minVal) * i / 4).toStringAsFixed(0);
-      textPainter
-        ..text = TextSpan(
-            text: '${label}ms',
-            style: TextStyle(color: textColor, fontSize: 9))
-        ..layout();
-      textPainter.paint(canvas, Offset(0, y - textPainter.height / 2));
-    }
-
-    final step = chartW / math.max(samples.length - 1, 1);
-    final path = Path();
-    bool moved = false;
-
-    for (var i = 0; i < samples.length; i++) {
-      final x = padding + i * step;
-      final sample = samples[i];
-      if (sample == null) {
-        canvas.drawCircle(Offset(x, padding / 2 + chartH * 0.5), 4, timeoutPaint);
-        moved = false;
-        continue;
-      }
-      final y = padding / 2 + chartH * (1 - (sample - minVal) / (maxVal - minVal));
-      if (!moved) { path.moveTo(x, y); moved = true; }
-      else          { path.lineTo(x, y); }
-      canvas.drawCircle(Offset(x, y), 3, dotPaint);
-    }
-    canvas.drawPath(path, linePaint);
+  void _stop() {
+    _sub?.cancel();
+    setState(() => _running = false);
   }
 
   @override
-  bool shouldRepaint(_PingGraphPainter old) =>
-      old.samples.length != samples.length ||
-      old.samples.lastOrNull != samples.lastOrNull;
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+          title: const Text('NS Lookup',
+              style: TextStyle(fontWeight: FontWeight.bold))),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(children: [
+              Expanded(
+                child: TextField(
+                  controller: _ctrl,
+                  textInputAction: TextInputAction.go,
+                  onSubmitted: (_) => _running ? null : _run(),
+                  enabled: !_running,
+                  decoration: InputDecoration(
+                    hintText: 'IP address, domain, or hostname',
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    isDense: true,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.icon(
+                onPressed: _running ? _stop : _run,
+                icon: Icon(_running ? Icons.stop : Icons.search),
+                label: Text(_running ? 'Stop' : 'Lookup'),
+                style: FilledButton.styleFrom(
+                    backgroundColor: _running
+                        ? Theme.of(context).colorScheme.error
+                        : Theme.of(context).colorScheme.primary),
+              ),
+            ]),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: _diagOutput.isEmpty && !_running
+                  ? Center(
+                      child: Text('Enter a host, domain, or IP',
+                          style: TextStyle(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurface
+                                  .withValues(alpha: 0.4))),
+                    )
+                  : DiagOutputPanel(
+                      toolLabel:        'NSLOOKUP',
+                      target:           _ctrl.text.trim(),
+                      output:           _diagOutput.toString(),
+                      isRunning:        _running,
+                      scrollController: _scroll,
+                      onStop:           _running ? _stop : null,
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

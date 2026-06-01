@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:math' as math;
+import 'package:simply_net/widgets/diag_widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -148,14 +148,7 @@ class _HostScreenState extends State<HostScreen> {
       _DiagTool.tracert  => NetworkTools.traceroute(widget.host.ip),
     };
 
-    // For ping: we parse ms values from the accumulated full output
-    // so partial chunks never cause a missed match.
-    // Android ping format: "time=1.23 ms"  (space before ms)
-    // iOS/macOS format:    "time=1.234 ms"
-    // Windows format:      "time=1ms" or "time<1ms"
-    // We match all variants with one regex.
-    final _pingRegex = RegExp(r'time[=<](\d+(?:\.\d+)?)\s*ms', caseSensitive: false);
-    int _parsedUpTo = 0; // how many chars of _diagOutput we have already scanned
+    int _parsedUpTo = 0;
 
     _diagSub = stream.listen(
       (chunk) {
@@ -163,20 +156,10 @@ class _HostScreenState extends State<HostScreen> {
           _diagOutput.write(chunk);
 
           if (tool == _DiagTool.ping) {
-            // Scan only the newly added portion of the accumulated buffer.
-            // This avoids O(n²) re-scanning AND correctly handles lines split
-            // across multiple stream events.
-            final newText = _diagOutput.toString().substring(_parsedUpTo);
-            final matches = _pingRegex.allMatches(newText);
-            for (final m in matches) {
-              final ms = double.tryParse(m.group(1)!) ?? 0.0;
-              if (ms > 0) _pingTimings.add(ms); // one entry per packet, no dedup
-            }
-            // Advance the cursor only up to the last complete line so we don't
-            // lose a partial "time=…" that spans a chunk boundary.
-            final lastNewline = newText.lastIndexOf('
-');
-            if (lastNewline >= 0) _parsedUpTo += lastNewline + 1;
+            final (newMs, cursor) =
+                parsePingTimings(_diagOutput.toString(), _parsedUpTo);
+            _pingTimings.addAll(newMs);
+            _parsedUpTo = cursor;
           }
         });
 
@@ -192,14 +175,11 @@ class _HostScreenState extends State<HostScreen> {
         });
       },
       onDone: () async {
-        // Final scan: catch any trailing partial line
-        final remainder = _diagOutput.toString().substring(_parsedUpTo);
-        if (tool == _DiagTool.ping && remainder.isNotEmpty) {
-          final matches = _pingRegex.allMatches(remainder);
-          for (final m in matches) {
-            final ms = double.tryParse(m.group(1)!) ?? 0.0;
-            if (ms > 0) setState(() => _pingTimings.add(ms));
-          }
+        // Final scan: catch any partial line at end of stream.
+        if (tool == _DiagTool.ping) {
+          final (tail, _) = parsePingTimings(_diagOutput.toString(), _parsedUpTo);
+          if (tail.isNotEmpty) setState(() => _pingTimings.addAll(tail));
+        }
         }
         setState(() => _diagRunning = false);
         final settings = context.read<SettingsProvider>().settings;
@@ -579,65 +559,22 @@ class _HostScreenState extends State<HostScreen> {
           ),
           const SizedBox(height: 8),
 
-          // Output label + running indicator + stop button
+          // Output pane — shared DiagOutputPanel handles graph vs text.
           if (_activeTool != null)
-            Row(children: [
-              Expanded(
-                child: Text(
-                  '— ${_activeTool!.name.toUpperCase()} ${widget.host.ip} —',
-                  style: const TextStyle(
-                      fontSize: 11, fontFamily: 'monospace'),
-                ),
+            Expanded(
+              child: DiagOutputPanel(
+                toolLabel:        _activeTool!.name.toUpperCase(),
+                target:           widget.host.ip,
+                output:           _diagOutput.toString(),
+                isRunning:        _diagRunning,
+                isPing:           _activeTool == _DiagTool.ping,
+                pingTimings:      _pingTimings,
+                scrollController: _diagScroll,
+                onStop:           _diagRunning ? _stopDiag : null,
               ),
-              if (_diagRunning) ...[
-                const SizedBox(
-                  width: 12, height: 12,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-                const SizedBox(width: 8),
-                SizedBox(
-                  width: 36,
-                  height: 36,
-                  child: IconButton(
-                    icon: const Icon(Icons.stop_rounded),
-                    iconSize: 18,
-                    style: IconButton.styleFrom(
-                      backgroundColor: Theme.of(context).colorScheme.error,
-                      foregroundColor: Colors.white,
-                      padding: EdgeInsets.zero,
-                    ),
-                    onPressed: _stopDiag,
-                    tooltip: 'Stop',
-                  ),
-                ),
-              ],
-            ]),
-
-          // Output display (graph for ping, text for others)
-          Expanded(
-            child: Container(
-              margin: const EdgeInsets.only(top: 6),
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? Colors.black
-                    : const Color(0xFF1E1E1E),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: _activeTool == _DiagTool.ping && _pingTimings.isNotEmpty
-                  ? _PingGraphWidget(timings: _pingTimings)
-                  : SingleChildScrollView(
-                      controller: _diagScroll,
-                      child: Text(
-                        _diagOutput.toString(),
-                        style: const TextStyle(
-                            fontFamily: 'monospace',
-                            fontSize: 11,
-                            color: Colors.lightGreenAccent),
-                      ),
-                    ),
-            ),
-          ),
+            )
+          else
+            const Expanded(child: SizedBox()),
         ],
       ),
     );
@@ -695,137 +632,5 @@ class _CopyableRow extends StatelessWidget {
         ],
       ),
     );
-  }
-}
-
-// ── Ping Graph Widget ─────────────────────────────────────────────────────────
-
-class _PingGraphWidget extends StatelessWidget {
-  final List<double> timings;
-
-  const _PingGraphWidget({required this.timings});
-
-  @override
-  Widget build(BuildContext context) {
-    if (timings.isEmpty) {
-      return const Center(
-        child: Text('Waiting for ping results...',
-            style: TextStyle(color: Colors.lightGreenAccent, fontSize: 12)),
-      );
-    }
-
-    final maxMs = timings.reduce((a, b) => a > b ? a : b);
-    final minMs = timings.reduce((a, b) => a < b ? a : b);
-    final avgMs = timings.reduce((a, b) => a + b) / timings.length;
-
-    return Padding(
-      padding: const EdgeInsets.all(8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Stats line
-          Text(
-            'Min: ${minMs.toStringAsFixed(1)}ms  Avg: ${avgMs.toStringAsFixed(1)}ms  Max: ${maxMs.toStringAsFixed(1)}ms',
-            style: const TextStyle(
-                fontSize: 10, color: Colors.lightGreenAccent),
-          ),
-          const SizedBox(height: 8),
-
-          // Graph
-          Expanded(
-            child: CustomPaint(
-              painter: _PingGraphPainter(
-                timings: timings,
-                maxMs: maxMs,
-                minMs: minMs,
-              ),
-              size: Size.infinite,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PingGraphPainter extends CustomPainter {
-  final List<double> timings;
-  final double maxMs;
-  final double minMs;
-
-  _PingGraphPainter({
-    required this.timings,
-    required this.maxMs,
-    required this.minMs,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (timings.isEmpty) return;
-
-    final linePaint = Paint()
-      ..color = Colors.lightGreenAccent
-      ..strokeWidth = 2
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-
-    final dotPaint = Paint()..color = Colors.lightGreenAccent;
-    final gridPaint = Paint()
-      ..color = Colors.lightGreenAccent.withValues(alpha: 0.2)
-      ..strokeWidth = 0.5;
-
-    const padding = 35.0;
-    final chartW = size.width - padding;
-    final chartH = size.height - padding;
-    final range = maxMs - minMs;
-    final scale = range > 0 ? chartH / range : 1.0;
-
-    // Draw grid lines and Y-axis labels
-    for (var i = 0; i <= 4; i++) {
-      final y = padding / 2 + chartH * (1 - i / 4);
-      canvas.drawLine(Offset(padding, y), Offset(size.width - 4, y), gridPaint);
-
-      final label = ((maxMs - minMs) * i / 4 + minMs).toStringAsFixed(0);
-      final textPainter = TextPainter(
-        text: TextSpan(
-            text: '${label}ms',
-            style: const TextStyle(color: Colors.lightGreenAccent, fontSize: 8)),
-        textDirection: TextDirection.ltr,
-      );
-      textPainter.layout();
-      textPainter.paint(canvas, Offset(2, y - textPainter.height / 2));
-    }
-
-    // Draw line path connecting all samples
-    // Spread dots across the full width; when only one point, centre it.
-    final step = timings.length > 1 ? chartW / (timings.length - 1) : chartW / 2;
-    final path = Path();
-    bool moved = false;
-
-    for (var i = 0; i < timings.length; i++) {
-      final x = padding + i * step;
-      final sample = timings[i];
-      final y = padding / 2 + chartH * (1 - (sample - minMs) * scale);
-
-      if (!moved) {
-        path.moveTo(x, y);
-        moved = true;
-      } else {
-        path.lineTo(x, y);
-      }
-      // Dot at each sample point
-      canvas.drawCircle(Offset(x, y), 3, dotPaint);
-    }
-
-    canvas.drawPath(path, linePaint);
-  }
-
-  @override
-  bool shouldRepaint(_PingGraphPainter oldDelegate) {
-    // timings is the SAME List instance that gets .add() calls, so reference
-    // equality is always true → always return true to allow repaint on every
-    // setState. The CustomPainter framework skips actual raster work when the
-    // canvas is unchanged, so this is safe.
-    return true;
   }
 }
