@@ -216,73 +216,11 @@ class NetworkTools {
         _     => '',
       };
 
+
   // ── IP Camera Scan ─────────────────────────────────────────────────────────
-  // Scans for devices with camera-typical open ports: 554 (RTSP), 8554, 8080.
-  // Yields "host:port" strings for each candidate.
-  // Bounded by [timeout] per host so it always terminates.
-  static Stream<String> ipCameraScan(
-    String cidr, {
-    Duration hostTimeout = const Duration(milliseconds: 800),
-    void Function(int done, int total)? onProgress,
-  }) async* {
-    const cameraPorts = [554, 8554, 8080, 80, 443, 37777];
-
-    // Expand CIDR to host list
-    final parts = cidr.trim().split('/');
-    if (parts.length != 2) {
-      yield 'Invalid CIDR: $cidr\n';
-      return;
-    }
-    final ipParts = parts[0].split('.').map(int.tryParse).toList();
-    if (ipParts.length != 4 || ipParts.any((o) => o == null)) {
-      yield 'Invalid IP: ${parts[0]}\n';
-      return;
-    }
-    final prefix = int.tryParse(parts[1]);
-    if (prefix == null || prefix < 16 || prefix > 30) {
-      yield 'Prefix out of range (16–30): ${parts[1]}\n';
-      return;
-    }
-
-    final base      = (ipParts[0]! << 24) | (ipParts[1]! << 16) | (ipParts[2]! << 8) | ipParts[3]!;
-    final mask      = (0xFFFFFFFF << (32 - prefix)) & 0xFFFFFFFF;
-    final net       = base & mask;
-    final broadcast = net | (~mask & 0xFFFFFFFF);
-
-    final hosts = <String>[];
-    for (var i = net + 1; i < broadcast; i++) {
-      hosts.add('${(i >> 24) & 0xFF}.${(i >> 16) & 0xFF}.${(i >> 8) & 0xFF}.${i & 0xFF}');
-    }
-
-    yield '=== IP CAMERA SCAN $cidr — ${hosts.length} hosts × ${cameraPorts.length} ports ===\n';
-
-    int done = 0;
-    const parallelism = 32;
-    for (var i = 0; i < hosts.length; i += parallelism) {
-      final batch = hosts.sublist(i, (i + parallelism).clamp(0, hosts.length));
-      final futures = batch.map((ip) async {
-        final found = <String>[];
-        for (final port in cameraPorts) {
-          try {
-            final sock = await Socket.connect(ip, port, timeout: hostTimeout);
-            sock.destroy();
-            found.add('$ip:$port');
-          } catch (_) {}
-        }
-        return found;
-      });
-      final results = await Future.wait(futures);
-      for (final list in results) {
-        for (final entry in list) {
-          yield 'CAMERA  $entry\n';
-        }
-      }
-      done += batch.length;
-      onProgress?.call(done, hosts.length);
-    }
-
-    yield '=== Done ===\n';
-  }
+  // Moved to lib/services/ip_camera_detector.dart (IpCameraDetector.scanSubnet).
+  // The multi-signal detection model (specific ports, manufacturer, HTTP
+  // banner, WS-Discovery) lives there and replaces the old plain port-check.
 
   // ── Speed Test ─────────────────────────────────────────────────────────────
   /// Returns a single SpeedResult via the stream (one event then done).

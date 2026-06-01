@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:simply_net/models/host_result.dart';
 import 'package:simply_net/services/network_scanner.dart';
+import 'package:simply_net/services/ip_camera_detector.dart';
 import 'package:simply_net/services/network_tools.dart';
 import 'package:simply_net/providers/scan_provider.dart';
 import 'package:provider/provider.dart';
@@ -642,13 +643,11 @@ class IpCameraScanScreen extends StatefulWidget {
 }
 
 class _IpCameraScanState extends State<IpCameraScanScreen> {
-  final List<HostResult> _results = [];
+  final List<CameraCandidate> _results = [];
   bool _scanning = false;
-  int _done = 0;
-  int _total = 0;
+  int  _done     = 0;
+  int  _total    = 0;
   StreamSubscription? _sub;
-
-  static const _cameraPorts = [554, 8554, 8080, 80, 443, 37777];
 
   @override
   void initState() {
@@ -676,52 +675,42 @@ class _IpCameraScanState extends State<IpCameraScanScreen> {
     setState(() {
       _results.clear();
       _scanning = true;
-      _done = 0;
-      _total = 0;
+      _done     = 0;
+      _total    = 0;
     });
 
-    final parsed = NetworkScanner.parseCidr(widget.cidr);
-    if (parsed == null) {
-      setState(() => _scanning = false);
-      return;
-    }
-    final (baseIp, prefix) = parsed;
-
-    // Expand CIDR to host list
-    final octets = baseIp.split('.').map(int.parse).toList();
-    final base = (octets[0] << 24) | (octets[1] << 16) |
-        (octets[2] << 8) | octets[3];
-    final mask = prefix == 0 ? 0 : (0xFFFFFFFF << (32 - prefix)) & 0xFFFFFFFF;
-    final net       = base & mask;
-    final broadcast = net | (~mask & 0xFFFFFFFF);
-    final hosts = <String>[];
-    for (var i = net + 1; i < broadcast; i++) {
-      hosts.add('${(i >> 24) & 0xFF}.${(i >> 16) & 0xFF}.${(i >> 8) & 0xFF}.${i & 0xFF}');
-    }
-    setState(() => _total = hosts.length);
-
-    // Use NetworkTools.ipCameraScan which is properly bounded
-    _sub = NetworkTools.ipCameraScan(
+    _sub = IpCameraDetector.scanSubnet(
       widget.cidr,
       onProgress: (done, total) =>
           setState(() { _done = done; _total = total; }),
     ).listen(
-      (line) {
-        if (line.startsWith('CAMERA')) {
-          final entry = line.trim().split(RegExp(r'\s+')).last;
-          final parts = entry.split(':');
-          if (parts.length >= 2) {
-            setState(() => _results.add(HostResult(
-              ip:           parts[0],
-              manufacturer: 'Port ${parts[1]} open',
-              deviceType:   'Possible Camera',
-            )));
-          }
-        }
-      },
+      (candidate) => setState(() => _results.add(candidate)),
       onDone: () => setState(() => _scanning = false),
     );
   }
+
+  // ── Label helpers ──────────────────────────────────────────────────────────
+
+  String _methodLabel(CameraDetectionMethod m) => switch (m) {
+    CameraDetectionMethod.specificPort   => 'Protocol port',
+    CameraDetectionMethod.genericPortMfr => 'Known vendor',
+    CameraDetectionMethod.genericPortHttp => 'HTTP fingerprint',
+    CameraDetectionMethod.wsDiscovery    => 'WS-Discovery',
+  };
+
+  Color _methodColor(CameraDetectionMethod m) => switch (m) {
+    CameraDetectionMethod.specificPort    => Colors.green,
+    CameraDetectionMethod.genericPortMfr  => Colors.blue,
+    CameraDetectionMethod.genericPortHttp => Colors.orange,
+    CameraDetectionMethod.wsDiscovery     => Colors.purple,
+  };
+
+  IconData _methodIcon(CameraDetectionMethod m) => switch (m) {
+    CameraDetectionMethod.specificPort    => Icons.videocam,
+    CameraDetectionMethod.genericPortMfr  => Icons.business,
+    CameraDetectionMethod.genericPortHttp => Icons.language,
+    CameraDetectionMethod.wsDiscovery     => Icons.wifi_tethering,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -730,7 +719,6 @@ class _IpCameraScanState extends State<IpCameraScanScreen> {
         title: const Text('IP Camera Scan',
             style: TextStyle(fontWeight: FontWeight.bold)),
         actions: [
-          // Single toggle button: refresh ↔ stop
           IconButton(
             icon: AnimatedSwitcher(
               duration: const Duration(milliseconds: 200),
@@ -756,12 +744,30 @@ class _IpCameraScanState extends State<IpCameraScanScreen> {
               alignment: Alignment.centerLeft,
               child: Text(
                 _scanning
-                    ? 'Scanning… $_done/$_total hosts — ${_results.length} camera(s) found'
-                    : '${_results.length} possible camera(s) found — ${widget.cidr}',
+                    ? 'Scanning… $_done/$_total hosts — ${_results.length} camera(s)'
+                    : '${_results.length} camera(s) found — ${widget.cidr}',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
           ),
+          // Legend
+          if (_results.isNotEmpty)
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(
+                children: CameraDetectionMethod.values.map((m) => Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(_methodIcon(m), size: 14, color: _methodColor(m)),
+                    const SizedBox(width: 4),
+                    Text(_methodLabel(m),
+                        style: TextStyle(fontSize: 11, color: _methodColor(m))),
+                  ]),
+                )).toList(),
+              ),
+            ),
+          const SizedBox(height: 4),
           Expanded(
             child: _results.isEmpty && !_scanning
                 ? const Center(child: Text('No cameras found.'))
@@ -769,20 +775,43 @@ class _IpCameraScanState extends State<IpCameraScanScreen> {
                     itemCount: _results.length,
                     separatorBuilder: (_, _) =>
                         const Divider(height: 1, thickness: 0.5),
-                    itemBuilder: (ctx, itemIndex) {
-                      final cameraHost = _results[itemIndex];
+                    itemBuilder: (ctx, i) {
+                      final c = _results[i];
                       return ListTile(
-                        leading: const Icon(Icons.videocam,
-                            color: Colors.orange),
-                        title: Text(cameraHost.ip,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.bold)),
-                        subtitle: Text(
-                          [cameraHost.manufacturer, cameraHost.hostname]
-                              .where((s) => s.isNotEmpty)
-                              .join(' · '),
-                          style: const TextStyle(fontSize: 12),
+                        leading: Icon(_methodIcon(c.method),
+                            color: _methodColor(c.method)),
+                        title: Row(children: [
+                          Text(c.ip,
+                              style: const TextStyle(fontWeight: FontWeight.bold)),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: _methodColor(c.method)
+                                  .withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(':${c.port}',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: _methodColor(c.method),
+                                    fontFamily: 'monospace')),
+                          ),
+                        ]),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(c.evidence,
+                                style: const TextStyle(fontSize: 12)),
+                            if (c.manufacturer.isNotEmpty)
+                              Text(c.manufacturer,
+                                  style: const TextStyle(
+                                      fontSize: 11,
+                                      fontStyle: FontStyle.italic)),
+                          ],
                         ),
+                        isThreeLine: c.manufacturer.isNotEmpty,
                       );
                     },
                   ),
@@ -792,7 +821,6 @@ class _IpCameraScanState extends State<IpCameraScanScreen> {
     );
   }
 }
-
 // ════════════════════════════════════════════════════════════════════
 //  4. WHOIS
 // ════════════════════════════════════════════════════════════════════
