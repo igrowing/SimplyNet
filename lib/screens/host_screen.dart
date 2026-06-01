@@ -138,35 +138,49 @@ class _HostScreenState extends State<HostScreen> {
       _activeTool  = tool;
       _diagRunning = true;
       _diagOutput.clear();
-      _pingTimings.clear(); // Clear previous ping data
+      _pingTimings.clear();
     });
 
     final count = int.tryParse(_pingCountCtrl.text) ?? 10;
-    Stream<String> stream = switch (tool) {
-      _DiagTool.ping    => NetworkTools.ping(widget.host.ip, count: count),
+    final Stream<String> stream = switch (tool) {
+      _DiagTool.ping     => NetworkTools.ping(widget.host.ip, count: count),
       _DiagTool.nslookup => NetworkTools.nslookup(widget.host.ip),
       _DiagTool.tracert  => NetworkTools.traceroute(widget.host.ip),
     };
 
+    // For ping: we parse ms values from the accumulated full output
+    // so partial chunks never cause a missed match.
+    // Android ping format: "time=1.23 ms"  (space before ms)
+    // iOS/macOS format:    "time=1.234 ms"
+    // Windows format:      "time=1ms" or "time<1ms"
+    // We match all variants with one regex.
+    final _pingRegex = RegExp(r'time[=<](\d+(?:\.\d+)?)\s*ms', caseSensitive: false);
+    int _parsedUpTo = 0; // how many chars of _diagOutput we have already scanned
+
     _diagSub = stream.listen(
       (chunk) {
-        setState(() => _diagOutput.write(chunk));
-        
-        // Extract ping timings from output
-        if (tool == _DiagTool.ping) {
-          final timeRegex = RegExp(r'time=(\d+(?:\.\d+)?)ms');
-          final matches = timeRegex.allMatches(chunk);
-          for (final match in matches) {
-            final ms = double.tryParse(match.group(1) ?? '0') ?? 0;
-            if (ms > 0 && !_pingTimings.contains(ms)) {
-              _pingTimings.add(ms);
+        setState(() {
+          _diagOutput.write(chunk);
+
+          if (tool == _DiagTool.ping) {
+            // Scan only the newly added portion of the accumulated buffer.
+            // This avoids O(n²) re-scanning AND correctly handles lines split
+            // across multiple stream events.
+            final newText = _diagOutput.toString().substring(_parsedUpTo);
+            final matches = _pingRegex.allMatches(newText);
+            for (final m in matches) {
+              final ms = double.tryParse(m.group(1)!) ?? 0.0;
+              if (ms > 0) _pingTimings.add(ms); // one entry per packet, no dedup
             }
+            // Advance the cursor only up to the last complete line so we don't
+            // lose a partial "time=…" that spans a chunk boundary.
+            final lastNewline = newText.lastIndexOf('
+');
+            if (lastNewline >= 0) _parsedUpTo += lastNewline + 1;
           }
-          if (matches.isNotEmpty) {
-            setState(() {}); // Update graph when new data arrives
-          }
-        }
-        
+        });
+
+        // Auto-scroll the text fallback (nslookup / traceroute).
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (_diagScroll.hasClients) {
             _diagScroll.animateTo(
@@ -178,6 +192,15 @@ class _HostScreenState extends State<HostScreen> {
         });
       },
       onDone: () async {
+        // Final scan: catch any trailing partial line
+        final remainder = _diagOutput.toString().substring(_parsedUpTo);
+        if (tool == _DiagTool.ping && remainder.isNotEmpty) {
+          final matches = _pingRegex.allMatches(remainder);
+          for (final m in matches) {
+            final ms = double.tryParse(m.group(1)!) ?? 0.0;
+            if (ms > 0) setState(() => _pingTimings.add(ms));
+          }
+        }
         setState(() => _diagRunning = false);
         final settings = context.read<SettingsProvider>().settings;
         if (settings.loggingEnabled) {
@@ -774,7 +797,8 @@ class _PingGraphPainter extends CustomPainter {
     }
 
     // Draw line path connecting all samples
-    final step = timings.length > 1 ? chartW / (timings.length - 1) : 0;
+    // Spread dots across the full width; when only one point, centre it.
+    final step = timings.length > 1 ? chartW / (timings.length - 1) : chartW / 2;
     final path = Path();
     bool moved = false;
 
@@ -798,8 +822,10 @@ class _PingGraphPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_PingGraphPainter oldDelegate) {
-    return oldDelegate.timings != timings ||
-        oldDelegate.maxMs != maxMs ||
-        oldDelegate.minMs != minMs;
+    // timings is the SAME List instance that gets .add() calls, so reference
+    // equality is always true → always return true to allow repaint on every
+    // setState. The CustomPainter framework skips actual raster work when the
+    // canvas is unchanged, so this is safe.
+    return true;
   }
 }
