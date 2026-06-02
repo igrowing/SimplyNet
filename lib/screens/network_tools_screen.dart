@@ -1110,14 +1110,11 @@ class _PingScreenState extends State<PingScreen> {
                       ),
                     )
                   : DiagOutputPanel(
-                      toolLabel:        'PING',
-                      target:           _ctrl.text.trim(),
                       output:           _diagOutput.toString(),
                       isRunning:        _running,
                       isPing:           true,
                       pingTimings:      _pingTimings,
                       scrollController: _scroll,
-                      onStop:           _running ? _toggle : null,
                     ),
             ),
           ),
@@ -1228,12 +1225,9 @@ class _TracerouteScreenState extends State<TracerouteScreen> {
                                   .withValues(alpha: 0.4))),
                     )
                   : DiagOutputPanel(
-                      toolLabel:        'TRACEROUTE',
-                      target:           _ctrl.text.trim(),
                       output:           _diagOutput.toString(),
                       isRunning:        _running,
                       scrollController: _scroll,
-                      onStop:           _running ? _stop : null,
                     ),
             ),
           ),
@@ -1344,12 +1338,9 @@ class _NslookupScreenState extends State<NslookupScreen> {
                                   .withValues(alpha: 0.4))),
                     )
                   : DiagOutputPanel(
-                      toolLabel:        'NSLOOKUP',
-                      target:           _ctrl.text.trim(),
                       output:           _diagOutput.toString(),
                       isRunning:        _running,
                       scrollController: _scroll,
-                      onStop:           _running ? _stop : null,
                     ),
             ),
           ),

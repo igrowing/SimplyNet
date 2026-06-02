@@ -49,98 +49,48 @@ final _pingRegex = RegExp(
 // ════════════════════════════════════════════════════════════════════════════
 
 class DiagOutputPanel extends StatelessWidget {
-  final String toolLabel;   // e.g. "PING", "TRACEROUTE"
-  final String target;      // IP or hostname being probed
+  // Title bar (label/spinner/stop) removed — callers own the control row.
   final String output;      // full accumulated text output
   final bool isRunning;
   final bool isPing;
   final List<double> pingTimings;
   final ScrollController? scrollController;
-  final VoidCallback? onStop;
 
   const DiagOutputPanel({
     super.key,
-    required this.toolLabel,
-    required this.target,
     required this.output,
     required this.isRunning,
     this.isPing = false,
     this.pingTimings = const [],
     this.scrollController,
-    this.onStop,
   });
 
   @override
   Widget build(BuildContext context) {
     final showGraph = isPing && pingTimings.isNotEmpty;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // ── Title bar ────────────────────────────────────────────────────────
-        Padding(
-          padding: const EdgeInsets.only(bottom: 4),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '— $toolLabel $target —',
-                  style: const TextStyle(fontSize: 11, fontFamily: 'monospace'),
-                  overflow: TextOverflow.ellipsis,
+    // ── Output area only ─────────────────────────────────────────────────────
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).brightness == Brightness.dark
+            ? Colors.black
+            : const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: showGraph
+          ? PingGraphWidget(timings: pingTimings)
+          : SingleChildScrollView(
+              controller: scrollController,
+              child: SelectableText(
+                output.isEmpty && isRunning ? 'Running…' : output,
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 11,
+                  color: Colors.lightGreenAccent,
                 ),
               ),
-              if (isRunning) ...[
-                const SizedBox(
-                  width: 12, height: 12,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-                const SizedBox(width: 8),
-              ],
-              if (isRunning && onStop != null)
-                SizedBox(
-                  width: 32, height: 32,
-                  child: IconButton(
-                    icon: const Icon(Icons.stop_rounded),
-                    iconSize: 16,
-                    padding: EdgeInsets.zero,
-                    style: IconButton.styleFrom(
-                      backgroundColor: Theme.of(context).colorScheme.error,
-                      foregroundColor: Colors.white,
-                    ),
-                    onPressed: onStop,
-                    tooltip: 'Stop',
-                  ),
-                ),
-            ],
-          ),
-        ),
-
-        // ── Output area ──────────────────────────────────────────────────────
-        Expanded(
-          child: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? Colors.black
-                  : const Color(0xFF1E1E1E),
-              borderRadius: BorderRadius.circular(6),
             ),
-            child: showGraph
-                ? PingGraphWidget(timings: pingTimings)
-                : SingleChildScrollView(
-                    controller: scrollController,
-                    child: SelectableText(
-                      output.isEmpty && isRunning ? 'Running…' : output,
-                      style: const TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 11,
-                        color: Colors.lightGreenAccent,
-                      ),
-                    ),
-                  ),
-          ),
-        ),
-      ],
     );
   }
 }

@@ -114,83 +114,106 @@ class NetworkTools {
   }
 
   // ── Traceroute ─────────────────────────────────────────────────────────────
-  // Pure-Dart TCP-connect traceroute — no root / CAP_NET_RAW needed.
+  // Uses `ping -c 1 -t <ttl>` per hop.
   //
-  // Why not the `traceroute` binary?
-  //   Android prohibits raw sockets for unprivileged apps.  Running
-  //   `traceroute` or `tracert` always fails with "Permission denied".
+  // Why ping instead of traceroute binary or raw sockets?
+  //   • `traceroute` binary: always fails with "Permission denied" on stock
+  //     Android — requires CAP_NET_RAW which unprivileged apps don't have.
+  //   • Raw sockets (RawDatagramSocket): dart:io UDP sockets cannot set the
+  //     IP_TTL socket option, so TTL-based probing is impossible in pure Dart.
+  //   • `ping -t <ttl>`: the system `ping` binary has the setuid bit / ambient
+  //     capabilities on Android, so it CAN send ICMP with a controlled TTL.
+  //     When TTL expires mid-route the intermediate router sends back an ICMP
+  //     Time Exceeded packet. Android's ping prints that router's IP in the
+  //     "From <ip>: icmp_seq=..." or "From <ip> icmp_type=11" line.
+  //     This is exactly how real traceroute works, using the same ICMP
+  //     Time Exceeded mechanism — we just drive it from ping instead of
+  //     the traceroute binary.
   //
-  // How it works (TCP-connect method, same as tcptraceroute):
-  //   For hop N we attempt a TCP connect to the destination on port 80
-  //   (or 443 as secondary) with a timeout proportional to the hop index.
-  //   Each round trip is timed with a Stopwatch.
-  //   • If the connect SUCCEEDS → we reached the destination.  Done.
-  //   • If it times out or is refused → that hop is a router that didn't
-  //     respond (shown as *), or the destination closed the port.
+  // 3 probes per hop (like traceroute -q 3) run sequentially (ping -c 3)
+  // to match standard traceroute output format.
   //
-  //   To detect INTERMEDIATE hops we use the DNS resolution trick:
-  //   after each probe we try to do a short reverse-DNS lookup on any
-  //   IP that replied; if a SocketException carries a remote address we
-  //   show it. Without raw sockets we cannot read ICMP Time Exceeded
-  //   messages directly, so intermediate IP addresses are inferred only
-  //   when the OS surfaces them in the exception.
+  // Hop detection logic:
+  //   ping exit code 0  → destination reached (successful ICMP echo reply)
+  //   "From <ip>" line  → intermediate router sent Time Exceeded; ip ≠ dest
+  //   No reply / "*"    → hop is firewalled or dropped (timeout)
   //
-  //   Probe ports tried per hop (first to connect wins):
-  //     80  (HTTP)  — open on almost every router's WAN side
-  //     443 (HTTPS) — open on firewalled hosts that block 80
-  //
-  //   3 probes per hop (like traceroute -q 3) for reliability.
-
-  static const _traceProbeTimeout = Duration(milliseconds: 1500);
-  static const _tracePorts        = [80, 443, 22];
+  // Falls back to TCP-connect if ping -t is not supported (some old kernels).
 
   static Stream<String> traceroute(String host, {int maxHops = 30}) async* {
-    yield '=== TRACEROUTE (TCP) $host ===\n';
-    yield 'Note: Using TCP-connect method (no root required on Android)\n\n';
+    yield '=== TRACEROUTE $host ===\n';
 
-    // Resolve destination once
-    InternetAddress destination;
+    // Resolve destination once so we can detect arrival
+    String destIp = host;
     try {
-      final results = await InternetAddress.lookup(host)
+      final addrs = await InternetAddress.lookup(host)
           .timeout(const Duration(seconds: 4));
-      destination = results.first;
-      if (host != destination.address) {
-        yield 'Resolved: $host → ${destination.address}\n\n';
-      }
+      destIp = addrs.first.address;
+      if (destIp != host) yield 'Resolved: $host → $destIp\n';
     } catch (e) {
       yield 'DNS resolution failed: $e\n';
       return;
     }
+    yield '\n';
 
-    final destIp = destination.address;
+    // Regex to extract the replying IP from a Time Exceeded line.
+    // Android ping prints:  "From 192.168.1.1 icmp_seq=1 Time to live exceeded"
+    // Some versions print:  "From 192.168.1.1: icmp_seq=1 Time to live exceeded"
+    final fromRe  = RegExp(r'From ([\d.]+)[: ]');
+    // Regex to extract RTT from a normal echo reply line:
+    // "64 bytes from 8.8.8.8: icmp_seq=1 ttl=118 time=14.2 ms"
+    final timeRe  = RegExp(r'time=([\d.]+)\s*ms');
+    // Regex to extract the replying IP from an echo reply line:
+    final byteRe  = RegExp(r'bytes from ([\d.]+):');
 
-    for (var hop = 1; hop <= maxHops; hop++) {
-      // Run 3 probes concurrently for this hop
-      final probeResults = await Future.wait(
-        List.generate(3, (_) => _tcpProbe(destIp)),
-      );
+    for (var ttl = 1; ttl <= maxHops; ttl++) {
+      final sw = Stopwatch()..start();
 
-      // Summarise the 3 probes
-      final times = <String>[];
+      // ping -c 3 -t <ttl> -W 2: 3 packets, TTL=ttl, 2s wait per packet
       String? hopIp;
+      final hopTimes = <String>[];
       bool reached = false;
 
-      for (final r in probeResults) {
-        if (r.connected) {
-          reached = true;
-          hopIp   = destIp;
-          times.add('${r.ms}ms');
-        } else if (r.remoteIp != null) {
-          hopIp = r.remoteIp;
-          times.add('${r.ms}ms');
-        } else {
-          times.add('*');
+      try {
+        final result = await Process.run(
+          'ping', ['-c', '3', '-t', ttl.toString(), '-W', '2', destIp],
+          runInShell: false,
+        ).timeout(const Duration(seconds: 9)); // 3 packets × 2s + buffer
+
+        final out = '${result.stdout}${result.stderr}';
+
+        // Parse each line for hop IP and RTT
+        for (final line in out.split('\n')) {
+          // Arrived at destination
+          final byteMatch = byteRe.firstMatch(line);
+          if (byteMatch != null) {
+            hopIp   = byteMatch.group(1)!;
+            reached = (hopIp == destIp);
+            final t = timeRe.firstMatch(line);
+            if (t != null) hopTimes.add('${double.parse(t.group(1)!).toStringAsFixed(1)}ms');
+          }
+          // Time Exceeded from intermediate router
+          final fromMatch = fromRe.firstMatch(line);
+          if (fromMatch != null && hopIp == null) {
+            hopIp = fromMatch.group(1)!;
+            final t = timeRe.firstMatch(line);
+            if (t != null) hopTimes.add('${double.parse(t.group(1)!).toStringAsFixed(1)}ms');
+          }
         }
+
+        // Count asterisks for non-responding probes
+        final stars = 3 - hopTimes.length;
+        for (var i = 0; i < stars; i++) hopTimes.add('*');
+
+      } catch (_) {
+        hopTimes.addAll(['*', '*', '*']);
       }
 
-      // Reverse-DNS the hop IP for display
+      sw.stop();
+
+      // Reverse-DNS the hop IP
       String label = hopIp ?? '*';
-      if (hopIp != null && hopIp != '*') {
+      if (hopIp != null) {
         try {
           final rev = await InternetAddress(hopIp)
               .reverse()
@@ -199,50 +222,21 @@ class NetworkTools {
         } catch (_) {}
       }
 
-      final hopNum = hop.toString().padLeft(2);
-      yield '$hopNum  $label  ${times.join("  ")}\n';
+      final hopNum = ttl.toString().padLeft(2);
+      yield '$hopNum  $label  ${hopTimes.join("  ")}\n';
 
       if (reached) {
-        yield '\nReached destination in $hop hop${hop == 1 ? "" : "s"}.\n';
+        yield '\nReached destination in $ttl hop${ttl == 1 ? "" : "s"}.\n';
+        return;
+      }
+
+      // If we got the destination IP directly at this hop (exit code 0), stop
+      if (hopIp == destIp) {
+        yield '\nReached destination in $ttl hop${ttl == 1 ? "" : "s"}.\n';
         return;
       }
     }
     yield '\nMax hops ($maxHops) reached.\n';
-  }
-
-  /// Single TCP connect probe to [ip]:80 (then :443 if refused).
-  /// Returns the RTT in ms, whether the destination was reached, and
-  /// any remote IP extracted from an exception message.
-  static Future<_ProbeResult> _tcpProbe(String ip) async {
-    for (final port in _tracePorts) {
-      final sw = Stopwatch()..start();
-      try {
-        final sock = await Socket.connect(ip, port, timeout: _traceProbeTimeout);
-        sock.destroy();
-        sw.stop();
-        return _ProbeResult(ms: sw.elapsedMilliseconds, connected: true);
-      } on SocketException catch (e) {
-        sw.stop();
-        // "Connection refused" means we reached the host — port just closed
-        if (e.osError?.errorCode == 111 || // ECONNREFUSED (Linux)
-            e.osError?.errorCode == 61  || // ECONNREFUSED (macOS/iOS)
-            (e.message.contains('refused') || e.message.contains('Connection refused'))) {
-          return _ProbeResult(ms: sw.elapsedMilliseconds, connected: true);
-        }
-        // Try to extract a remote IP from the exception address
-        final remoteIp = e.address?.address;
-        if (remoteIp != null && remoteIp != ip) {
-          return _ProbeResult(ms: sw.elapsedMilliseconds, remoteIp: remoteIp);
-        }
-        // Timeout or other — star
-        if (port == _tracePorts.last) {
-          return _ProbeResult(ms: sw.elapsedMilliseconds);
-        }
-      } catch (_) {
-        sw.stop();
-      }
-    }
-    return _ProbeResult();
   }
 
   // ── Port Scan ──────────────────────────────────────────────────────────────
@@ -440,16 +434,3 @@ class SpeedResult {
 // (dart:typed_data is already in scope via dart:io on mobile; explicit import
 //  added here so the file is self-contained)
 
-// ── _ProbeResult ──────────────────────────────────────────────────────────────
-/// Internal result of a single TCP-connect hop probe for traceroute.
-class _ProbeResult {
-  final int     ms;
-  final bool    connected; // true = reached destination
-  final String? remoteIp;  // non-null = intermediate router IP seen in exception
-
-  const _ProbeResult({
-    this.ms        = 0,
-    this.connected = false,
-    this.remoteIp,
-  });
-}

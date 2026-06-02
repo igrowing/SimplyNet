@@ -515,9 +515,7 @@ class _HostScreenState extends State<HostScreen> {
                     fontWeight: FontWeight.bold, color: primary)),
           const SizedBox(height: 8),
 
-          // Ping row: button + count input
-          // Label "times" was clipped at 60 px. Use hintText + suffix icon
-          // and widen slightly; no floating label that clips.
+          // Ping row: button + count input + Stop button (when running)
           Row(children: [
             OutlinedButton.icon(
               icon: const Icon(Icons.wifi_tethering, size: 16),
@@ -543,21 +541,34 @@ class _HostScreenState extends State<HostScreen> {
             ),
             const SizedBox(width: 6),
             const Text('times', style: TextStyle(fontSize: 12)),
+            const Spacer(),
+            if (_diagRunning)
+              SizedBox(
+                width: 32, height: 32,
+                child: IconButton(
+                  icon: const Icon(Icons.stop_rounded),
+                  iconSize: 16,
+                  padding: EdgeInsets.zero,
+                  style: IconButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.error,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: _stopDiag,
+                  tooltip: 'Stop',
+                ),
+              ),
           ]),
           const SizedBox(height: 8),
 
-          // Output pane — shared DiagOutputPanel handles graph vs text.
+          // Output pane — no title bar, Stop is on the control row above.
           if (_activeTool != null)
             Expanded(
               child: DiagOutputPanel(
-                toolLabel:        _activeTool!.name.toUpperCase(),
-                target:           widget.host.ip,
                 output:           _diagOutput.toString(),
                 isRunning:        _diagRunning,
                 isPing:           _activeTool == _DiagTool.ping,
                 pingTimings:      _pingTimings,
                 scrollController: _diagScroll,
-                onStop:           _diagRunning ? _stopDiag : null,
               ),
             )
           else
