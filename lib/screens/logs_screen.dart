@@ -87,15 +87,13 @@ class _LogTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       leading: const Icon(Icons.description),
-      title: SelectableText(
+      title: Text(
         '${entry.function.toUpperCase()} — ${_fmt.format(entry.timestamp)}',
         style: const TextStyle(fontWeight: FontWeight.w500),
-        maxLines: 1,
         // overflow: TextOverflow.ellipsis,
       ),
-      subtitle: SelectableText(entry.summary,
-          maxLines: 2, 
-          // overflow: TextOverflow.ellipsis,
+      subtitle: Text(entry.summary,
+          maxLines: 2, // overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontSize: 12)),
       trailing: IconButton(
         icon: Icon(Icons.delete_outline,

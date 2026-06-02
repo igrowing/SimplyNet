@@ -99,7 +99,7 @@ Then verify all changes manually before submitting to stores!
 
 # TODO
 * Enhance device detection list: qnap, fritz, eero, samsung mobile, redmi mobile, huawei mobile, espressif, hui zhou camera reolin dahua, 
-* in every text output window make text selectable and copyable.
+* Detect self MAC. Don't use get_mac_address lib or /etc/... read. These don't work.
 * run long processes in background, putting the notification. So OS cannot close/freeze the app. Notify in the notification when the long process is completed.
 * LAF refactoring:
   * On the right part of the app header in the main screen add icon/pictogram of information (i). Click on it should open a page with readme.md well presenting markdown formatting.
