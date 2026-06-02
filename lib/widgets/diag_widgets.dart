@@ -129,7 +129,7 @@ class DiagOutputPanel extends StatelessWidget {
                 ? PingGraphWidget(timings: pingTimings)
                 : SingleChildScrollView(
                     controller: scrollController,
-                    child: Text(
+                    child: SelectableText(
                       output.isEmpty && isRunning ? 'Running…' : output,
                       style: const TextStyle(
                         fontFamily: 'monospace',
@@ -158,7 +158,7 @@ class PingGraphWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     if (timings.isEmpty) {
       return const Center(
-        child: Text(
+        child: SelectableText(
           'Waiting for ping results…',
           style: TextStyle(color: Colors.lightGreenAccent, fontSize: 12),
         ),
@@ -176,7 +176,7 @@ class PingGraphWidget extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Stats bar
-          Text(
+          SelectableText(
             'Min: ${minMs.toStringAsFixed(1)}ms'
             '  Avg: ${avgMs.toStringAsFixed(1)}ms'
             '  Max: ${maxMs.toStringAsFixed(1)}ms'
