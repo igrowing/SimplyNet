@@ -23,11 +23,7 @@ class MainActivity : FlutterActivity() {
         private const val CELLULAR_CHANNEL = "simplynet/cellular"
     }
 
-    // ── Required by flutter_foreground_task ──────────────────────────────────
-    override fun onCreate(savedInstanceState: Bundle?) {
-        FlutterForegroundTaskPlugin.setPluginRegistrant(this)
-        super.onCreate(savedInstanceState)
-    }
+    // ── Foreground service initialization is handled by the plugin ──────────
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
