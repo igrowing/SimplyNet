@@ -135,14 +135,12 @@ class NetworkScanner {
         // (Android/Linux) or `ifconfig` output (iOS/macOS).  We try both.
 
         for (final addr in iface.addresses) {
-          for (final addr in iface.addresses) {
-              final ip = addr.address;
-              String? macAddress;
-              try {
-                macAddress = await getMacForInterface(iface.name);
-              } catch (_) {}
-              map[ip] = macAddress ?? 'N/A';
-            }
+          final ip = addr.address;
+          String? macAddress;
+          try {
+            macAddress = await getMacForInterface(iface.name);
+          } catch (_) {}
+          map[ip] = macAddress ?? 'N/A';
         }
       }
     } catch (e) {
@@ -349,7 +347,7 @@ class NetworkScanner {
     final selfMacs  = await _getSelfMacs();
     _selfMacCache   = null; // reset cache for next scan
     for (final entry in selfMacs.entries) {
-      arpTable.update(entry.key, (value) => entry.value);
+      arpTable[entry.key] = entry.value;
     }
     // Fill results with MAC addresses, manufacturer names, and device types
     for (final host in allResults) {
