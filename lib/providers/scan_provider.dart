@@ -83,8 +83,7 @@ class ScanProvider extends ChangeNotifier {
     // Start foreground service so Android doesn't freeze/kill the scan.
     FgService.start(title: 'Network scan', body: 'Scanning $_target…');
 
-    _sub = NetworkScanner.scan(_target, resolveNames: resolveNames).listen
-      (host) {
+    _sub = NetworkScanner.scan(_target, resolveNames: resolveNames).listen((host) {
         _results.add(host);
         _logBuffer.writeln('FOUND  ${host.ip}\t${host.mac}\t${host.hostname}\t${host.manufacturer}');
         notifyListeners();

@@ -100,8 +100,8 @@ Then verify all changes manually before submitting to stores!
 # TODO
 * Enhance device detection list: qnap, fritz, eero, samsung mobile, redmi mobile, huawei mobile, espressif, hui zhou camera reolin dahua, 
 * Detect self MAC. Don't use get_mac_address lib or /etc/... read. These don't work.
-* run long processes in background, putting the notification. So OS cannot close/freeze the app. Notify in the notification when the long process is completed.
 * LAF refactoring:
+  * run long processes in background, putting the notification. So OS cannot close/freeze the app. Notify in the notification when the long process is completed.
   * On the right part of the app header in the main screen add icon/pictogram of information (i). Click on it should open a page with readme.md well presenting markdown formatting.
   * Move the settings from a dedicated button on the home screen main list to a "gear" icon button on the left of the (i) information pictogram, discussed above, in the home screen header.
   * Group visually under label "Scan" the "network target" text box, "scan" and "logs" buttons.
