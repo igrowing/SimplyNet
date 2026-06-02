@@ -3,10 +3,10 @@ import 'package:provider/provider.dart';
 import 'package:simply_net/providers/log_provider.dart';
 import 'package:simply_net/providers/scan_provider.dart';
 import 'package:simply_net/providers/settings_provider.dart';
+import 'package:simply_net/screens/about_screen.dart';
 import 'package:simply_net/screens/home_screen.dart';
 import 'package:simply_net/screens/logs_screen.dart';
 import 'package:simply_net/screens/network_tools_screen.dart';
-import 'package:simply_net/screens/placeholder_screen.dart';
 import 'package:simply_net/screens/scan_screen.dart';
 import 'package:simply_net/screens/settings_screen.dart';
 import 'package:simply_net/services/oui_service.dart';
@@ -26,8 +26,6 @@ class SimplyNetApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => SettingsProvider()..load()),
         ChangeNotifierProvider(create: (_) => ScanProvider()),
-        // LogProvider subscribes to ScanProvider.logVersion so it
-        // refreshes automatically whenever a scan finishes and writes a log.
         ChangeNotifierProxyProvider<ScanProvider, LogProvider>(
           create: (_) => LogProvider(),
           update: (_, scanProv, logProv) {
@@ -41,7 +39,7 @@ class SimplyNetApp extends StatelessWidget {
           double scale = settings.settings.fontScale;
           if (scale <= 0 || scale.isNaN || scale.isInfinite) scale = 1.0;
           return MaterialApp(
-            key: ValueKey(scale), // Force full rebuild when scale changes
+            key: ValueKey(scale),
             title: 'SimplyNet',
             debugShowCheckedModeBanner: false,
             themeMode: settings.themeMode,
@@ -53,8 +51,8 @@ class SimplyNetApp extends StatelessWidget {
               '/scan':          (_) => const ScanScreen(),
               '/logs':          (_) => const LogsScreen(),
               '/network_tools': (_) => const NetworkToolsScreen(),
-              '/wifi_tools':    (_) => const PlaceholderScreen(title: 'WiFi Tools'),
               '/settings':      (_) => const SettingsScreen(),
+              '/about':         (_) => const AboutScreen(),
             },
           );
         },

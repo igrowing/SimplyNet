@@ -12,6 +12,8 @@ import 'package:simply_net/services/network_tools.dart';
 import 'package:simply_net/providers/scan_provider.dart';
 import 'package:simply_net/widgets/diag_widgets.dart';
 import 'package:provider/provider.dart';
+import 'package:simply_net/screens/wifi_channels_screen.dart';
+import 'package:simply_net/screens/cellular_screen.dart';
 
 class NetworkToolsScreen extends StatelessWidget {
   const NetworkToolsScreen({super.key});
@@ -78,6 +80,24 @@ class NetworkToolsScreen extends StatelessWidget {
         onTap: () => Navigator.push(
             context, MaterialPageRoute(builder: (_) => const NslookupScreen())),
       ),
+      _ToolCard(
+        icon: Icons.wifi_find,
+        title: 'Wi-Fi Channels',
+        subtitle: 'RSSI per channel, 2.4 & 5 GHz interference map',
+        color: Colors.cyan,
+        onTap: () => Navigator.push(
+            context, MaterialPageRoute(
+                builder: (_) => const WifiChannelsScreen())),
+      ),
+      _ToolCard(
+        icon: Icons.cell_tower,
+        title: 'Cellular Info',
+        subtitle: 'Signal levels, cell ID, provider & tower data',
+        color: Colors.deepPurple,
+        onTap: () => Navigator.push(
+            context, MaterialPageRoute(
+                builder: (_) => const CellularScreen())),
+      ),
     ];
 
     return Scaffold(
@@ -85,11 +105,18 @@ class NetworkToolsScreen extends StatelessWidget {
         title: const Text('Network Tools',
             style: TextStyle(fontWeight: FontWeight.bold)),
       ),
-      body: ListView.separated(
+      body: Padding(
         padding: const EdgeInsets.all(12),
-        itemCount: tools.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 10),
-        itemBuilder: (_, i) => tools[i],
+        child: GridView.builder(
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount:    2,
+            mainAxisSpacing:   10,
+            crossAxisSpacing:  10,
+            childAspectRatio:  1.55,
+          ),
+          itemCount: tools.length,
+          itemBuilder: (_, i) => tools[i],
+        ),
       ),
     );
   }
