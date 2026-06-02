@@ -220,15 +220,15 @@ class _HomeScreenState extends State<HomeScreen> {
     final scanTarget = ctx.read<ScanProvider>().target;
 
     final tools = [
-      _ToolBtn(Icons.speed,         'Speed Test',     () => push(const SpeedTestScreen())),
-      _ToolBtn(Icons.public,        'Public IP',      () => push(const PublicIpScreen())),
-      _ToolBtn(Icons.videocam,      'IP Cameras',     () => push(IpCameraScanScreen(cidr: scanTarget))),
-      _ToolBtn(Icons.manage_search, 'Who Is…',        () => push(const WhoisScreen())),
-      _ToolBtn(Icons.network_ping,  'Ping',            () => push(const PingScreen())),
-      _ToolBtn(Icons.route,         'Traceroute',     () => push(const TracerouteScreen())),
-      _ToolBtn(Icons.dns,           'NS Lookup',      () => push(const NslookupScreen())),
-      _ToolBtn(Icons.wifi_find,     'Wi-Fi Channels', () => push(const WifiChannelsScreen())),
-      _ToolBtn(Icons.cell_tower,    'Cellular Info',  () => push(const CellularScreen())),
+      _ToolBtn(Icons.speed,         'Speed Test',     () => push(const SpeedTestScreen()),     Colors.blue),
+      _ToolBtn(Icons.public,        'Public IP',      () => push(const PublicIpScreen()),      Colors.green),
+      _ToolBtn(Icons.videocam,      'IP Cameras',     () => push(IpCameraScanScreen(cidr: scanTarget)), Colors.orange),
+      _ToolBtn(Icons.manage_search, 'Who Is…',        () => push(const WhoisScreen()),         Colors.purple),
+      _ToolBtn(Icons.network_ping,  'Ping',           () => push(const PingScreen()),          Colors.teal),
+      _ToolBtn(Icons.route,         'Traceroute',     () => push(const TracerouteScreen()),    Colors.deepOrange),
+      _ToolBtn(Icons.dns,           'NS Lookup',      () => push(const NslookupScreen()),      Colors.indigo),
+      _ToolBtn(Icons.wifi_find,     'Wi-Fi Channels', () => push(const WifiChannelsScreen()),  Colors.cyan),
+      _ToolBtn(Icons.cell_tower,    'Cellular Info',  () => push(const CellularScreen()),      Colors.deepPurple),
     ];
 
     return _GroupBox(
@@ -295,7 +295,8 @@ class _ToolBtn {
   final IconData     icon;
   final String       label;
   final VoidCallback onTap;
-  const _ToolBtn(this.icon, this.label, this.onTap);
+  final Color        color;
+  const _ToolBtn(this.icon, this.label, this.onTap, this.color);
 }
 
 class _SmallToolBtn extends StatelessWidget {
@@ -309,14 +310,13 @@ class _SmallToolBtn extends StatelessWidget {
       borderRadius: BorderRadius.circular(10),
       child: Container(
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          border: Border.all(color: tool.color.withValues(alpha: 0.55), width: 1.5),
           borderRadius: BorderRadius.circular(10),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         child: Row(
           children: [
-            Icon(tool.icon, size: 20,
-                color: Theme.of(context).colorScheme.primary),
+            Icon(tool.icon, size: 20, color: tool.color),
             const SizedBox(width: 8),
             Expanded(
               child: Text(tool.label,

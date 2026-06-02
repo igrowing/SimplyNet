@@ -21,6 +21,7 @@ class MainActivity : FlutterActivity() {
         private const val SCREEN_CHANNEL   = "com.simplynet.app/screen"
         private const val WIFI_CHANNEL     = "simplynet/wifi"
         private const val CELLULAR_CHANNEL = "simplynet/cellular"
+        private const val MAC_CHANNEL      = "com.simplynet.app/mac"
     }
 
     // ── Foreground service initialization is handled by the plugin ──────────
@@ -73,9 +74,41 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        // ── MAC address for local interface ─────────────────────────────────
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, MAC_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getMacForInterface" -> {
+                        val name = call.argument<String>("name")
+                        if (name.isNullOrEmpty()) {
+                            result.error("INVALID_ARG", "interface name required", null)
+                            return@setMethodCallHandler
+                        }
+                        try {
+                            val mac = getMacFromSysFs(name)
+                            if (mac != null) result.success(mac)
+                            else result.error("MAC_NOT_FOUND", "no MAC for $name", null)
+                        } catch (e: Exception) {
+                            result.error("MAC_ERROR", e.message, null)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
     }
 
     // ── Wi-Fi scan ───────────────────────────────────────────────────────────
+    private fun getMacFromSysFs(ifaceName: String): String? {
+        return try {
+            val file = java.io.File("/sys/class/net/$ifaceName/address")
+            if (!file.exists() || !file.canRead()) return null
+            val raw = file.readText().trim()
+            if (raw.isEmpty() || raw == "00:00:00:00:00:00") null
+            else raw.uppercase()
+        } catch (_: Exception) { null }
+    }
+
     @SuppressLint("MissingPermission")
     private fun getWifiScanResults(): List<Map<String, Any>> {
         val wifiManager = applicationContext
