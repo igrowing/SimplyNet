@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:simply_net/widgets/diag_widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -8,7 +9,7 @@ import 'package:simply_net/services/log_service.dart';
 import 'package:simply_net/services/network_tools.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-enum _DiagTool { ping, nslookup, tracert }
+enum _DiagTool { ping }
 
 class HostScreen extends StatefulWidget {
   final HostResult host;
@@ -19,24 +20,38 @@ class HostScreen extends StatefulWidget {
 }
 
 class _HostScreenState extends State<HostScreen> {
-  // ── Diag tool state ─────────────────────────────────────────────────────
+  // ── Diag state ───────────────────────────────────────────────────────────
   _DiagTool? _activeTool;
   bool _diagRunning = false;
   final StringBuffer _diagOutput = StringBuffer();
   StreamSubscription? _diagSub;
   final ScrollController _diagScroll = ScrollController();
 
-  // ── Port scan state ──────────────────────────────────────────────────────
+  // Ping count
+  int _pingCount = 10;
+  final TextEditingController _pingCountCtrl = TextEditingController(text: '10');
+  final List<double> _pingTimings = []; // Track ping response times (ms)
+
+  // ── Port scan state ───────────────────────────────────────────────────────
   bool _portScanning = true;
   int _portDone = 0;
-  final int _portTotal = NetworkTools.commonPorts.length;
+  int _portTotal = NetworkTools.wellKnownPorts.length;
   final List<_OpenPort> _openPorts = [];
   StreamSubscription? _portSub;
+
+  // Port scan settings
+  bool _portSettingsVisible = false;
+  bool _portUseWellKnown = true;  // true = well-known list, false = range
+  int _portRangeStart = 1;
+  int _portRangeEnd = 2048;
+  bool _portTcp = true;
+  bool _portUdp = false;
+  final TextEditingController _portStartCtrl = TextEditingController(text: '1');
+  final TextEditingController _portEndCtrl   = TextEditingController(text: '2048');
 
   @override
   void initState() {
     super.initState();
-    // Auto-run port scan immediately
     WidgetsBinding.instance.addPostFrameCallback((_) => _runPortScan());
   }
 
@@ -45,36 +60,53 @@ class _HostScreenState extends State<HostScreen> {
     _diagSub?.cancel();
     _portSub?.cancel();
     _diagScroll.dispose();
+    _pingCountCtrl.dispose();
+    _portStartCtrl.dispose();
+    _portEndCtrl.dispose();
     super.dispose();
   }
 
-  // ── Port scan ────────────────────────────────────────────────────────────
+  // ── Port scan ─────────────────────────────────────────────────────────────
 
   void _runPortScan() {
     _portSub?.cancel();
+    List<int>? ports;
+    int rangeStart = 1, rangeEnd = 2048;
+    if (_portUseWellKnown) {
+      ports = NetworkTools.wellKnownPorts;
+    } else {
+      rangeStart = _portRangeStart;
+      rangeEnd   = _portRangeEnd;
+    }
+    final total = ports != null ? ports.length : (rangeEnd - rangeStart + 1);
     setState(() {
       _portScanning = true;
-      _portDone = 0;
+      _portDone     = 0;
+      _portTotal    = total;
       _openPorts.clear();
     });
 
     final buf = StringBuffer();
     _portSub = NetworkTools.portScan(
       widget.host.ip,
+      ports:      ports,
+      rangeStart: rangeStart,
+      rangeEnd:   rangeEnd,
+      useTcp:     _portTcp,
+      useUdp:     _portUdp,
       onProgress: (done, _) => setState(() => _portDone = done),
     ).listen(
       (line) {
         buf.write(line);
-        // Parse "OPEN  80/tcp  http"
         if (line.startsWith('OPEN')) {
           final parts = line.trim().split(RegExp(r'\s+'));
-          if (parts.length >= 3) {
-            final portStr = parts[1].split('/').first;
-            final portNum = int.tryParse(portStr) ?? 0;
+          if (parts.length >= 2) {
+            final portProto = parts[1].split('/');
+            final portNum = int.tryParse(portProto.first) ?? 0;
             setState(() => _openPorts.add(_OpenPort(
-              port: portNum,
+              port:  portNum,
               proto: parts[1],
-              name: parts.length > 2 ? parts[2] : '',
+              name:  parts.length > 2 ? parts[2] : '',
             )));
           }
         }
@@ -85,33 +117,51 @@ class _HostScreenState extends State<HostScreen> {
         if (settings.loggingEnabled) {
           await LogService.createLog(
             function: 'portscan',
-            content: buf.toString(),
-            summary: 'Port scan → ${widget.host.ip}: ${_openPorts.length} open',
+            content:  buf.toString(),
+            summary:  'Port scan → ${widget.host.ip}: ${_openPorts.length} open',
           );
         }
       },
     );
   }
 
-  // ── Diag tools ───────────────────────────────────────────────────────────
+  void _stopPortScan() {
+    _portSub?.cancel();
+    setState(() => _portScanning = false);
+  }
+
+  // ── Diag tools ────────────────────────────────────────────────────────────
 
   void _runDiag(_DiagTool tool) {
     _diagSub?.cancel();
     setState(() {
-      _activeTool = tool;
+      _activeTool  = tool;
       _diagRunning = true;
       _diagOutput.clear();
+      _pingTimings.clear();
     });
 
-    Stream<String> stream = switch (tool) {
-      _DiagTool.ping => NetworkTools.ping(widget.host.ip),
-      _DiagTool.nslookup => NetworkTools.nslookup(widget.host.ip),
-      _DiagTool.tracert => NetworkTools.traceroute(widget.host.ip),
+    final count = int.tryParse(_pingCountCtrl.text) ?? 10;
+    final Stream<String> stream = switch (tool) {
+      _DiagTool.ping => NetworkTools.ping(widget.host.ip, count: count),
     };
+
+    int _parsedUpTo = 0;
 
     _diagSub = stream.listen(
       (chunk) {
-        setState(() => _diagOutput.write(chunk));
+        setState(() {
+          _diagOutput.write(chunk);
+
+          if (tool == _DiagTool.ping) {
+            final (newMs, cursor) =
+                parsePingTimings(_diagOutput.toString(), _parsedUpTo);
+            _pingTimings.addAll(newMs);
+            _parsedUpTo = cursor;
+          }
+        });
+
+        // Auto-scroll the text fallback (nslookup / traceroute).
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (_diagScroll.hasClients) {
             _diagScroll.animateTo(
@@ -123,71 +173,69 @@ class _HostScreenState extends State<HostScreen> {
         });
       },
       onDone: () async {
+        // Final scan: catch any partial line at end of stream.
+        if (tool == _DiagTool.ping) {
+          final (tail, _) = parsePingTimings(_diagOutput.toString(), _parsedUpTo);
+          if (tail.isNotEmpty) setState(() => _pingTimings.addAll(tail));
+        }
         setState(() => _diagRunning = false);
         final settings = context.read<SettingsProvider>().settings;
         if (settings.loggingEnabled) {
           await LogService.createLog(
             function: tool.name,
-            content: _diagOutput.toString(),
-            summary: '${tool.name.toUpperCase()} → ${widget.host.ip}',
+            content:  _diagOutput.toString(),
+            summary:  '${tool.name.toUpperCase()} → ${widget.host.ip}',
           );
         }
       },
     );
   }
 
-  // ── Clipboard helper ─────────────────────────────────────────────────────
+  void _stopDiag() {
+    _diagSub?.cancel();
+    setState(() => _diagRunning = false);
+  }
+
+  // ── Clipboard ─────────────────────────────────────────────────────────────
 
   void _copy(BuildContext ctx, String value) {
     Clipboard.setData(ClipboardData(text: value));
-    ScaffoldMessenger.of(ctx).showSnackBar(
-      SnackBar(
-        content: Text('Copied: $value'),
-        duration: const Duration(seconds: 1),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
+      content: Text('Copied: $value'),
+      duration: const Duration(seconds: 1),
+      behavior: SnackBarBehavior.floating,
+    ));
   }
 
-  // ── Launch helpers ───────────────────────────────────────────────────────
+  // ── URL launchers ─────────────────────────────────────────────────────────
 
   Future<void> _openHttp(BuildContext ctx) async {
     final uri = Uri.parse('http://${widget.host.ip}');
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else {
-      if (ctx.mounted) {
-        ScaffoldMessenger.of(ctx).showSnackBar(
-          const SnackBar(content: Text('Could not open browser')),
-        );
-      }
+    } else if (ctx.mounted) {
+      ScaffoldMessenger.of(ctx).showSnackBar(
+          const SnackBar(content: Text('Could not open browser')));
     }
   }
 
   Future<void> _openSsh(BuildContext ctx) async {
-    // SSH intent — works with ConnectBot / Termius etc.
     final uri = Uri.parse('ssh://${widget.host.ip}');
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else {
-      if (ctx.mounted) {
-        ScaffoldMessenger.of(ctx).showSnackBar(
-          const SnackBar(
-            content: Text('No SSH app found. Install ConnectBot or Termius.'),
-          ),
-        );
-      }
+    } else if (ctx.mounted) {
+      ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
+          content: Text('No SSH app found. Install ConnectBot or Termius.')));
     }
   }
 
-  // ── Build ────────────────────────────────────────────────────────────────
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    final host = widget.host;
-    final isWide = MediaQuery.of(context).size.width > 600;
-    final isLandscape =
-        MediaQuery.of(context).orientation == Orientation.landscape;
+    final host       = widget.host;
+    final isWide     = MediaQuery.of(context).size.width > 600;
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
     final leftPane = SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -215,13 +263,11 @@ class _HostScreenState extends State<HostScreen> {
           ],
         ),
         actions: [
-          // HTTP
           IconButton(
             icon: const Icon(Icons.open_in_browser),
             tooltip: 'Open in browser (HTTP)',
             onPressed: () => _openHttp(context),
           ),
-          // SSH
           IconButton(
             icon: const Icon(Icons.terminal),
             tooltip: 'Open SSH',
@@ -230,32 +276,29 @@ class _HostScreenState extends State<HostScreen> {
         ],
       ),
       body: (isLandscape || isWide)
-          ? Row(
-              children: [
-                Expanded(flex: 5, child: leftPane),
-                const VerticalDivider(width: 1),
-                Expanded(flex: 5, child: rightPane),
-              ],
-            )
-          : Column(
-              children: [
-                Expanded(flex: 6, child: leftPane),
-                const Divider(height: 1),
-                Expanded(flex: 5, child: rightPane),
-              ],
-            ),
+          ? Row(children: [
+              Expanded(flex: 5, child: leftPane),
+              const VerticalDivider(width: 1),
+              Expanded(flex: 5, child: rightPane),
+            ])
+          : Column(children: [
+              Expanded(flex: 6, child: leftPane),
+              const Divider(height: 1),
+              Expanded(flex: 5, child: rightPane),
+            ]),
     );
   }
 
-  // ── Info card ─────────────────────────────────────────────────────────────
+  // ── Info card ──────────────────────────────────────────────────────────────
 
   Widget _buildInfoCard(BuildContext context, HostResult host) {
+    // Always show hostname row; display "—" when empty so it's always present.
     final rows = [
-      ('IP Address', host.ip),
-      ('MAC Address', host.mac),
-      if (host.hostname.isNotEmpty) ('Hostname', host.hostname),
+      ('IP Address',    host.ip),
+      ('MAC Address',   host.mac),
+      ('Hostname',      host.hostname.isEmpty ? '—' : host.hostname),
       if (host.manufacturer.isNotEmpty) ('Manufacturer', host.manufacturer),
-      if (host.deviceType.isNotEmpty) ('Device Type', host.deviceType),
+      if (host.deviceType.isNotEmpty)   ('Device Type',  host.deviceType),
     ];
 
     return Card(
@@ -281,7 +324,7 @@ class _HostScreenState extends State<HostScreen> {
     );
   }
 
-  // ── Open ports card ───────────────────────────────────────────────────────
+  // ── Ports card ────────────────────────────────────────────────────────────
 
   Widget _buildPortsCard(BuildContext context) {
     final primary = Theme.of(context).colorScheme.primary;
@@ -291,77 +334,81 @@ class _HostScreenState extends State<HostScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Text('Open Ports',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: primary,
-                        )),
-                const Spacer(),
-                if (_portScanning)
-                  Row(children: [
-                    SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(strokeWidth: 2,
-                          color: primary),
-                    ),
-                    const SizedBox(width: 6),
-                    Text('$_portDone/$_portTotal',
-                        style: Theme.of(context).textTheme.bodySmall),
-                  ])
-                else
-                  IconButton(
-                    icon: const Icon(Icons.refresh, size: 18),
-                    tooltip: 'Re-scan ports',
-                    onPressed: _runPortScan,
-                    visualDensity: VisualDensity.compact,
-                  ),
+            // Header row
+            Row(children: [
+              Text('Open Ports',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold, color: primary)),
+              const Spacer(),
+              if (_portScanning) ...[
+                SizedBox(
+                  width: 14, height: 14,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: primary),
+                ),
+                const SizedBox(width: 6),
+                Text('$_portDone/$_portTotal',
+                    style: TextStyle(fontSize: 11, color: primary)),
+                const SizedBox(width: 8),
+                // Stop port scan button
+                IconButton(
+                  icon: const Icon(Icons.stop_rounded, size: 20),
+                  tooltip: 'Stop port scan',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: _stopPortScan,
+                ),
               ],
-            ),
-            const SizedBox(height: 4),
-            if (_portScanning && _openPorts.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: LinearProgressIndicator(
-                    value: _portTotal > 0 ? _portDone / _portTotal : null),
-              )
-            else if (_openPorts.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
+              const SizedBox(width: 8),
+              // Settings button
+              IconButton(
+                icon: const Icon(Icons.tune, size: 20),
+                tooltip: 'Port scan settings',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                onPressed: () =>
+                    setState(() => _portSettingsVisible = !_portSettingsVisible),
+              ),
+              const SizedBox(width: 6),
+              // Rescan button (only when not scanning)
+              if (!_portScanning)
+                IconButton(
+                  icon: const Icon(Icons.refresh, size: 20),
+                  tooltip: 'Re-scan ports',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: _runPortScan,
+                ),
+            ]),
+
+            // Port scan settings panel
+            if (_portSettingsVisible) ...[
+              const SizedBox(height: 10),
+              _buildPortSettings(context),
+              const Divider(height: 16),
+            ],
+
+            // Port list
+            if (_openPorts.isEmpty && !_portScanning)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
                 child: Text('No open ports found.',
-                    style: TextStyle(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurface
-                            .withValues(alpha: 0.5))),
+                    style: TextStyle(fontSize: 12)),
               )
             else
               ..._openPorts.map((p) => Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 3),
-                    child: Row(
-                      children: [
-                        Icon(Icons.circle, size: 8, color: primary),
-                        const SizedBox(width: 8),
-                        Text(p.proto,
-                            style: const TextStyle(
-                                fontFamily: 'monospace',
-                                fontWeight: FontWeight.bold)),
-                        const SizedBox(width: 8),
-                        Text(p.name,
-                            style: TextStyle(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurface
-                                    .withValues(alpha: 0.65))),
-                        const Spacer(),
-                        InkWell(
-                          onTap: () => _copy(context, p.port.toString()),
-                          child: const Icon(Icons.copy, size: 14),
-                        ),
-                      ],
-                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Row(children: [
+                      const Icon(Icons.circle, size: 8, color: Colors.green),
+                      const SizedBox(width: 6),
+                      Text('${p.proto}',
+                          style: const TextStyle(
+                              fontFamily: 'monospace', fontSize: 12,
+                              fontWeight: FontWeight.bold)),
+                      const SizedBox(width: 8),
+                      Text(p.name,
+                          style: const TextStyle(fontSize: 12)),
+                    ]),
                   )),
           ],
         ),
@@ -369,81 +416,177 @@ class _HostScreenState extends State<HostScreen> {
     );
   }
 
-  // ── Diag panel ────────────────────────────────────────────────────────────
-
-  Widget _buildDiagPanel(BuildContext context) {
+  Widget _buildPortSettings(BuildContext context) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Tool buttons
-        Padding(
-          padding: const EdgeInsets.all(12),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _DiagBtn(icon: Icons.speed, label: 'Ping',
-                  tool: _DiagTool.ping, active: _activeTool,
-                  running: _diagRunning, onRun: _runDiag),
-              _DiagBtn(icon: Icons.search, label: 'NSLookup',
-                  tool: _DiagTool.nslookup, active: _activeTool,
-                  running: _diagRunning, onRun: _runDiag),
-              _DiagBtn(icon: Icons.timeline, label: 'Traceroute',
-                  tool: _DiagTool.tracert, active: _activeTool,
-                  running: _diagRunning, onRun: _runDiag),
-            ],
+        // Port selection mode
+        Row(children: [
+          const Text('Ports:', style: TextStyle(fontSize: 12)),
+          const SizedBox(width: 8),
+          ChoiceChip(
+            label: const Text('Well-known'),
+            selected: _portUseWellKnown,
+            onSelected: (v) => setState(() => _portUseWellKnown = true),
           ),
-        ),
-
-        if (_diagRunning)
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 12),
-            child: LinearProgressIndicator(),
+          const SizedBox(width: 6),
+          ChoiceChip(
+            label: const Text('Range'),
+            selected: !_portUseWellKnown,
+            onSelected: (v) => setState(() => _portUseWellKnown = false),
           ),
-
+        ]),
+        if (!_portUseWellKnown) ...[
+          const SizedBox(height: 8),
+          Row(children: [
+            const Text('From:', style: TextStyle(fontSize: 12)),
+            const SizedBox(width: 6),
+            SizedBox(
+              width: 70,
+              child: TextField(
+                controller: _portStartCtrl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                    isDense: true, contentPadding: EdgeInsets.all(6)),
+                onChanged: (v) =>
+                    _portRangeStart = int.tryParse(v) ?? 1,
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Text('To:', style: TextStyle(fontSize: 12)),
+            const SizedBox(width: 6),
+            SizedBox(
+              width: 70,
+              child: TextField(
+                controller: _portEndCtrl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                    isDense: true, contentPadding: EdgeInsets.all(6)),
+                onChanged: (v) =>
+                    _portRangeEnd = int.tryParse(v) ?? 2048,
+              ),
+            ),
+          ]),
+        ],
+        const SizedBox(height: 8),
+        // Protocol selection
+        Row(children: [
+          const Text('Protocol:', style: TextStyle(fontSize: 12)),
+          const SizedBox(width: 8),
+          Checkbox(
+            value: _portTcp,
+            onChanged: (v) => setState(() => _portTcp = v ?? true),
+          ),
+          const Text('TCP', style: TextStyle(fontSize: 12)),
+          const SizedBox(width: 6),
+          Checkbox(
+            value: _portUdp,
+            onChanged: (v) => setState(() => _portUdp = v ?? false),
+          ),
+          const Text('UDP', style: TextStyle(fontSize: 12)),
+        ]),
         const SizedBox(height: 4),
-
-        Expanded(
-          child: _diagOutput.isEmpty && !_diagRunning
-              ? Center(
-                  child: Text('Select a diagnostic tool',
-                      style: TextStyle(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurface
-                              .withValues(alpha: 0.4))),
-                )
-              : Stack(
-                  children: [
-                    SingleChildScrollView(
-                      controller: _diagScroll,
-                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 48),
-                      child: SelectableText(
-                        _diagOutput.toString(),
-                        style: const TextStyle(
-                            fontFamily: 'monospace',
-                            fontSize: 12,
-                            height: 1.5),
-                      ),
-                    ),
-                    if (_diagOutput.isNotEmpty)
-                      Positioned(
-                        bottom: 8,
-                        right: 8,
-                        child: IconButton.filledTonal(
-                          onPressed: () => setState(() => _diagOutput.clear()),
-                          icon: const Icon(Icons.clear_all),
-                          tooltip: 'Clear',
-                        ),
-                      ),
-                  ],
-                ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            icon: const Icon(Icons.play_arrow, size: 16),
+            label: const Text('Apply & Rescan'),
+            onPressed: () {
+              setState(() => _portSettingsVisible = false);
+              _runPortScan();
+            },
+          ),
         ),
       ],
     );
   }
+
+  // ── Diag panel ────────────────────────────────────────────────────────────
+
+  Widget _buildDiagPanel(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Diagnostics',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold, color: primary)),
+          const SizedBox(height: 8),
+
+          // Ping row: button + count input + Stop button (when running)
+          Row(children: [
+            OutlinedButton.icon(
+              icon: const Icon(Icons.wifi_tethering, size: 16),
+              label: const Text('Ping'),
+              onPressed: _diagRunning ? null : () => _runDiag(_DiagTool.ping),
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 80,
+              child: TextField(
+                controller: _pingCountCtrl,
+                keyboardType: TextInputType.number,
+                textAlign: TextAlign.center,
+                decoration: const InputDecoration(
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                  border: OutlineInputBorder(),
+                  hintText: '10',
+                  suffixText: '×',
+                ),
+                onChanged: (v) => _pingCount = int.tryParse(v) ?? 10,
+              ),
+            ),
+            const SizedBox(width: 6),
+            const Text('times', style: TextStyle(fontSize: 12)),
+            const Spacer(),
+            if (_diagRunning)
+              SizedBox(
+                width: 32, height: 32,
+                child: IconButton(
+                  icon: const Icon(Icons.stop_rounded),
+                  iconSize: 16,
+                  padding: EdgeInsets.zero,
+                  style: IconButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.error,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: _stopDiag,
+                  tooltip: 'Stop',
+                ),
+              ),
+          ]),
+          const SizedBox(height: 8),
+
+          // Output pane — no title bar, Stop is on the control row above.
+          if (_activeTool != null)
+            Expanded(
+              child: DiagOutputPanel(
+                output:           _diagOutput.toString(),
+                isRunning:        _diagRunning,
+                isPing:           _activeTool == _DiagTool.ping,
+                pingTimings:      _pingTimings,
+                scrollController: _diagScroll,
+              ),
+            )
+          else
+            const Expanded(child: SizedBox()),
+        ],
+      ),
+    );
+  }
 }
 
-// ── Copyable info row ─────────────────────────────────────────────────────────
+// ── Helper widgets ────────────────────────────────────────────────────────────
+
+class _OpenPort {
+  final int port;
+  final String proto;
+  final String name;
+  const _OpenPort({required this.port, required this.proto, required this.name});
+}
 
 class _CopyableRow extends StatelessWidget {
   final String label;
@@ -459,76 +602,33 @@ class _CopyableRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            flex: 4,
+          SizedBox(
+            width: 110,
             child: Text(label,
                 style: TextStyle(
+                    fontSize: 12,
                     color: Theme.of(context)
                         .colorScheme
-                        .onSurface
-                        .withValues(alpha: 0.6))),
+                        .onSurfaceVariant)),
           ),
           Expanded(
-            flex: 5,
             child: Text(value,
-                style: const TextStyle(fontWeight: FontWeight.w500)),
+                style: const TextStyle(
+                    fontFamily: 'monospace', fontSize: 12)),
           ),
           InkWell(
             onTap: onCopy,
             borderRadius: BorderRadius.circular(4),
-            child: Padding(
-              padding: const EdgeInsets.all(2),
-              child: Icon(Icons.copy,
-                  size: 15,
-                  color: Theme.of(context).colorScheme.primary),
+            child: const Padding(
+              padding: EdgeInsets.all(4),
+              child: Icon(Icons.copy, size: 14),
             ),
           ),
         ],
       ),
     );
   }
-}
-
-// ── Diag button ───────────────────────────────────────────────────────────────
-
-class _DiagBtn extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final _DiagTool tool;
-  final _DiagTool? active;
-  final bool running;
-  final void Function(_DiagTool) onRun;
-
-  const _DiagBtn({
-    required this.icon, required this.label, required this.tool,
-    required this.active, required this.running, required this.onRun,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isActive = active == tool && running;
-    return OutlinedButton.icon(
-      onPressed: running ? null : () => onRun(tool),
-      icon: isActive
-          ? SizedBox(
-              width: 16, height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2,
-                  color: Theme.of(context).colorScheme.primary))
-          : Icon(icon, size: 16),
-      label: Text(label),
-    );
-  }
-}
-
-// ── Data classes ──────────────────────────────────────────────────────────────
-
-class _OpenPort {
-  final int port;
-  final String proto;
-  final String name;
-  const _OpenPort({required this.port, required this.proto, required this.name});
 }

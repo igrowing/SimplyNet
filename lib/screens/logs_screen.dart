@@ -90,10 +90,10 @@ class _LogTile extends StatelessWidget {
       title: Text(
         '${entry.function.toUpperCase()} — ${_fmt.format(entry.timestamp)}',
         style: const TextStyle(fontWeight: FontWeight.w500),
-        overflow: TextOverflow.ellipsis,
+        // overflow: TextOverflow.ellipsis,
       ),
       subtitle: Text(entry.summary,
-          maxLines: 2, overflow: TextOverflow.ellipsis,
+          maxLines: 2, // overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontSize: 12)),
       trailing: IconButton(
         icon: Icon(Icons.delete_outline,

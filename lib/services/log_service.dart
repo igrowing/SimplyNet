@@ -26,14 +26,14 @@ class LogService {
     return raw
         .map((s) => LogEntry.fromJson(json.decode(s) as Map<String, dynamic>))
         .toList()
-      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      ..sort((entryA, entryB) => entryB.timestamp.compareTo(entryA.timestamp));
   }
 
   static Future<void> _saveIndex(List<LogEntry> entries) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(
       _indexKey,
-      entries.map((e) => json.encode(e.toJson())).toList(),
+      entries.map((entry) => json.encode(entry.toJson())).toList(),
     );
   }
 

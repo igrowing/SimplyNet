@@ -41,6 +41,7 @@ class SimplyNetApp extends StatelessWidget {
           double scale = settings.settings.fontScale;
           if (scale <= 0 || scale.isNaN || scale.isInfinite) scale = 1.0;
           return MaterialApp(
+            key: ValueKey(scale), // Force full rebuild when scale changes
             title: 'SimplyNet',
             debugShowCheckedModeBanner: false,
             themeMode: settings.themeMode,

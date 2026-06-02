@@ -9,11 +9,14 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final prov = context.watch<SettingsProvider>();
-    final s = prov.settings;
+    final settings = prov.settings;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Settings', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Settings',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
       ),
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 8),
@@ -27,72 +30,78 @@ class SettingsScreen extends StatelessWidget {
             label: 'Theme',
             child: SegmentedButton<AppTheme>(
               segments: const [
-                ButtonSegment(value: AppTheme.light,
-                    icon: Icon(Icons.light_mode), label: Text('Light')),
-                ButtonSegment(value: AppTheme.dark,
-                    icon: Icon(Icons.dark_mode), label: Text('Dark')),
-                ButtonSegment(value: AppTheme.system,
-                    icon: Icon(Icons.brightness_auto), label: Text('Auto')),
+                ButtonSegment(
+                  value: AppTheme.light,
+                  icon: Icon(Icons.light_mode),
+                  label: Text('Light'),
+                ),
+                ButtonSegment(
+                  value: AppTheme.dark,
+                  icon: Icon(Icons.dark_mode),
+                  label: Text('Dark'),
+                ),
+                ButtonSegment(
+                  value: AppTheme.system,
+                  icon: Icon(Icons.brightness_auto),
+                  label: Text('Auto'),
+                ),
               ],
-              selected: {s.theme},
+              selected: {settings.theme},
               onSelectionChanged: (v) => prov.setTheme(v.first),
             ),
           ),
 
-          // Font size
+          // Screen on timeout
           _SegmentedTile(
-            icon: Icons.text_fields,
-            label: 'Font Size',
-            child: SegmentedButton<AppFontSize>(
-              segments: [
+            icon: Icons.screen_lock_portrait_outlined,
+            label: 'Screen On Timeout',
+            child: SegmentedButton<AppScreenTimeout>(
+              segments: const [
                 ButtonSegment(
-                  value: AppFontSize.small,
-                  label: Text('Small',
-                      style: TextStyle(fontSize: 11 * s.fontScale)),
+                  value: AppScreenTimeout.system,
+                  icon: Icon(Icons.phone_android),
+                  label: Text('System'),
                 ),
                 ButtonSegment(
-                  value: AppFontSize.medium,
-                  label: Text('Medium',
-                      style: TextStyle(fontSize: 13 * s.fontScale)),
+                  value: AppScreenTimeout.triple,
+                  icon: Icon(Icons.timer_3_select),
+                  label: Text('3× System'),
                 ),
                 ButtonSegment(
-                  value: AppFontSize.large,
-                  label: Text('Large',
-                      style: TextStyle(fontSize: 15 * s.fontScale)),
+                  value: AppScreenTimeout.stayOn,
+                  icon: Icon(Icons.lock_open_outlined),
+                  label: Text('Stay On'),
                 ),
               ],
-              selected: {s.fontSize},
-              onSelectionChanged: (v) => prov.setFontSize(v.first),
+              selected: {settings.screenTimeout},
+              onSelectionChanged: (v) => prov.setScreenTimeout(v.first),
             ),
           ),
 
           const Divider(height: 24),
           _SectionHeader('Scanning'),
 
-          // Show MAC
           SwitchListTile(
             secondary: const Icon(Icons.router_outlined),
             title: const Text('Show MAC Address'),
             subtitle: const Text('Display MAC column in scan results'),
-            value: s.showMac,
+            value: settings.showMac,
             onChanged: prov.setShowMac,
           ),
 
-          // Resolve names
           SwitchListTile(
             secondary: const Icon(Icons.dns_outlined),
             title: const Text('Resolve Hostnames'),
-            subtitle: const Text('Perform DNS/reverse-DNS during scan'),
-            value: s.resolveNames,
+            subtitle: const Text('Perform reverse-DNS + mDNS during scan'),
+            value: settings.resolveNames,
             onChanged: prov.setResolveNames,
           ),
 
-          // Logging
           SwitchListTile(
             secondary: const Icon(Icons.save_alt),
             title: const Text('Enable Logging'),
             subtitle: const Text('Save scan and tool output to log files'),
-            value: s.loggingEnabled,
+            value: settings.loggingEnabled,
             onChanged: prov.setLoggingEnabled,
           ),
 
@@ -112,7 +121,7 @@ class SettingsScreen extends StatelessWidget {
   }
 }
 
-// ── Segmented setting tile (label + icon above the control) ──────────────────
+// ── Segmented setting tile ────────────────────────────────────────────────────
 
 class _SegmentedTile extends StatelessWidget {
   final IconData icon;
@@ -134,20 +143,22 @@ class _SegmentedTile extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(icon, size: 20,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant),
+              Icon(
+                icon,
+                size: 20,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
               const SizedBox(width: 10),
-              Text(label,
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        fontWeight: FontWeight.w500,
-                      )),
+              Text(
+                label,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w500),
+              ),
             ],
           ),
           const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: child,
-          ),
+          SizedBox(width: double.infinity, child: child),
         ],
       ),
     );

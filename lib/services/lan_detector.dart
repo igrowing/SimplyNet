@@ -98,12 +98,12 @@ int subnetMaskToPrefix(String mask) {
         // After the first 0-bit, every remaining octet must be all-zeros
         if (octet != 0) return 24;
       } else {
-        int v = octet;
-        while (v & 0x80 != 0) {
+        int octetBits = octet;
+        while (octetBits & 0x80 != 0) {
           bits++;
-          v = (v << 1) & 0xFF;
+          octetBits = (octetBits << 1) & 0xFF;
         }
-        if (v != 0) {
+        if (octetBits != 0) {
           // A 1-bit after a 0-bit within the same octet → non-contiguous
           return 24;
         }

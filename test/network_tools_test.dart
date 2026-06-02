@@ -20,7 +20,7 @@ void main() {
 
     test('portScan emits header as first event', () async {
       // Scan localhost with a single unlikely port — we only check the header
-      final stream = NetworkTools.portScan('127.0.0.1', ports: []);
+      final stream = NetworkTools.portScan('127.0.0.1', ports: [80, 443]);
       final events = await stream.toList();
       expect(events.first, contains('PORT SCAN'));
     });

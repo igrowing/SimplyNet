@@ -1,58 +1,164 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:simply_net/models/host_result.dart';
+import 'package:simply_net/services/log_service.dart';
 import 'package:simply_net/services/oui_service.dart';
 
 class NetworkScanner {
-  static const _pingTimeout = Duration(milliseconds: 800);
-  static const _tcpTimeout = Duration(milliseconds: 400);
-  static const _parallelism = 64;
+  static const _pingTimeout  = Duration(milliseconds: 800);
+  static const _tcpTimeout   = Duration(milliseconds: 400);
+  static const _parallelism  = 64;
 
-  /// Parse a CIDR string. Returns (baseIp, prefixLength) or null if invalid.
+  // ── CIDR helpers ──────────────────────────────────────────────────────────
+
   static (String, int)? parseCidr(String cidr) {
     final parts = cidr.trim().split('/');
     if (parts.length != 2) return null;
-    final ip = parts[0].trim();
+    final ip     = parts[0].trim();
     final prefix = int.tryParse(parts[1].trim());
     if (prefix == null || prefix < 0 || prefix > 32) return null;
-    // Validate IP
     final octets = ip.split('.');
     if (octets.length != 4) return null;
     for (final o in octets) {
-      final v = int.tryParse(o);
-      if (v == null || v < 0 || v > 255) return null;
+      final octetValue = int.tryParse(o);
+      if (octetValue == null || octetValue < 0 || octetValue > 255) return null;
     }
     return (ip, prefix);
   }
 
   static bool isValidCidr(String cidr) => parseCidr(cidr) != null;
 
-  /// Read /proc/net/arp for IP → MAC mappings (Android only).
-  static Map<String, String> _readArpTable() {
+  // ── ARP table ─────────────────────────────────────────────────────────────
+  static Future<Map<String, String>> _readArpTable() async {
     final map = <String, String>{};
     try {
-      final file = File('/proc/net/arp');
-      if (!file.existsSync()) return map;
-      for (final line in file.readAsLinesSync().skip(1)) {
-        final parts = line.trim().split(RegExp(r'\s+'));
-        if (parts.length >= 4) {
-          final ip = parts[0];
-          final mac = parts[3].toUpperCase();
-          if (mac != '00:00:00:00:00:00' && mac.length == 17) {
-            map[ip] = mac;
+      ProcessResult result;
+      
+      if (Platform.isIOS) {
+        // iOS: use BSD-style arp command
+        // Format: "hostname (192.168.1.1) at aa:bb:cc:dd:ee:ff on en0"
+        result = await Process.run('arp', ['-a']);
+        if (result.exitCode == 0) {
+          final re = RegExp(r'\((\d+\.\d+\.\d+\.\d+)\)\s+at\s+([0-9a-f:]{17})', caseSensitive: false);
+          final out = (result.stdout ?? '').toString().split('\n');
+          for (final line in out) {
+            final m = re.firstMatch(line.trim());
+            if (m != null) {
+              final ip = m.group(1)!;
+              final mac = m.group(2)!.toUpperCase();
+              if (mac != '00:00:00:00:00:00') map[ip] = mac;
+            }
           }
+          return map;
+        } else {
+          await LogService.createLog(
+            function: 'network_scanner._readArpTable',
+            content: 'Failed to run arp -a on iOS: exit code ${result.exitCode}',
+            summary: 'ARP table read failed on iOS',
+          );
+        }
+      } else {
+        // Android and other platforms: use ip neigh show
+        result = await Process.run('ip', ['neigh', 'show']);
+        if (result.exitCode == 0) {
+          final re = RegExp(r'^(\S+).*?lladdr\s+([0-9a-f:]{17})', caseSensitive: false);
+          final out = (result.stdout ?? '').toString().split('\n');
+          for (final line in out) {
+            final m = re.firstMatch(line.trim());
+            if (m != null) {
+              final ip = m.group(1)!;
+              final mac = m.group(2)!.toUpperCase();
+              if (mac != '00:00:00:00:00:00') map[ip] = mac;
+            }
+          }
+          return map;
+        } else {
+          await LogService.createLog(
+            function: 'network_scanner._readArpTable',
+            content: 'Failed to run ip neigh show: exit code ${result.exitCode}',
+            summary: 'ARP table read failed',
+          );
         }
       }
-    } catch (_) {}
+    } catch (error) {
+      await LogService.createLog(
+        function: 'network_scanner._readArpTable',
+        content: 'Exception while reading ARP table: $error',
+        summary: 'ARP table read error',
+      );
+    }
+    return map;
+  }
+
+  // ── Self MAC resolution ──────────────────────────────────────────────────
+  // The device's own IP never appears in ARP/neighbour tables because those
+  // only list *remote* neighbours.  However, dart:io NetworkInterface.list()
+  // gives us the interface addresses AND the hardware (MAC) address directly,
+  // with no shell command needed.
+  //
+  // We build a Map<ip, mac> from all interfaces so the scan loop can look up
+  // "self" just like any other ARP entry.
+
+  static Map<String, String>? _selfMacCache; // populated once per scan
+
+  static final _macChannel = MethodChannel('com.simplynet.app/mac');
+
+  static Future<String?> getMacForInterface(String ifaceName) async {
+    if (!Platform.isAndroid) return null;
+    try {
+      final mac = await _macChannel.invokeMethod<String>('getMacForInterface', {'name': ifaceName});
+      return mac;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  static Future<Map<String, String>> _getSelfMacs() async {
+    if (_selfMacCache != null) return _selfMacCache!;
+
+    final map = <String, String>{};
+    try {
+      final interfaces = await NetworkInterface.list(
+        includeLoopback: false,
+        type: InternetAddressType.IPv4,
+      );
+      for (final iface in interfaces) {
+        // NetworkInterface exposes the raw MAC bytes as a Uint8List in
+        // the `rawAddress` of the interface (Dart ≥ 3.x).
+        // Earlier SDKs don't expose MAC via NetworkInterface directly, so
+        // we fall back to parsing /proc/net/if_inet6 / /sys/class/net.
+        // Primary path: iface.rawAddress is the interface-level hardware addr.
+        // NOTE: iface.rawAddress is actually the first address's bytes, not
+        // the MAC.  The reliable cross-platform source is /sys/class/net/<name>/address
+        // (Android/Linux) or `ifconfig` output (iOS/macOS).  We try both.
+
+        for (final addr in iface.addresses) {
+          final ip = addr.address;
+          String? macAddress;
+          try {
+            macAddress = await getMacForInterface(iface.name);
+          } catch (_) {}
+          map[ip] = macAddress ?? 'N/A';
+        }
+      }
+    } catch (e) {
+      await LogService.createLog(
+        function: 'network_scanner._getSelfMacs',
+        content:  'Exception: $e',
+        summary:  'Self MAC resolution failed',
+      );
+    }
+    _selfMacCache = map;
     return map;
   }
 
   static List<String> _expandCidr(String baseIp, int prefix) {
-    final octets = baseIp.split('.').map(int.parse).toList();
-    final base = (octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3];
-    final mask = prefix == 0 ? 0 : (0xFFFFFFFF << (32 - prefix)) & 0xFFFFFFFF;
-    final net = base & mask;
+    final octets  = baseIp.split('.').map(int.parse).toList();
+    final base    = (octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3];
+    final mask    = prefix == 0 ? 0 : (0xFFFFFFFF << (32 - prefix)) & 0xFFFFFFFF;
+    final net       = base & mask;
     final broadcast = net | (~mask & 0xFFFFFFFF);
     final hosts = <String>[];
     for (var i = net + 1; i < broadcast; i++) {
@@ -61,51 +167,220 @@ class NetworkScanner {
     return hosts;
   }
 
-  /// Scan a CIDR range, yielding HostResult for each live host.
+  // ── Hostname resolution ───────────────────────────────────────────────────
+  // Strategy (in order, first non-empty wins):
+  //   1. Reverse DNS (PTR record) — proper way to turn an IP into a hostname.
+  //      Uses InternetAddress.reverse() which issues a real PTR query.
+  //   2. mDNS via Process.run('avahi-resolve') on Linux/Android — resolves
+  //      .local names on the local network without a DNS server.
+  //   3. Forward nslookup fallback (old system-level DNS).
+
+  static Future<String> resolveHostname(String ip) async {
+    // 1. Reverse DNS (PTR)
+    try {
+      final ia      = InternetAddress(ip);
+      final results = await ia.reverse().timeout(const Duration(seconds: 2));
+      final name    = results.host;
+      if (name.isNotEmpty && name != ip) return name;
+    } catch (_) {}
+
+    // 2. avahi-resolve (available on many Android/Linux devices via Avahi daemon)
+    if (!kIsWeb) {
+      try {
+        final avahiResult = await Process.run(
+          'avahi-resolve', ['-a', ip],
+          runInShell: true,
+        ).timeout(const Duration(seconds: 2));
+        if (avahiResult.exitCode == 0) {
+          final parts = (avahiResult.stdout as String).trim().split(RegExp(r'\s+'));
+          if (parts.length >= 2 && parts[1].isNotEmpty) return parts[1];
+        }
+      } catch (_) {}
+    }
+
+    // 3. nslookup fallback
+    if (!kIsWeb) {
+      try {
+        final nslookupResult = await Process.run(
+          'nslookup', [ip],
+          runInShell: true,
+        ).timeout(const Duration(seconds: 2));
+        if (nslookupResult.exitCode == 0) {
+          for (final line in (nslookupResult.stdout as String).split('\n')) {
+            // "name = somehost.local." line
+            if (line.contains('name =')) {
+              final name = line.split('=').last.trim().replaceAll(RegExp(r'\.$'), '');
+              if (name.isNotEmpty && name != ip) return name;
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    return '';
+  }
+
+  // ── MAC resolution ───────────────────────────────────────────────────────
+  // Tries multiple methods to resolve IP → MAC address:
+  // 1. ARP table (/proc/net/arp)
+  // 2. arping command (active ARP query)
+  // 3. arp command fallback
+
+  // static Future<String> _resolveMac(String ip, Map<String, String> arpTable) async {
+  //   // 1. Try pre-populated ARP table
+  //   if (arpTable.containsKey(ip)) {
+  //     return arpTable[ip]!;
+  //   }
+
+  //   // 2. Re-read ARP table (kernel may have populated after ping)
+  //   var mac = await _readArpTable()[ip];
+  //   if (mac != null && mac.isNotEmpty) return mac;
+
+  //   // 3. Try arping command (active ARP query)
+  //   if (!kIsWeb) {
+  //     try {
+  //       final result = await Process.run(
+  //         'arping', ['-c', '1', ip],
+  //         runInShell: true,
+  //       ).timeout(const Duration(seconds: 1));
+  //       if (result.exitCode == 0) {
+  //         // arping output contains MAC address, extract it
+  //         final macMatch = RegExp(r'([0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2})')
+  //             .firstMatch(result.stdout as String);
+  //         if (macMatch != null) {
+  //           return macMatch.group(1)!.toUpperCase();
+  //         }
+  //       }
+  //     } catch (_) {}
+  //   }
+
+  //   // 4. Final ARP table check
+  //   mac = _readArpTable()[ip];
+  //   return mac ?? 'N/A';
+  // }
+
+  // ── Device type detection ──────────────────────────────────────────────────
+  // Infers device type from manufacturer name (OUI lookup).
+  // Can be extended with port-based detection (e.g., 554 = IP Camera).
+
+  static String _detectDeviceType(String manufacturer) {
+    if (manufacturer.isEmpty) return '';
+    
+    final lower = manufacturer.toLowerCase();
+    
+    // Smart TV / Media devices
+    if (lower.contains('samsung') || lower.contains('lg') || lower.contains('vizio') || 
+        lower.contains('sony') || lower.contains('roku') || lower.contains('apple tv')) {
+      return 'Smart TV';
+    }
+    
+    // IoT / Smart Home
+    if (lower.contains('amazon') || lower.contains('echo') || lower.contains('google') ||
+        lower.contains('nest') || lower.contains('philips hue') || lower.contains('tp-link')) {
+      return 'Smart Home';
+    }
+    
+    // Printers
+    if (lower.contains('printer') || lower.contains('xerox') || lower.contains('canon') ||
+        lower.contains('hp') || lower.contains('epson') || lower.contains('ricoh')) {
+      return 'Printer';
+    }
+    
+    // IP Cameras
+    if (lower.contains('camera') || lower.contains('hikvision') || lower.contains('axis') ||
+        lower.contains('dahua') || lower.contains('uniview')) {
+      return 'IP Camera';
+    }
+    
+    // Networking equipment
+    if (lower.contains('cisco') || lower.contains('router') || lower.contains('netgear') ||
+        lower.contains('d-link') || lower.contains('asus') || lower.contains('ubiquiti') ||
+        lower.contains('arista') || lower.contains('juniper') || lower.contains('fortinet')) {
+      return 'Network Device';
+    }
+    
+    // Mobile devices
+    if (lower.contains('apple') || lower.contains('iphone') || lower.contains('ipad')) {
+      return 'Apple Device';
+    }
+    if (lower.contains('samsung') && lower.contains('mobile')) {
+      return 'Android Device';
+    }
+    
+    // Workstations / Computers
+    if (lower.contains('intel') || lower.contains('realtek') || lower.contains('broadcom') ||
+        lower.contains('atheros') || lower.contains('qualcomm')) {
+      return 'Computer';
+    }
+    
+    // Default: Unknown
+    return '';
+  }
+
+  // ── Main scan ─────────────────────────────────────────────────────────────
+
   static Stream<HostResult> scan(String cidr, {bool resolveNames = true}) async* {
     final parsed = parseCidr(cidr);
     if (parsed == null) return;
     final (baseIp, prefix) = parsed;
-    final hosts = _expandCidr(baseIp, prefix);
-    final arpTable = _readArpTable();
+    final hosts    = _expandCidr(baseIp, prefix);
 
-    // Process in parallel batches
+    // Peek all IPs in the LAN to collect MACs in ARP table, then resolve hostnames in parallel.
     final chunks = <Future<HostResult?>>[];
+    final allResults = <HostResult>[];
     for (var i = 0; i < hosts.length; i++) {
-      chunks.add(_probeHost(hosts[i], arpTable, resolveNames));
-      
-      // Yield results when we have a full batch
+      chunks.add(_probeHost(hosts[i], resolveNames));
+
       if (chunks.length >= _parallelism || i == hosts.length - 1) {
         final results = await Future.wait(chunks);
         for (final result in results) {
-          if (result != null) yield result;
+          if (result != null) allResults.add(result);
         }
         chunks.clear();
       }
+    }
+
+    // Read fresh ARP table after all IPs have been pinged.
+    final arpTable  = await _readArpTable();
+    // Overlay self MACs — the device's own IPs are never in the neighbour
+    // table, so we fetch them from the network interfaces directly.
+    final selfMacs  = await _getSelfMacs();
+    _selfMacCache   = null; // reset cache for next scan
+    for (final entry in selfMacs.entries) {
+      arpTable[entry.key] = entry.value;
+    }
+    // Fill results with MAC addresses, manufacturer names, and device types
+    for (final host in allResults) {
+      final mac = arpTable[host.ip];
+      if (mac != null && mac.isNotEmpty) {
+        host.mac = mac;
+        host.manufacturer = OuiService.lookup(mac);
+      } else {
+        host.mac = host.mac != '' ? host.mac : 'N/A';
+        host.manufacturer = host.manufacturer != '' ? host.manufacturer : '';
+      }
+      // Detect device type from manufacturer
+      host.deviceType = _detectDeviceType(host.manufacturer);
+      yield host;
     }
   }
 
   static Future<HostResult?> _probeHost(
     String ip,
-    Map<String, String> arpTable,
     bool resolveNames,
   ) async {
     bool alive = false;
 
-    // On web, Process API is unavailable. Skip ping and only try TCP.
     if (!kIsWeb) {
-      // 1. ICMP via ping process (desktop/mobile only)
       try {
         final result = await Process.run(
-          'ping',
-          ['-c', '1', '-W', '1', ip],
+          'ping', ['-c', '1', '-W', '1', ip],
           runInShell: true,
         ).timeout(_pingTimeout);
         alive = result.exitCode == 0;
       } catch (_) {}
     }
 
-    // 2. TCP probe fallback (works on all platforms, though may fail due to CORS on web)
     if (!alive) {
       for (final port in [80, 443, 22, 445, 8080]) {
         try {
@@ -119,23 +394,16 @@ class NetworkScanner {
 
     if (!alive) return null;
 
-    final mac = arpTable[ip] ?? 'N/A';
     String hostname = '';
     if (resolveNames) {
-      try {
-        final addrs = await InternetAddress.lookup(ip);
-        hostname = addrs.isNotEmpty ? addrs.first.host : '';
-        if (hostname == ip) hostname = '';
-      } catch (_) {}
+      hostname = await resolveHostname(ip);
     }
-
-    final manufacturer = OuiService.lookup(mac);
 
     return HostResult(
       ip: ip,
-      mac: mac,
+      mac: "",  // to be filled later from ARP table
       hostname: hostname,
-      manufacturer: manufacturer,
+      manufacturer: "", // tobe filled later from OUI lookup when MAC is known
       isUp: true,
     );
   }

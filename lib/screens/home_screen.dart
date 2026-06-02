@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:simply_net/providers/scan_provider.dart';
 import 'package:simply_net/services/network_scanner.dart';
@@ -14,6 +15,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  String _appVersion = '';        // loaded from pubspec.yaml at startup
   late TextEditingController _ctrl;
   final FocusNode _focusNode = FocusNode();
   bool _hasError = false;
@@ -22,6 +24,17 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    // Load version from pubspec.yaml (bundled as Flutter asset).
+    rootBundle.loadString('pubspec.yaml').then((yaml) {
+      for (final line in yaml.split('\n')) {
+        if (line.startsWith('version:')) {
+          final raw = line.replaceFirst('version:', '').trim();
+          // raw is like "0.1.5+6" — display only the semver part
+          setState(() => _appVersion = 'v${raw.split('+').first}');
+          break;
+        }
+      }
+    }).catchError((_) {});
     final prov = context.read<ScanProvider>();
     _ctrl = TextEditingController(text: prov.target);
     // Auto-detect on first open
@@ -90,9 +103,30 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'SimplyNet',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.asset(
+              'assets/simplynet.png',
+              height: 32,
+              width: 32,
+            ),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'SimplyNet',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  _appVersion,
+                  style: const TextStyle(fontSize: 11),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
       body: OrientationBuilder(

@@ -1,0 +1,112 @@
+# Update app icon
+1. Change `assets/simplynet.png`.
+2. Run in terminal:
+```
+flutter pub run flutter_launcher_icons:main
+```
+3. Build and publish.
+
+
+# (Re)branding
+To rebrand SimplyNet as "Quantum Satis" for app store publishing, you need to change:
+
+1. App Name (Display Name)
+pubspec.yaml:
+```
+name: simply_net
+description: "Quantum Satis network toolkit"
+publish_to: 'none'
+```
+
+android/app/build.gradle.kts:
+Look for app name references in build config
+
+ios/Runner/Info.plist:
+```
+<key>CFBundleDisplayName</key>
+<string>Quantum Satis</string>
+```
+
+2. Package Name / Bundle ID (Unique Identifier)
+⚠️ Important: This can't be changed after publishing! Choose wisely.
+
+Android - android/app/build.gradle.kts:
+```
+android {
+    namespace = "com.quantumsatis.simplynet"  // Change this
+}
+```
+
+Android - android/app/src/main/AndroidManifest.xml:
+```
+android {
+    namespace = "com.quantumsatis.simplynet"  // Change this
+}
+```
+
+iOS - ios/Runner.xcodeproj/project.pbxproj:
+Search for bundle identifier and update:
+```
+PRODUCT_BUNDLE_IDENTIFIER = com.quantumsatis.simplynet;
+```
+
+Or in Xcode: Runner → Build Settings → Product Bundle Identifier
+
+3. Developer Account (Store-side, not code)
+Google Play: Create/use a Google Play Developer account registered to "Quantum Satis"
+App Store: Create/use an Apple Developer account for "Quantum Satis"
+Developer name appears in store listings, not in your code
+4. Icons and Screenshots
+Android: `android/app/src/main/res/mipmap-*/ic_launcher.png`
+iOS: Update app icons in Xcode asset catalog
+Use `flutter_launcher_icons.yaml` to regenerate:
+```
+flutter_launcher_icons:
+  image_path: "assets/simplynet.png"
+  ios: true
+  android: true
+```
+
+Then run: `flutter pub run flutter_launcher_icons`
+
+5. Metadata Files
+pubspec.yaml:
+```
+name: simply_net
+description: "Network toolkit by Quantum Satis"
+author: "Quantum Satis"
+homepage: "https://quantumsatis.com"  # Update if applicable
+```
+
+Checklist before publishing:
+- [] Update app display name everywhere
+- [] Change package name to com.quantumsatis.simplynet (or similar)
+- [] Update app icons/branding assets
+- [] Update pubspec.yaml metadata
+- [] Update iOS bundle ID
+- [] Create store accounts under "Quantum Satis"
+- [] Write app store descriptions/marketing copy
+- [] Generate signing certificates/keys for both platforms
+
+Pro tip: Use `flutter rename` package to automate some of this:
+```
+dart pub global activate rename
+rename --appname "Quantum Satis" --bundleId com.quantumsatis.simplynet
+```
+
+Then verify all changes manually before submitting to stores!
+
+
+# TODO
+* Enhance device detection list: qnap, fritz, eero, samsung mobile, redmi mobile, huawei mobile, espressif, hui zhou camera reolin dahua, 
+* Detect self MAC. Don't use get_mac_address lib or /etc/... read. These don't work.
+* run long processes in background, putting the notification. So OS cannot close/freeze the app. Notify in the notification when the long process is completed.
+* LAF refactoring:
+  * On the right part of the app header in the main screen add icon/pictogram of information (i). Click on it should open a page with readme.md well presenting markdown formatting.
+  * Move the settings from a dedicated button on the home screen main list to a "gear" icon button on the left of the (i) information pictogram, discussed above, in the home screen header.
+  * Group visually under label "Scan" the "network target" text box, "scan" and "logs" buttons.
+  * Move all buttons from "network tools" screen to visually groupped under label "Network tools". Put them by 2 in a row. Keep the button iconm name and subtitle as it is.
+  * Remove "Wifi tools" button.
+  * add 2 new tools to network tools:
+    * Wi-Fi interferrence: Show a screen with channels for 2.4GHz band and RSSI power for active SSIDs per each channel So user can see which channels are more noisy and which are safe to use. Swipe left to change the screen representation for 5GHz channels.
+    * Show a table with essential cellular data like Rx/Tx power, current base connected name and distance, provider, etc.
