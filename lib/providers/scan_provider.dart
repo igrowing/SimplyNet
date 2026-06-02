@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:simply_net/models/host_result.dart';
+import 'package:simply_net/services/foreground_service.dart';
 import 'package:simply_net/services/log_service.dart';
 import 'package:simply_net/services/network_scanner.dart';
 
@@ -79,7 +80,10 @@ class ScanProvider extends ChangeNotifier {
     _logBuffer.writeln('=== Scan started: $_target @ ${DateTime.now().toIso8601String()} ===');
     notifyListeners();
 
-    _sub = NetworkScanner.scan(_target, resolveNames: resolveNames).listen(
+    // Start foreground service so Android doesn't freeze/kill the scan.
+    FgService.start(title: 'Network scan', body: 'Scanning $_target…');
+
+    _sub = NetworkScanner.scan(_target, resolveNames: resolveNames).listen
       (host) {
         _results.add(host);
         _logBuffer.writeln('FOUND  ${host.ip}\t${host.mac}\t${host.hostname}\t${host.manufacturer}');
@@ -89,6 +93,8 @@ class ScanProvider extends ChangeNotifier {
         _isScanning = false;
         _logBuffer.writeln('\nScan complete. ${_results.length} host(s) found.');
         _logBuffer.writeln('=== End: ${DateTime.now().toIso8601String()} ===');
+        // Stop the foreground service; show "done" in the notification briefly.
+        FgService.stop(doneBody: 'Scan complete — ${_results.length} host(s) found.');
         notifyListeners();
         if (logging) {
           try {
@@ -127,6 +133,7 @@ class ScanProvider extends ChangeNotifier {
   void stopScan() {
     _sub?.cancel();
     _isScanning = false;
+    FgService.stop(doneBody: 'Scan stopped — ${_results.length} host(s) found.');
     notifyListeners();
   }
 

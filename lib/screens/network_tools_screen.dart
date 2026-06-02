@@ -14,6 +14,7 @@ import 'package:simply_net/widgets/diag_widgets.dart';
 import 'package:provider/provider.dart';
 import 'package:simply_net/screens/wifi_channels_screen.dart';
 import 'package:simply_net/screens/cellular_screen.dart';
+import 'package:simply_net/services/foreground_service.dart';
 
 class NetworkToolsScreen extends StatelessWidget {
   const NetworkToolsScreen({super.key});
@@ -1052,6 +1053,7 @@ class _PingScreenState extends State<PingScreen> {
   void _toggle() {
     if (_running) {
       _sub?.cancel();
+      FgService.stop(doneBody: 'Ping stopped.');
       setState(() => _running = false);
     } else {
       final host = _ctrl.text.trim();
@@ -1063,6 +1065,7 @@ class _PingScreenState extends State<PingScreen> {
         _diagOutput.clear();
         _pingTimings.clear();
       });
+      FgService.start(title: 'Ping', body: 'Pinging $host…');
       _sub = NetworkTools.ping(host, count: 50).listen(
         (chunk) {
           setState(() {
@@ -1080,6 +1083,7 @@ class _PingScreenState extends State<PingScreen> {
             _pingTimings.addAll(tail);
             _running = false;
           });
+          FgService.stop(doneBody: 'Ping complete.');
         },
       );
     }
@@ -1182,6 +1186,7 @@ class _TracerouteScreenState extends State<TracerouteScreen> {
     FocusScope.of(context).unfocus();
     _sub?.cancel();
     setState(() { _running = true; _diagOutput.clear(); });
+    FgService.start(title: 'Traceroute', body: 'Tracing route to $host…');
     _sub = NetworkTools.traceroute(host).listen(
       (chunk) {
         setState(() => _diagOutput.write(chunk));
@@ -1193,12 +1198,16 @@ class _TracerouteScreenState extends State<TracerouteScreen> {
           }
         });
       },
-      onDone: () => setState(() => _running = false),
+      onDone: () {
+        setState(() => _running = false);
+        FgService.stop(doneBody: 'Traceroute complete.');
+      },
     );
   }
 
   void _stop() {
     _sub?.cancel();
+    FgService.stop(doneBody: 'Traceroute stopped.');
     setState(() => _running = false);
   }
 
@@ -1306,7 +1315,10 @@ class _NslookupScreenState extends State<NslookupScreen> {
           }
         });
       },
-      onDone: () => setState(() => _running = false),
+      onDone: () {
+        setState(() => _running = false);
+        FgService.stop(doneBody: 'Traceroute complete.');
+      },
     );
   }
 

@@ -3,8 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:simply_net/providers/scan_provider.dart';
-import 'package:simply_net/services/network_scanner.dart';
+import 'package:simply_net/screens/cellular_screen.dart';
+import 'package:simply_net/screens/network_tools_screen.dart';
+import 'package:simply_net/screens/wifi_channels_screen.dart';
 import 'package:simply_net/services/lan_detector.dart';
+import 'package:simply_net/services/network_scanner.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -210,16 +213,22 @@ class _HomeScreenState extends State<HomeScreen> {
   // ── "Network Tools" group ─────────────────────────────────────────────────
 
   Widget _buildNetworkToolsGroup(BuildContext ctx) {
+    // Use direct MaterialPageRoute pushes — named sub-routes like
+    // '/network_tools/speed' are not registered in the router.
+    void push(Widget screen) =>
+        Navigator.push(ctx, MaterialPageRoute(builder: (_) => screen));
+    final scanTarget = ctx.read<ScanProvider>().target;
+
     final tools = [
-      _ToolBtn(Icons.speed,          'Speed Test',     '/network_tools/speed'),
-      _ToolBtn(Icons.public,         'Public IP',      '/network_tools/public_ip'),
-      _ToolBtn(Icons.videocam,       'IP Cameras',     '/network_tools/ip_cam'),
-      _ToolBtn(Icons.manage_search,  'Who Is…',        '/network_tools/whois'),
-      _ToolBtn(Icons.network_ping,   'Ping',           '/network_tools/ping'),
-      _ToolBtn(Icons.route,          'Traceroute',     '/network_tools/traceroute'),
-      _ToolBtn(Icons.dns,            'NS Lookup',      '/network_tools/nslookup'),
-      _ToolBtn(Icons.wifi_find,      'Wi-Fi Channels', '/network_tools/wifi_channels'),
-      _ToolBtn(Icons.cell_tower,     'Cellular Info',  '/network_tools/cellular'),
+      _ToolBtn(Icons.speed,         'Speed Test',     () => push(const SpeedTestScreen())),
+      _ToolBtn(Icons.public,        'Public IP',      () => push(const PublicIpScreen())),
+      _ToolBtn(Icons.videocam,      'IP Cameras',     () => push(IpCameraScanScreen(cidr: scanTarget))),
+      _ToolBtn(Icons.manage_search, 'Who Is…',        () => push(const WhoisScreen())),
+      _ToolBtn(Icons.network_ping,  'Ping',            () => push(const PingScreen())),
+      _ToolBtn(Icons.route,         'Traceroute',     () => push(const TracerouteScreen())),
+      _ToolBtn(Icons.dns,           'NS Lookup',      () => push(const NslookupScreen())),
+      _ToolBtn(Icons.wifi_find,     'Wi-Fi Channels', () => push(const WifiChannelsScreen())),
+      _ToolBtn(Icons.cell_tower,    'Cellular Info',  () => push(const CellularScreen())),
     ];
 
     return _GroupBox(
@@ -232,7 +241,7 @@ class _HomeScreenState extends State<HomeScreen> {
         crossAxisSpacing: 10,
         childAspectRatio: 2.8,
         children: tools
-            .map((t) => _SmallToolBtn(t, onTap: () => Navigator.pushNamed(ctx, t.route)))
+            .map((t) => _SmallToolBtn(t))
             .toList(),
       ),
     );
@@ -283,21 +292,20 @@ class _GroupBox extends StatelessWidget {
 // ── Small tool button for the 2-column grid ───────────────────────────────────
 
 class _ToolBtn {
-  final IconData icon;
-  final String   label;
-  final String   route;
-  const _ToolBtn(this.icon, this.label, this.route);
+  final IconData     icon;
+  final String       label;
+  final VoidCallback onTap;
+  const _ToolBtn(this.icon, this.label, this.onTap);
 }
 
 class _SmallToolBtn extends StatelessWidget {
   final _ToolBtn tool;
-  final VoidCallback onTap;
-  const _SmallToolBtn(this.tool, {required this.onTap});
+  const _SmallToolBtn(this.tool);
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: onTap,
+      onTap: tool.onTap,
       borderRadius: BorderRadius.circular(10),
       child: Container(
         decoration: BoxDecoration(
