@@ -123,7 +123,11 @@ class _HomeScreenState extends State<HomeScreen> {
           final isLandscape = orientation == Orientation.landscape;
           return SingleChildScrollView(
             padding: EdgeInsets.symmetric(
-              horizontal: isWide ? size.width * 0.15 : 16,
+              // Portrait/tablet: generous 15% side margins.
+              // Landscape phone: tight 2.5% so both groups fill 95% of width.
+              horizontal: isLandscape
+                  ? size.width * 0.025
+                  : (isWide ? size.width * 0.15 : 16),
               vertical: 16,
             ),
             child: isLandscape
@@ -233,15 +237,25 @@ class _HomeScreenState extends State<HomeScreen> {
       _ToolBtn(Icons.cell_tower,    'Cellular Info',  () => push(const CellularScreen()),      Colors.deepPurple),
     ];
 
+    // childAspectRatio adapts to screen size: taller on small screens.
+    // In landscape each column is ≈ 45% of screen width; compute ratio from that.
+    final mq        = MediaQuery.of(ctx);
+    final isLandNow = mq.size.width > mq.size.height;
+    final colW      = isLandNow
+        ? (mq.size.width * 0.95 / 2) - 28   // 95% / 2 cols minus padding
+        : (mq.size.width - 32) / 2 - 6;     // portrait: full width / 2
+    // Target button height of ~44px → aspectRatio = colW / 44
+    final btnAspect = (colW / 44.0).clamp(1.8, 4.0);
+
     return _GroupBox(
       label: 'Network Tools',
       child: GridView.count(
         crossAxisCount: 2,
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        mainAxisSpacing: 10,
+        mainAxisSpacing: 14,
         crossAxisSpacing: 10,
-        childAspectRatio: 2.8,
+        childAspectRatio: btnAspect,
         children: tools
             .map((t) => _SmallToolBtn(t))
             .toList(),

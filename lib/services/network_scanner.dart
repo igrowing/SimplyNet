@@ -7,8 +7,8 @@ import 'package:simply_net/services/oui_service.dart';
 import 'package:mac_address_plus/mac_address_plus.dart';
 
 class NetworkScanner {
-  static const _pingTimeout  = Duration(milliseconds: 800);
-  static const _tcpTimeout   = Duration(milliseconds: 400);
+  static const _pingTimeout  = Duration(milliseconds: 2000);
+  static const _tcpTimeout   = Duration(milliseconds: 900);
   static const _parallelism  = 64;
 
   // ── CIDR helpers ──────────────────────────────────────────────────────────
@@ -315,7 +315,7 @@ class NetworkScanner {
     if (!kIsWeb) {
       try {
         final result = await Process.run(
-          'ping', ['-c', '1', '-W', '1', ip],
+          'ping', ['-c', '1', '-W', '2', ip],
           runInShell: true,
         ).timeout(_pingTimeout);
         alive = result.exitCode == 0;
@@ -323,7 +323,8 @@ class NetworkScanner {
     }
 
     if (!alive) {
-      for (final port in [80, 443, 22, 445, 8080]) {
+      // Expanded port list covers web, SSH, SMB, Matter, MQTT, TP-Link, IoT HTTP
+      for (final port in [80, 443, 22, 445, 8080, 5540, 8123, 1883, 8883, 8081, 9999, 4040]) {
         try {
           final sock = await Socket.connect(ip, port, timeout: _tcpTimeout);
           sock.destroy();

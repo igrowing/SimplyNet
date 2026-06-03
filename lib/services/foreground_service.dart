@@ -63,10 +63,9 @@ class FgService {
         channelId:          'simplynet_tasks',
         channelName:        'SimplyNet background tasks',
         channelDescription: 'Keeps network scans and diagnostics running.',
-        channelImportance:  NotificationChannelImportance.LOW,
-        priority:           NotificationPriority.LOW,
-        // Don't play sound for a progress notification
-        playSound:          false,
+        channelImportance:  NotificationChannelImportance.DEFAULT,
+        priority:           NotificationPriority.DEFAULT,
+        playSound:          false,  // silent but visible
       ),
       iosNotificationOptions: const IOSNotificationOptions(
         showNotification: false,

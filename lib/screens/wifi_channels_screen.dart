@@ -100,20 +100,30 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
       ),
       body: Column(children: [
         if (_error.isNotEmpty) _ErrorBanner(_error),
-        Expanded(child: TabBarView(
-          controller: _tabs,
-          children: [
-            _ChannelChart(
-              networks: _networks.where((n) => n.band == '2.4').toList(),
-              channels: List.generate(13, (i) => i + 1),
-              band:     '2.4 GHz'),
-            _ChannelChart(
-              networks: _networks.where((n) => n.band == '5').toList(),
-              channels: [36,40,44,48,52,56,60,64,100,104,108,
-                         112,116,120,124,128,132,136,140,149,153,157,161,165],
-              band:     '5 GHz'),
-          ],
-        )),
+        Expanded(
+          // Use AnimatedBuilder + IndexedStack instead of TabBarView.
+          // TabBarView wraps a PageView which hijacks ALL horizontal swipe
+          // gestures, preventing the chart's horizontal scroll from working.
+          // With IndexedStack the tab content owns all gestures; tabs switch
+          // only via the TabBar tap (which is what you want in landscape).
+          child: AnimatedBuilder(
+            animation: _tabs,
+            builder: (_, __) => IndexedStack(
+              index: _tabs.index,
+              children: [
+                _ChannelChart(
+                  networks: _networks.where((n) => n.band == '2.4').toList(),
+                  channels: List.generate(13, (i) => i + 1),
+                  band:     '2.4 GHz'),
+                _ChannelChart(
+                  networks: _networks.where((n) => n.band == '5').toList(),
+                  channels: [36,40,44,48,52,56,60,64,100,104,108,
+                             112,116,120,124,128,132,136,140,149,153,157,161,165],
+                  band:     '5 GHz'),
+              ],
+            ),
+          ),
+        ),
       ]),
     );
   }
