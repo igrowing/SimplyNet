@@ -1,3 +1,4 @@
+library iot_scanner;
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
@@ -15,7 +16,6 @@ import 'dart:typed_data';
 ///   4. TCP knock on Matter BLE-less commissioning port (5540) to confirm.
 ///
 /// Each result carries a [confidence] 0-100 and a [detectionMethod] string.
-library iot_scanner;
 
 // ── Public model ──────────────────────────────────────────────────────────────
 
@@ -57,7 +57,6 @@ class IotScanner {
   // ---------- well-known IoT MAC OUI prefixes (first 3 octets, uppercase) ---
   // Source: IEEE OUI + vendor product pages
   static const _ouiVendors = <String, String>{
-    // Espressif (ESP8266 / ESP32 — Tasmota, ESPHome, Shelly gen1, eWeLink DIY)
     '18:FE:34': 'Espressif',  '24:0A:C4': 'Espressif',  '2C:3A:E8': 'Espressif',
     '30:AE:A4': 'Espressif',  '3C:71:BF': 'Espressif',  '48:3F:DA': 'Espressif',
     '4C:11:AE': 'Espressif',  '58:BF:25': 'Espressif',  '5C:CF:7F': 'Espressif',
@@ -68,36 +67,22 @@ class IotScanner {
     'BC:DD:C2': 'Espressif',  'C4:4F:33': 'Espressif',  'CC:50:E3': 'Espressif',
     'D8:A0:1D': 'Espressif',  'DC:4F:22': 'Espressif',  'E0:98:06': 'Espressif',
     'EC:FA:BC': 'Espressif',  'F4:CF:A2': 'Espressif',  'FC:F5:C4': 'Espressif',
-    // Nordic Semiconductor (nRF52/nRF91 — Zigbee, Thread/Matter dongles)
     'F4:CE:36': 'Nordic',     'D0:F6:18': 'Nordic',     'E6:9E:7E': 'Nordic',
-    // Silicon Labs (EFR32 — Zigbee, Z-Wave, Matter)
     '00:0D:6F': 'Silicon Labs','78:A5:04': 'Silicon Labs',
-    // Texas Instruments (CC26xx/CC13xx — Zigbee, BLE, Thread)
     '00:12:4B': 'TI',
-    // STMicroelectronics
     '00:80:E1': 'STMicro',
-    // Shelly (Allterco) — Gen 2/3 use ESP32
     'C4:5B:BE': 'Shelly',
-    // Sonoff (ITEAD)
     '60:55:F9': 'Sonoff/ITEAD','BC:FF:4D': 'Sonoff/ITEAD',
-    // TP-Link (Kasa / Tapo)
     '50:C7:BF': 'TP-Link',    '98:DA:C4': 'TP-Link',    'B0:95:75': 'TP-Link',
     'C0:06:C3': 'TP-Link',    'D8:0D:17': 'TP-Link',
-    // Xiaomi (Yeelight, Mi smart plugs)
     '28:6C:07': 'Xiaomi',     '34:CE:00': 'Xiaomi',     '50:64:2B': 'Xiaomi',
     '64:09:80': 'Xiaomi',     '78:11:DC': 'Xiaomi',     '98:FA:E3': 'Xiaomi',
     'AC:29:3A': 'Xiaomi',     'F4:F5:DB': 'Xiaomi',
-    // Meross
     '48:E1:E9': 'Meross',
-    // Tuya / Beken
     'D8:5D:4C': 'Tuya/Beken', 'E0:5A:1B': 'Tuya/Beken',
-    // Belkin (WeMo)
     'B4:75:0E': 'Belkin/WeMo','EC:1A:59': 'Belkin/WeMo',
-    // Philips Hue (Signify)
     '00:17:88': 'Philips Hue','EC:B5:FA': 'Philips Hue',
-    // IKEA Trådfri
-    '00:17:88': 'Philips Hue','AC:23:3F': 'IKEA Trådfri','DC:A6:32': 'RPi/Matter',
-    // Raspberry Pi Foundation (Pi-based Home Assistant / Matter hubs)
+    'AC:23:3F': 'IKEA Trådfri',
     'DC:A6:32': 'RPi',        'E4:5F:01': 'RPi',        '28:CD:C1': 'RPi',
     // HUSBZB / ConBee / Sonoff Zigbee dongle USB bridges (show as USB eth)
     '00:E0:4C': 'Realtek(IoT-bridge)',
