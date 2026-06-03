@@ -1,5 +1,6 @@
 name: simply_net
 description: "SimplyNet — a cross-platform local network scanner and diagnostic tool."
+homepage: "https://github.com/igrowing"  
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev

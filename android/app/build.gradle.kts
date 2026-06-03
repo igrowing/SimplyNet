@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "com.simplynet.app"
+    namespace = "com.simplytools.simplynet"
 
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
@@ -15,7 +15,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.simplynet.app"
+        applicationId = "com.simplytools.simplynet"
         minSdk        = flutter.minSdkVersion
         targetSdk     = flutter.targetSdkVersion
         versionCode   = flutter.versionCode

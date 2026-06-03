@@ -33,21 +33,21 @@ ios/Runner/Info.plist:
 Android - android/app/build.gradle.kts:
 ```
 android {
-    namespace = "com.quantumsatis.simplynet"  // Change this
+    namespace = "com.simplytools.simplynet"  // Change this
 }
 ```
 
 Android - android/app/src/main/AndroidManifest.xml:
 ```
 android {
-    namespace = "com.quantumsatis.simplynet"  // Change this
+    namespace = "com.simplytools.simplynet"  // Change this
 }
 ```
 
 iOS - ios/Runner.xcodeproj/project.pbxproj:
 Search for bundle identifier and update:
 ```
-PRODUCT_BUNDLE_IDENTIFIER = com.quantumsatis.simplynet;
+PRODUCT_BUNDLE_IDENTIFIER = com.simplytools.simplynet;
 ```
 
 Or in Xcode: Runner → Build Settings → Product Bundle Identifier
@@ -80,7 +80,7 @@ homepage: "https://quantumsatis.com"  # Update if applicable
 
 Checklist before publishing:
 - [] Update app display name everywhere
-- [] Change package name to com.quantumsatis.simplynet (or similar)
+- [] Change package name to com.simplytools.simplynet (or similar)
 - [] Update app icons/branding assets
 - [] Update pubspec.yaml metadata
 - [] Update iOS bundle ID
@@ -91,7 +91,7 @@ Checklist before publishing:
 Pro tip: Use `flutter rename` package to automate some of this:
 ```
 dart pub global activate rename
-rename --appname "Quantum Satis" --bundleId com.quantumsatis.simplynet
+rename --appname "SymplyNet" --bundleId com.simplytools.simplynet
 ```
 
 Then verify all changes manually before submitting to stores!
@@ -100,13 +100,4 @@ Then verify all changes manually before submitting to stores!
 # TODO
 * Enhance device detection list: qnap, fritz, eero, samsung mobile, redmi mobile, huawei mobile, espressif, hui zhou camera reolin dahua, 
 * Detect self MAC. Don't use get_mac_address lib or /etc/... read. These don't work.
-* LAF refactoring:
-  * run long processes in background, putting the notification. So OS cannot close/freeze the app. Notify in the notification when the long process is completed.
-  * On the right part of the app header in the main screen add icon/pictogram of information (i). Click on it should open a page with readme.md well presenting markdown formatting.
-  * Move the settings from a dedicated button on the home screen main list to a "gear" icon button on the left of the (i) information pictogram, discussed above, in the home screen header.
-  * Group visually under label "Scan" the "network target" text box, "scan" and "logs" buttons.
-  * Move all buttons from "network tools" screen to visually groupped under label "Network tools". Put them by 2 in a row. Keep the button iconm name and subtitle as it is.
-  * Remove "Wifi tools" button.
-  * add 2 new tools to network tools:
-    * Wi-Fi interferrence: Show a screen with channels for 2.4GHz band and RSSI power for active SSIDs per each channel So user can see which channels are more noisy and which are safe to use. Swipe left to change the screen representation for 5GHz channels.
-    * Show a table with essential cellular data like Rx/Tx power, current base connected name and distance, provider, etc.
+* Detect IoT devices: Matter, eWeLink, Tasmota, what else?

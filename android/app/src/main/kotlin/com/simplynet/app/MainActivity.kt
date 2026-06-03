@@ -1,4 +1,4 @@
-package com.simplynet.app
+package com.simplytools.simplynet
 
 import android.Manifest
 import android.annotation.SuppressLint
@@ -18,10 +18,10 @@ import kotlin.math.roundToInt
 class MainActivity : FlutterActivity() {
 
     companion object {
-        private const val SCREEN_CHANNEL   = "com.simplynet.app/screen"
+        private const val SCREEN_CHANNEL   = "com.simplytools.simplynet/screen"
         private const val WIFI_CHANNEL     = "simplynet/wifi"
         private const val CELLULAR_CHANNEL = "simplynet/cellular"
-        private const val MAC_CHANNEL      = "com.simplynet.app/mac"
+        private const val MAC_CHANNEL      = "com.simplytools.simplynet/mac"
     }
 
     // ── Foreground service initialization is handled by the plugin ──────────

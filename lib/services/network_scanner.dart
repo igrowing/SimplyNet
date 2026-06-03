@@ -103,7 +103,7 @@ class NetworkScanner {
 
   static Map<String, String>? _selfMacCache; // populated once per scan
 
-  static final _macChannel = MethodChannel('com.simplynet.app/mac');
+  static final _macChannel = MethodChannel('com.simplytools.simplynet/mac');
 
   static Future<String?> getMacForInterface(String ifaceName) async {
     if (!Platform.isAndroid) return null;
