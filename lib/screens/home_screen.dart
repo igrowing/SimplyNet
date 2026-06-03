@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:simply_net/providers/scan_provider.dart';
 import 'package:simply_net/screens/cellular_screen.dart';
+import 'package:simply_net/screens/iot_scan_screen.dart';
 import 'package:simply_net/screens/network_tools_screen.dart';
 import 'package:simply_net/screens/wifi_channels_screen.dart';
 import 'package:simply_net/services/lan_detector.dart';
@@ -223,6 +224,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _ToolBtn(Icons.speed,         'Speed Test',     () => push(const SpeedTestScreen()),     Colors.blue),
       _ToolBtn(Icons.public,        'Public IP',      () => push(const PublicIpScreen()),      Colors.green),
       _ToolBtn(Icons.videocam,      'IP Cameras',     () => push(IpCameraScanScreen(cidr: scanTarget)), Colors.orange),
+      _ToolBtn(Icons.memory,         'IoT Devices',    () => push(IotScanScreen(cidr: scanTarget)),        Colors.deepPurple),
       _ToolBtn(Icons.manage_search, 'Who Is…',        () => push(const WhoisScreen()),         Colors.purple),
       _ToolBtn(Icons.network_ping,  'Ping',           () => push(const PingScreen()),          Colors.teal),
       _ToolBtn(Icons.route,         'Traceroute',     () => push(const TracerouteScreen()),    Colors.deepOrange),

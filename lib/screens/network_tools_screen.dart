@@ -12,6 +12,7 @@ import 'package:simply_net/services/network_tools.dart';
 import 'package:simply_net/providers/scan_provider.dart';
 import 'package:simply_net/widgets/diag_widgets.dart';
 import 'package:provider/provider.dart';
+import 'package:simply_net/screens/iot_scan_screen.dart';
 import 'package:simply_net/screens/wifi_channels_screen.dart';
 import 'package:simply_net/screens/cellular_screen.dart';
 import 'package:simply_net/services/foreground_service.dart';
@@ -47,6 +48,17 @@ class NetworkToolsScreen extends StatelessWidget {
             context,
             MaterialPageRoute(
                 builder: (_) => IpCameraScanScreen(
+                    cidr: context.read<ScanProvider>().target))),
+      ),
+      _ToolCard(
+        icon: Icons.memory,
+        title: 'IoT Devices',
+        subtitle: 'Find Tasmota, Matter, ESPHome, Shelly & more',
+        color: Colors.deepPurple,
+        onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (_) => IotScanScreen(
                     cidr: context.read<ScanProvider>().target))),
       ),
       _ToolCard(

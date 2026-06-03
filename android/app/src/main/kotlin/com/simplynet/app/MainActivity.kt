@@ -148,13 +148,9 @@ class MainActivity : FlutterActivity() {
             else                               -> "Unknown"
         }
 
-        // Technology
-        if (ActivityCompat.checkSelfPermission(this,
-                Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
-            result["technology"] = networkTypeString(tm.dataNetworkType)
-        } else {
-            result["technology"] = "Permission denied"
-        }
+        // Technology is derived from the CellInfo subclass type.
+        // This requires only ACCESS_FINE_LOCATION (already granted), NOT READ_PHONE_STATE.
+        // We will fill it in the allCellInfo loop below so it matches the serving cell.
 
         // Signal metrics via getAllCellInfo()
         if (ActivityCompat.checkSelfPermission(this,
@@ -177,6 +173,7 @@ class MainActivity : FlutterActivity() {
                         result["pci"]            = id.pci.toString()
                         result["band"]           = earfcnToBand(id.earfcn)
                         result["earfcn"]         = id.earfcn.toString()
+                        result["technology"]     = "LTE (4G)"
                         result["tower_est_dist"] = estimateDist(sig.dbm)
                         break
                     }
@@ -193,6 +190,7 @@ class MainActivity : FlutterActivity() {
                             result["pci"]        = id.pci.toString()
                             result["band"]       = "5G NR (${id.nrarfcn})"
                             result["earfcn"]     = id.nrarfcn.toString()
+                            result["technology"]     = "5G NR"
                             result["tower_est_dist"] = estimateDist(sig.dbm)
                             break
                         }
@@ -203,7 +201,8 @@ class MainActivity : FlutterActivity() {
                         result["rssi"]     = "${sig.dbm} dBm"
                         result["cell_id"]  = id.cid.toString()
                         result["lac_tac"]  = id.lac.toString()
-                        result["band"]     = "GSM"
+                        result["technology"] = "GSM (2G)"
+                        result["band"]       = "GSM"
                         break
                     }
                     is CellInfoWcdma -> {
@@ -212,7 +211,8 @@ class MainActivity : FlutterActivity() {
                         result["rssi"]     = "${sig.dbm} dBm"
                         result["cell_id"]  = id.cid.toString()
                         result["lac_tac"]  = id.lac.toString()
-                        result["band"]     = "WCDMA / 3G"
+                        result["technology"] = "WCDMA (3G)"
+                        result["band"]       = "WCDMA / 3G"
                         break
                     }
                 }
