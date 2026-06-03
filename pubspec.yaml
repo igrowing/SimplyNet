@@ -37,8 +37,8 @@ dependencies:
   intl: ^0.20.2
   http: ^1.6.0
   path_provider: ^2.1.5
-  mac_address: ^1.0.0
-
+  mac_address_plus: ^0.0.1
+  
   # ── KGP warning note ────────────────────────────────────────────────────────
   # Flutter warns that network_info_plus, shared_preferences_android, and
   # url_launcher_android apply the Kotlin Gradle Plugin (KGP) manually in their

@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:simply_net/models/host_result.dart';
 import 'package:simply_net/services/log_service.dart';
 import 'package:simply_net/services/oui_service.dart';
-import 'package:mac_address/mac_address.dart';
+import 'package:mac_address_plus/mac_address_plus.dart';
 
 class NetworkScanner {
   static const _pingTimeout  = Duration(milliseconds: 800);
@@ -126,6 +126,7 @@ class NetworkScanner {
         includeLoopback: false,
         type: InternetAddressType.IPv4,
       );
+      final _macAddressPlusPlugin = MacAddressPlus();
       for (final iface in interfaces) {
         // NetworkInterface exposes the raw MAC bytes as a Uint8List in
         // the `rawAddress` of the interface (Dart ≥ 3.x).
@@ -141,7 +142,7 @@ class NetworkScanner {
           String? macAddress;
           try {
             // macAddress = await getMacForInterface(iface.name);
-            macAddress = await GetMac.macAddress;
+            macAddress = await _macAddressPlusPlugin.getMacAddress()
           } catch (_) {}
           map[ip] = macAddress ?? 'N/A';
         }
