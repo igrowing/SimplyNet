@@ -95,16 +95,27 @@ jobs:
             echo "✅ no v1 embedding"
           fi
 
-      - name: Build APK
+      - name: Build APK (split per ABI)
         run: |
+          flutter build apk --release --split-per-abi \
+            --build-name="${{ steps.version.outputs.version_name }}" \
+            --build-number="${{ steps.version.outputs.build_number }}"
+          # Also build universal APK for devices where arch is unknown
           flutter build apk --release \
             --build-name="${{ steps.version.outputs.version_name }}" \
             --build-number="${{ steps.version.outputs.build_number }}"
 
-      - name: Upload APK
+      - name: Upload arm64 APK (primary — covers 99%+ of modern devices)
         uses: actions/upload-artifact@v4
         with:
-          name: SimplyNet-${{ steps.version.outputs.version_name }}-${{ steps.version.outputs.safe_branch }}
+          name: SimplyNet-${{ steps.version.outputs.version_name }}-arm64-${{ steps.version.outputs.safe_branch }}
+          path: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          retention-days: 30
+
+      - name: Upload universal APK (fallback)
+        uses: actions/upload-artifact@v4
+        with:
+          name: SimplyNet-${{ steps.version.outputs.version_name }}-universal-${{ steps.version.outputs.safe_branch }}
           path: build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
 

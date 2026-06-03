@@ -241,16 +241,74 @@ class NetworkTools {
 
   // ── Port Scan ──────────────────────────────────────────────────────────────
 
-  /// Well-known ports list used as the default scan target.
-  static const wellKnownPorts = [
-    21, 22, 23, 25, 53, 80, 81, 82, 83, 84, 85, 110, 143, 161, 443, 445, 465,
-    587, 631, 993, 995, 1080, 1194, 1433, 1521, 1723, 1883, 1935, 2049,
-    3306, 3389, 4040, 5353, 5540, 5432, 5554, 5900, 6379, 6668, 8080, 8081, 8123, 
-    8443, 8554, 8888, 9000, 9001, 9200, 9443, 9999, 10554, 20202,	27017, 34567, 34599, 37777,	37778, 49153,	55443,
-  ];
-  
-  // Keep legacy alias so existing callers compile without changes.
-  static const commonPorts = wellKnownPorts;
+  /// Well-known ports dictionary: port number → service name.
+  /// Use .keys.toList() wherever a List<int> of port numbers is needed.
+  /// This replaces the old separate wellKnownPorts list + _portName dict.
+  static const wellKnownPortNames = <int, String>{
+    21:    'ftp',
+    22:    'ssh',
+    23:    'telnet',
+    25:    'smtp',
+    53:    'dns',
+    80:    'http',
+    81:    'http-alt',
+    82:    'http-alt',
+    83:    'http-alt',
+    84:    'http-alt',
+    85:    'http-alt',
+    110:   'pop3',
+    143:   'imap',
+    161:   'snmp',
+    443:   'https',
+    445:   'smb',
+    465:   'smtps',
+    587:   'submission',
+    631:   'ipp',
+    993:   'imaps',
+    995:   'pop3s',
+    1080:  'socks',
+    1194:  'openvpn',
+    1433:  'mssql',
+    1521:  'oracle',
+    1723:  'pptp',
+    1883:  'mqtt',
+    1935:  'rtmp',
+    2049:  'nfs',
+    3306:  'mysql',
+    3389:  'rdp',
+    4040:  'kasa',
+    5353:  'mdns',
+    5432:  'postgresql',
+    5540:  'matter',
+    5554:  'rtsp',
+    5900:  'vnc',
+    6379:  'redis',
+    6668:  'meross',
+    8080:  'http-alt',
+    8081:  'http-alt2',
+    8123:  'home-assistant',
+    8443:  'https-alt',
+    8554:  'rtsp-alt',
+    8888:  'zigbee2mqtt',
+    9000:  'openhab',
+    9001:  'openhab-alt',
+    9200:  'elasticsearch',
+    9443:  'openhab-tls',
+    9999:  'kasa-legacy',
+    10554: 'rtsp-alt2',
+    20202: 'matter-comm',
+    27017: 'mongodb',
+    34567: 'dvr-http',
+    34599: 'dvr-alt',
+    37777: 'dahua',
+    37778: 'dahua-alt',
+    49153: 'wemo',
+    55443: 'xiaomi-miio',
+  };
+
+  // Legacy aliases — keep existing callers compiling without changes.
+  static List<int> get wellKnownPorts => wellKnownPortNames.keys.toList();
+  static const commonPorts = wellKnownPortNames;
 
   static Stream<String> portScan(
     String host, {
@@ -261,94 +319,120 @@ class NetworkTools {
     bool useUdp = false,
     void Function(int done, int total)? onProgress,
   }) async* {
+    // Resolve hostname to IP once (needed for UDP RawDatagramSocket)
+    String resolvedIp = host;
+    try {
+      final addrs = await InternetAddress.lookup(host)
+          .timeout(const Duration(seconds: 4));
+      resolvedIp = addrs.first.address;
+    } catch (_) {}
+
     final scanPorts = ports ?? List.generate(
       rangeEnd - rangeStart + 1,
       (i) => rangeStart + i,
     );
     yield '=== PORT SCAN $host'
         ' [${useTcp ? "TCP" : ""}${useTcp && useUdp ? "+" : ""}${useUdp ? "UDP" : ""}]'
-        ' ports ${scanPorts.first}–${scanPorts.last} ===\n';
+        ' ports ${scanPorts.first}–${scanPorts.last} (${scanPorts.length} ports) ===\n';
 
-    final open = <int>[];
-    for (var i = 0; i < scanPorts.length; i++) {
-      final port = scanPorts[i];
+    // ── Concurrent scanning ──────────────────────────────────────────────────
+    // Run up to 128 probes in parallel (semaphore-limited).
+    // Results are emitted as they arrive, not in port-order.
+    // A StreamController bridges the parallel futures → the async* stream.
 
+    final openPorts = <int>[];
+    final controller = StreamController<String>();
+    int done = 0;
+    int pending = scanPorts.length * (useTcp && useUdp ? 2 : 1);
+    int tcpPending = useTcp ? scanPorts.length : 0;
+    int udpPending = useUdp ? scanPorts.length : 0;
+    if (pending == 0) pending = 1; // safety
+
+    final sem = _Semaphore(128);
+
+    void finish() {
+      if (done >= pending && !controller.isClosed) {
+        if (openPorts.isEmpty) controller.add('No open ports found.\n');
+        controller.add('\nDone. ${openPorts.length} open port(s) found.\n');
+        controller.close();
+      }
+    }
+
+    for (final port in scanPorts) {
       if (useTcp) {
-        try {
-          final sock = await Socket.connect(host, port,
-              timeout: const Duration(milliseconds: 500));
-          sock.destroy();
-          open.add(port);
-          yield 'OPEN  $port/tcp  ${_portName(port)}\n';
-        } catch (_) {}
+        sem.run(() async {
+          try {
+            final sock = await Socket.connect(resolvedIp, port,
+                timeout: const Duration(milliseconds: 600));
+            sock.destroy();
+            final name = wellKnownPortNames[port] ?? '';
+            controller.add('OPEN  $port/tcp  $name\n');
+            openPorts.add(port);
+          } catch (_) {}
+          done++;
+          onProgress?.call(done ~/ (useTcp && useUdp ? 2 : 1), scanPorts.length);
+          finish();
+        });
       }
 
       if (useUdp) {
-        // UDP: send an empty datagram; if we get an ICMP Port Unreachable
-        // back quickly the port is closed; silence = possibly open.
-        // True UDP scanning from user-space is unreliable without raw sockets,
-        // but this gives a best-effort result.
-        try {
-          final udp = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
-          udp.send(Uint8List(0), InternetAddress(host), port);
-          bool gotReply = false;
-          await Future.any([
-            udp.first.then((ev) {
-              if (ev == RawSocketEvent.read) {
-                gotReply = true;
-              }
-            }).catchError((_) {}),
-            Future.delayed(const Duration(milliseconds: 400)),
-          ]);
-          udp.close();
-          if (gotReply) {
-            yield 'OPEN  $port/udp  ${_portName(port)}\n';
-          }
-        } catch (_) {}
-      }
+        sem.run(() async {
+          // UDP detection strategy:
+          // 1. Send a protocol-appropriate probe payload (not empty — many
+          //    services ignore empty UDP datagrams entirely).
+          // 2. Listen for any response (reply = open) for 600ms.
+          // 3. ICMP Port Unreachable would come as a socket error; absence of
+          //    error + response = probably open. This is best-effort on Android
+          //    because the kernel may suppress ICMP errors to non-root sockets.
+          try {
+            final udp = await RawDatagramSocket.bind(
+                InternetAddress.anyIPv4, 0,
+                reuseAddress: true);
+            udp.readEventsEnabled = true;
+            // Send a probe: DNS query for UDP 53, otherwise empty
+            final probe = port == 53
+                ? Uint8List.fromList([
+                    0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00,
+                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01
+                  ])
+                : Uint8List(4); // 4-zero bytes — enough to trigger a reply
+            udp.send(probe, InternetAddress(resolvedIp), port);
 
-      onProgress?.call(i + 1, scanPorts.length);
+            bool gotReply = false;
+            final timer = Timer(const Duration(milliseconds: 600), () {
+              if (!gotReply) udp.close();
+            });
+            try {
+              await for (final ev in udp) {
+                if (ev == RawSocketEvent.read) {
+                  gotReply = true;
+                  break;
+                }
+              }
+            } catch (_) {}
+            timer.cancel();
+            try { udp.close(); } catch (_) {}
+
+            if (gotReply) {
+              final name = wellKnownPortNames[port] ?? '';
+              controller.add('OPEN  $port/udp  $name\n');
+              openPorts.add(port);
+            }
+          } catch (_) {}
+          done++;
+          onProgress?.call(done ~/ (useTcp && useUdp ? 2 : 1), scanPorts.length);
+          finish();
+        });
+      }
     }
 
-    if (open.isEmpty) yield 'No open ports found.\n';
-    yield '\nDone. ${open.length} open port(s) found.\n';
+    // Yield from the controller stream
+    yield* controller.stream;
   }
 
-  static String _portName(int port) => switch (port) {
-        21    => 'ftp',
-        22    => 'ssh',
-        23    => 'telnet',
-        25    => 'smtp',
-        53    => 'dns',
-        80    => 'http',
-        110   => 'pop3',
-        143   => 'imap',
-        161   => 'snmp',
-        443   => 'https',
-        445   => 'smb',
-        465   => 'smtps',
-        587   => 'submission',
-        631   => 'ipp',
-        993   => 'imaps',
-        995   => 'pop3s',
-        1433  => 'mssql',
-        1521  => 'oracle',
-        2049  => 'nfs',
-        3306  => 'mysql',
-        3389  => 'rdp',
-        5432  => 'postgresql',
-        5900  => 'vnc',
-        6379  => 'redis',
-        8080  => 'http-alt',
-        8443  => 'https-alt',
-        9200  => 'elasticsearch',
-        27017 => 'mongodb',
-        1080  => 'socks',
-        1194  => 'openvpn',
-        1723  => 'pptp',
-        8888  => 'http-alt2',
-        _     => '',
-      };
+  /// Look up service name for a port number.
+  /// Uses wellKnownPortNames dict; returns '' for unknown ports.
+  static String portName(int port) => wellKnownPortNames[port] ?? '';
 
 
   // ── IP Camera Scan ─────────────────────────────────────────────────────────
@@ -431,7 +515,26 @@ class SpeedResult {
   });
 }
 
-// ── Uint8List for UDP ─────────────────────────────────────────────────────────
-// (dart:typed_data is already in scope via dart:io on mobile; explicit import
-//  added here so the file is self-contained)
+// ── Semaphore for concurrent port scanning ───────────────────────────────────
+
+class _Semaphore {
+  int _count;
+  final _queue = <Completer<void>>[];
+  _Semaphore(this._count);
+
+  Future<void> run(Future<void> Function() fn) async {
+    if (_count <= 0) {
+      final c = Completer<void>();
+      _queue.add(c);
+      await c.future;
+    }
+    _count--;
+    try {
+      await fn();
+    } finally {
+      _count++;
+      if (_queue.isNotEmpty) _queue.removeAt(0).complete();
+    }
+  }
+}
 

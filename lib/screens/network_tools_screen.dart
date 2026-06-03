@@ -62,12 +62,12 @@ class NetworkToolsScreen extends StatelessWidget {
                     cidr: context.read<ScanProvider>().target))),
       ),
       _ToolCard(
-        icon: Icons.manage_search,
-        title: 'Who Is…',
-        subtitle: 'WHOIS lookup for any domain or IP',
+        icon: Icons.radar,
+        title: 'Port Scan',
+        subtitle: 'Scan open TCP/UDP ports on any host',
         color: Colors.purple,
         onTap: () => Navigator.push(
-            context, MaterialPageRoute(builder: (_) => const WhoisScreen())),
+            context, MaterialPageRoute(builder: (_) => const PortScanScreen())),
       ),
       _ToolCard(
         icon: Icons.network_ping,
@@ -87,11 +87,11 @@ class NetworkToolsScreen extends StatelessWidget {
       ),
       _ToolCard(
         icon: Icons.manage_search,
-        title: 'NS Lookup',
-        subtitle: 'Forward and reverse DNS resolution',
+        title: 'Who Is…',
+        subtitle: 'WHOIS, DNS & nslookup for any domain or IP',
         color: Colors.indigo,
         onTap: () => Navigator.push(
-            context, MaterialPageRoute(builder: (_) => const NslookupScreen())),
+            context, MaterialPageRoute(builder: (_) => const WhoisScreen())),
       ),
       _ToolCard(
         icon: Icons.wifi_find,
@@ -881,163 +881,183 @@ class _IpCameraScanState extends State<IpCameraScanScreen> {
 //  4. WHOIS
 // ════════════════════════════════════════════════════════════════════
 
+// ── Who Is… Screen (WHOIS + DNS + nslookup combined) ─────────────────────────
+
 class WhoisScreen extends StatefulWidget {
-  const WhoisScreen({super.key});
+  final String? initialTarget;
+  const WhoisScreen({super.key, this.initialTarget});
   @override
   State<WhoisScreen> createState() => _WhoisState();
 }
 
 class _WhoisState extends State<WhoisScreen> {
-  final _ctrl = TextEditingController();
-  String _result = '';
-  bool _loading = false;
+  final _ctrl      = TextEditingController();
+  final _scroll    = ScrollController();
+  final _buf       = StringBuffer();
+  bool  _loading   = false;
 
-  Future<void> _lookup() async {
-    final query = _ctrl.text.trim();
-    if (query.isEmpty) return;
-    FocusScope.of(context).unfocus();
-    setState(() { _loading = true; _result = ''; });
-    try {
-      final isDomain = !query.contains(RegExp(r'^\d')) &&
-          query.contains('.') &&
-          !query.startsWith('http');
-
-      if (isDomain) {
-        final rdap = await http
-            .get(Uri.parse('https://rdap.org/domain/$query'))
-            .timeout(const Duration(seconds: 10));
-        if (rdap.statusCode == 200) {
-          final data = json.decode(rdap.body) as Map<String, dynamic>;
-          final buf = StringBuffer();
-          buf.writeln('Domain   : ${data['ldhName'] ?? query}');
-          buf.writeln('Status   : ${(data['status'] as List?)?.join(', ') ?? '–'}');
-          final events = (data['events'] as List?) ?? [];
-          for (final e in events) {
-            buf.writeln('${e['eventAction']}: ${e['eventDate']}');
-          }
-          final ns = (data['nameservers'] as List?) ?? [];
-          if (ns.isNotEmpty) {
-            buf.writeln('\nNameservers:');
-            for (final n in ns) buf.writeln('  ${n['ldhName']}');
-          }
-          final entities = (data['entities'] as List?) ?? [];
-          for (final entity in entities) {
-            final roles = (entity['roles'] as List?) ?? [];
-            final vcard = (entity['vcardArray'] as List?);
-            if (vcard != null && vcard.length > 1) {
-              final fields = vcard[1] as List;
-              for (final field in fields) {
-                if (field is List && field.length >= 4 && field[0] == 'fn') {
-                  buf.writeln('${roles.join('/')}: ${field[3]}');
-                }
-              }
-            }
-          }
-          setState(() { _result = buf.toString(); _loading = false; });
-          return;
-        }
-      }
-
-      final ipRdap = await http
-          .get(Uri.parse('https://rdap.org/ip/$query'))
-          .timeout(const Duration(seconds: 10));
-      if (ipRdap.statusCode == 200) {
-        final data = json.decode(ipRdap.body) as Map<String, dynamic>;
-        final buf = StringBuffer();
-        buf.writeln('IP Range : ${data['startAddress']} – ${data['endAddress']}');
-        buf.writeln('Name     : ${data['name'] ?? '–'}');
-        buf.writeln('Type     : ${data['type'] ?? '–'}');
-        buf.writeln('Country  : ${data['country'] ?? '–'}');
-        final entities = (data['entities'] as List?) ?? [];
-        for (final entity in entities) {
-          final roles = (entity['roles'] as List?) ?? [];
-          final vcard = (entity['vcardArray'] as List?);
-          if (vcard != null && vcard.length > 1) {
-            final fields = vcard[1] as List;
-            for (final field in fields) {
-              if (field is List && field.length >= 4 && field[0] == 'fn') {
-                buf.writeln('${roles.join('/')}: ${field[3]}');
-              }
-            }
-          }
-        }
-        setState(() { _result = buf.toString(); _loading = false; });
-        return;
-      }
-      setState(() { _result = 'No results found.'; _loading = false; });
-    } catch (e) {
-      setState(() { _result = 'Error: $e'; _loading = false; });
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialTarget?.isNotEmpty == true) {
+      _ctrl.text = widget.initialTarget!;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _lookup());
     }
   }
+
+  @override
+  void dispose() { _ctrl.dispose(); _scroll.dispose(); super.dispose(); }
+
+  Future<void> _lookup() async {
+    final q = _ctrl.text.trim();
+    if (q.isEmpty) return;
+    FocusScope.of(context).unfocus();
+    setState(() { _loading = true; _buf.clear(); });
+
+    final isIp = RegExp(r'^\\.?\\d{1,3}(\\.\\d{1,3}){3}$').hasMatch(q);
+
+    // ── 1. DNS ─────────────────────────────────────────────────────────────
+    _put('=== DNS Resolution ===');
+    try {
+      final addrs = await InternetAddress.lookup(q)
+          .timeout(const Duration(seconds: 5));
+      for (final a in addrs) {
+        _put('${a.type == InternetAddressType.IPv6 ? "AAAA" : "A   "} : ${a.address}');
+      }
+    } catch (e) { _put('Forward lookup failed: $e'); }
+    // Reverse PTR
+    final ipForPTR = isIp ? q : null;
+    if (!isIp) {
+      try {
+        final addrs = await InternetAddress.lookup(q).timeout(const Duration(seconds: 3));
+        if (addrs.isNotEmpty) {
+          final rev = await addrs.first.reverse().timeout(const Duration(seconds: 3));
+          if (rev.host != addrs.first.address) _put('PTR : ${rev.host}');
+        }
+      } catch (_) {}
+    } else {
+      try {
+        final rev = await InternetAddress(q).reverse().timeout(const Duration(seconds: 3));
+        if (rev.host != q) _put('PTR : ${rev.host}');
+      } catch (_) {}
+    }
+    setState(() {});
+
+    // ── 2. RDAP / WHOIS ────────────────────────────────────────────────────
+    _put(''); _put('=== WHOIS / RDAP ===');
+    try {
+      final url = isIp
+          ? 'https://rdap.org/ip/$q'
+          : 'https://rdap.org/domain/$q';
+      final resp = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 10));
+      if (resp.statusCode == 200) {
+        final data = json.decode(resp.body) as Map<String, dynamic>;
+        if (isIp) {
+          _put('Range   : ${data['startAddress']} – ${data['endAddress']}');
+          _put('Name    : ${data['name'] ?? '–'}');
+          _put('Type    : ${data['type'] ?? '–'}');
+          _put('Country : ${data['country'] ?? '–'}');
+        } else {
+          _put('Domain  : ${data['ldhName'] ?? q}');
+          _put('Status  : ${(data['status'] as List?)?.join(', ') ?? '–'}');
+          for (final e in (data['events'] as List?) ?? []) {
+            _put('${e['eventAction']}: ${e['eventDate']}');
+          }
+          final ns = (data['nameservers'] as List?) ?? [];
+          if (ns.isNotEmpty) { _put(''); _put('Nameservers:'); for (final n in ns) _put('  ${n['ldhName']}'); }
+        }
+        for (final entity in (data['entities'] as List?) ?? []) {
+          final roles = (entity['roles'] as List?) ?? [];
+          final vcard = entity['vcardArray'] as List?;
+          if (vcard != null && vcard.length > 1) {
+            for (final f in vcard[1] as List) {
+              if (f is List && f.length >= 4 && f[0] == 'fn') {
+                _put('${roles.join('/')}: ${f[3]}');
+              }
+            }
+          }
+        }
+      } else {
+        _put('RDAP returned ${resp.statusCode}');
+      }
+    } catch (e) { _put('RDAP error: $e'); }
+    setState(() {});
+
+    // ── 3. System nslookup ─────────────────────────────────────────────────
+    _put(''); _put('=== System nslookup ===');
+    try {
+      final proc = await Process.start('nslookup', [q]);
+      final out = await proc.stdout
+          .transform(const SystemEncoding().decoder)
+          .join().timeout(const Duration(seconds: 6));
+      await proc.exitCode;
+      bool inAns = false;
+      for (final line in out.split('\n')) {
+        final t = line.trim();
+        if (t.isEmpty) { inAns = true; continue; }
+        if (inAns && t.isNotEmpty) _put(t);
+      }
+    } catch (e) { _put('nslookup: $e'); }
+
+    setState(() { _loading = false; });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scroll.hasClients) {
+        _scroll.animateTo(_scroll.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
+      }
+    });
+  }
+
+  void _put(String s) => _buf.writeln(s);
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-          title: const Text('Who Is…',
-              style: TextStyle(fontWeight: FontWeight.bold))),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _ctrl,
-                    textInputAction: TextInputAction.go,
-                    onSubmitted: (_) => _lookup(),
-                    decoration: InputDecoration(
-                      hintText: 'Domain or IP address',
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                      isDense: true,
-                    ),
-                  ),
+          title: const Text('Who Is…', style: TextStyle(fontWeight: FontWeight.bold))),
+      body: Column(children: [
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(children: [
+            Expanded(
+              child: TextField(
+                controller: _ctrl,
+                textInputAction: TextInputAction.go,
+                onSubmitted: (_) => _loading ? null : _lookup(),
+                enabled: !_loading,
+                decoration: InputDecoration(
+                  hintText: 'Domain, IP address, or hostname',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  isDense: true,
                 ),
-                const SizedBox(width: 8),
-                FilledButton(
-                  onPressed: _loading ? null : _lookup,
-                  child: _loading
-                      ? const SizedBox(
-                          width: 18, height: 18,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white))
-                      : const Text('Lookup'),
-                ),
-              ],
+              ),
             ),
-          ),
-          Expanded(
-            child: _result.isEmpty
-                ? Center(
-                    child: Text(
-                      'Enter a domain or IP address',
-                      style: TextStyle(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurface
-                              .withValues(alpha: 0.4)),
-                    ),
-                  )
-                : SingleChildScrollView(
-                    padding: const EdgeInsets.all(16),
-                    child: SelectableText(
-                      _result,
-                      style: const TextStyle(
-                          fontFamily: 'monospace', fontSize: 13),
-                    ),
-                  ),
-          ),
-        ],
-      ),
+            const SizedBox(width: 8),
+            FilledButton.icon(
+              onPressed: _loading ? null : _lookup,
+              icon: _loading
+                  ? const SizedBox(width: 16, height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.search),
+              label: Text(_loading ? 'Looking up…' : 'Look up'),
+            ),
+          ]),
+        ),
+        Expanded(
+          child: _buf.isEmpty && !_loading
+              ? const Center(child: Text('Enter a domain, IP, or hostname',
+                  style: TextStyle(color: Colors.grey)))
+              : SingleChildScrollView(
+                  controller: _scroll,
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                  child: SelectableText(_buf.toString(),
+                      style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+                ),
+        ),
+      ]),
     );
   }
 }
-
-// ════════════════════════════════════════════════════════════════════
-//  5. PING GRAPH
-// ════════════════════════════════════════════════════════════════════
 
 class PingScreen extends StatefulWidget {
   const PingScreen({super.key});
@@ -1289,114 +1309,264 @@ class _TracerouteScreenState extends State<TracerouteScreen> {
 //  NSLOOKUP
 // ════════════════════════════════════════════════════════════════════════════
 
-class NslookupScreen extends StatefulWidget {
-  const NslookupScreen({super.key});
+// ── Port Scan Screen ──────────────────────────────────────────────────────────
+
+class PortScanScreen extends StatefulWidget {
+  const PortScanScreen({super.key});
   @override
-  State<NslookupScreen> createState() => _NslookupScreenState();
+  State<PortScanScreen> createState() => _PortScanScreenState();
 }
 
-class _NslookupScreenState extends State<NslookupScreen> {
-  final _ctrl       = TextEditingController();
-  final _diagOutput = StringBuffer();
-  final _scroll     = ScrollController();
+class _PortScanScreenState extends State<PortScanScreen> {
+  final _ctrl           = TextEditingController();
+  final _scroll         = ScrollController();
+  final _portStartCtrl  = TextEditingController(text: '1');
+  final _portEndCtrl    = TextEditingController(text: '2048');
+
+  bool _scanning         = false;
+  bool _settingsVisible  = false;
+  bool _useWellKnown     = true;
+  bool _useTcp           = true;
+  bool _useUdp           = false;
+  int  _done             = 0;
+  int  _total            = 0;
+  final List<String> _openLines = [];
   StreamSubscription<String>? _sub;
-  bool _running = false;
 
   @override
   void dispose() {
     _sub?.cancel();
     _ctrl.dispose();
     _scroll.dispose();
+    _portStartCtrl.dispose();
+    _portEndCtrl.dispose();
     super.dispose();
   }
 
-  void _run() {
+  void _startScan() {
     final host = _ctrl.text.trim();
     if (host.isEmpty) return;
     FocusScope.of(context).unfocus();
     _sub?.cancel();
-    setState(() { _running = true; _diagOutput.clear(); });
-    _sub = NetworkTools.nslookup(host).listen(
-      (chunk) {
-        setState(() => _diagOutput.write(chunk));
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (_scroll.hasClients) {
-            _scroll.animateTo(_scroll.position.maxScrollExtent,
-                duration: const Duration(milliseconds: 100),
-                curve: Curves.easeOut);
-          }
-        });
+
+    List<int>? ports;
+    int rangeStart = 1, rangeEnd = 2048;
+    if (_useWellKnown) {
+      ports = NetworkTools.wellKnownPorts;
+    } else {
+      rangeStart = int.tryParse(_portStartCtrl.text) ?? 1;
+      rangeEnd   = int.tryParse(_portEndCtrl.text)   ?? 2048;
+    }
+    final total = ports != null ? ports.length : (rangeEnd - rangeStart + 1);
+
+    setState(() {
+      _scanning   = true;
+      _done       = 0;
+      _total      = total;
+      _openLines.clear();
+    });
+
+    _sub = NetworkTools.portScan(
+      host,
+      ports:      ports,
+      rangeStart: rangeStart,
+      rangeEnd:   rangeEnd,
+      useTcp:     _useTcp,
+      useUdp:     _useUdp,
+      onProgress: (d, _) => setState(() => _done = d),
+    ).listen(
+      (line) {
+        if (line.startsWith('OPEN') || line.startsWith('===') ||
+            line.startsWith('No open') || line.startsWith('\nDone')) {
+          setState(() => _openLines.add(line.trim()));
+        }
       },
-      onDone: () {
-        setState(() => _running = false);
-        FgService.stop(doneBody: 'Traceroute complete.');
-      },
+      onDone: () => setState(() => _scanning = false),
     );
   }
 
-  void _stop() {
+  void _stopScan() {
     _sub?.cancel();
-    setState(() => _running = false);
+    setState(() => _scanning = false);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-          title: const Text('NS Lookup',
-              style: TextStyle(fontWeight: FontWeight.bold))),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(children: [
-              Expanded(
-                child: TextField(
-                  controller: _ctrl,
-                  textInputAction: TextInputAction.go,
-                  onSubmitted: (_) => _running ? null : _run(),
-                  enabled: !_running,
-                  decoration: InputDecoration(
-                    hintText: 'IP address, domain, or hostname',
-                    border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    isDense: true,
-                  ),
+          title: const Text('Port Scan', style: TextStyle(fontWeight: FontWeight.bold))),
+      body: Column(children: [
+        // ── Input row ────────────────────────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+          child: Row(children: [
+            Expanded(
+              child: TextField(
+                controller: _ctrl,
+                textInputAction: TextInputAction.go,
+                onSubmitted: (_) => _scanning ? null : _startScan(),
+                enabled: !_scanning,
+                decoration: InputDecoration(
+                  hintText: 'IP address or hostname',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  isDense: true,
                 ),
               ),
-              const SizedBox(width: 8),
-              FilledButton.icon(
-                onPressed: _running ? _stop : _run,
-                icon: Icon(_running ? Icons.stop : Icons.search),
-                label: Text(_running ? 'Stop' : 'Lookup'),
-                style: FilledButton.styleFrom(
-                    backgroundColor: _running
-                        ? Theme.of(context).colorScheme.error
-                        : Theme.of(context).colorScheme.primary),
-              ),
-            ]),
-          ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-              child: _diagOutput.isEmpty && !_running
-                  ? Center(
-                      child: Text('Enter a host, domain, or IP',
-                          style: TextStyle(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurface
-                                  .withValues(alpha: 0.4))),
+            ),
+            const SizedBox(width: 8),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: _scanning
+                  ? FilledButton.icon(
+                      key: const ValueKey('stop'),
+                      onPressed: _stopScan,
+                      icon: const Icon(Icons.stop_rounded),
+                      label: const Text('Stop'),
+                      style: FilledButton.styleFrom(
+                          backgroundColor: Theme.of(context).colorScheme.error),
                     )
-                  : DiagOutputPanel(
-                      output:           _diagOutput.toString(),
-                      isRunning:        _running,
-                      scrollController: _scroll,
+                  : FilledButton.icon(
+                      key: const ValueKey('scan'),
+                      onPressed: _startScan,
+                      icon: const Icon(Icons.search),
+                      label: const Text('Scan'),
                     ),
             ),
-          ),
-        ],
+          ]),
+        ),
+        // ── Settings toggle ─────────────────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          child: Row(children: [
+            TextButton.icon(
+              onPressed: () => setState(() => _settingsVisible = !_settingsVisible),
+              icon: Icon(_settingsVisible ? Icons.expand_less : Icons.tune, size: 18),
+              label: Text(_settingsVisible ? 'Hide settings' : 'Settings',
+                  style: const TextStyle(fontSize: 12)),
+            ),
+            if (_scanning) ...[
+              const Spacer(),
+              Text('$_done / $_total', style: const TextStyle(fontSize: 12)),
+            ],
+          ]),
+        ),
+        if (_settingsVisible) _buildSettings(),
+        if (_scanning)
+          LinearProgressIndicator(value: _total > 0 ? _done / _total : null),
+        // ── Results ──────────────────────────────────────────────────────────
+        Expanded(
+          child: _openLines.isEmpty && !_scanning
+              ? const Center(child: Text('Enter a host and tap Scan',
+                  style: TextStyle(color: Colors.grey)))
+              : ListView.builder(
+                  controller: _scroll,
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                  itemCount: _openLines.length,
+                  itemBuilder: (_, i) {
+                    final line = _openLines[i];
+                    final isOpen = line.startsWith('OPEN');
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Row(children: [
+                        if (isOpen) ...[
+                          const Icon(Icons.check_circle, color: Colors.green, size: 16),
+                          const SizedBox(width: 6),
+                        ],
+                        Expanded(
+                          child: Text(line,
+                              style: TextStyle(
+                                fontFamily: 'monospace',
+                                fontSize: 12,
+                                color: isOpen ? Colors.green : null,
+                                fontWeight: isOpen ? FontWeight.bold : null,
+                              )),
+                        ),
+                        if (isOpen)
+                          IconButton(
+                            icon: const Icon(Icons.copy, size: 14),
+                            tooltip: 'Copy',
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                            onPressed: () => Clipboard.setData(ClipboardData(text: line)),
+                          ),
+                      ]),
+                    );
+                  },
+                ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _buildSettings() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(12),
       ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Port source
+        Row(children: [
+          const Text('Ports:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          const SizedBox(width: 12),
+          ChoiceChip(
+            label: const Text('Well-known'),
+            selected: _useWellKnown,
+            onSelected: (_) => setState(() => _useWellKnown = true),
+          ),
+          const SizedBox(width: 8),
+          ChoiceChip(
+            label: const Text('Range'),
+            selected: !_useWellKnown,
+            onSelected: (_) => setState(() => _useWellKnown = false),
+          ),
+        ]),
+        if (!_useWellKnown)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Row(children: [
+              const Text('From:', style: TextStyle(fontSize: 12)),
+              const SizedBox(width: 6),
+              SizedBox(width: 70,
+                child: TextField(
+                  controller: _portStartCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(isDense: true,
+                      border: OutlineInputBorder()),
+                )),
+              const SizedBox(width: 12),
+              const Text('To:', style: TextStyle(fontSize: 12)),
+              const SizedBox(width: 6),
+              SizedBox(width: 70,
+                child: TextField(
+                  controller: _portEndCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(isDense: true,
+                      border: OutlineInputBorder()),
+                )),
+            ]),
+          ),
+        const SizedBox(height: 8),
+        // Protocol
+        Row(children: [
+          const Text('Protocol:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          const SizedBox(width: 8),
+          FilterChip(
+            label: const Text('TCP'),
+            selected: _useTcp,
+            onSelected: (v) => setState(() => _useTcp = v),
+          ),
+          const SizedBox(width: 8),
+          FilterChip(
+            label: const Text('UDP'),
+            selected: _useUdp,
+            onSelected: (v) => setState(() => _useUdp = v),
+          ),
+        ]),
+      ]),
     );
   }
 }
+

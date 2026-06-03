@@ -202,18 +202,26 @@ class _ChannelChart extends StatelessWidget {
   Widget _buildChart(BuildContext context,
       Map<int, List<_WifiNetwork>> byChannel,
       Map<String, Color> colorMap) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
-      child: SizedBox(
-        width: math.max(MediaQuery.of(context).size.width - 16,
-                        channels.length * 52.0),
-        child: CustomPaint(
-          painter: _ChannelPainter(
-              byChannel: byChannel, channels: channels, colorMap: colorMap),
+    // LayoutBuilder provides the real available height so CustomPaint
+    // is never given Size(w, infinity) which causes a blank canvas.
+    return LayoutBuilder(builder: (ctx, constraints) {
+      final chartH = constraints.maxHeight.isInfinite ? 200.0 : constraints.maxHeight;
+      final minW   = math.max(
+          MediaQuery.of(context).size.width - 16,
+          channels.length * 52.0);
+      return SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+        child: SizedBox(
+          width:  minW,
+          height: chartH,
+          child: CustomPaint(
+            painter: _ChannelPainter(
+                byChannel: byChannel, channels: channels, colorMap: colorMap),
+          ),
         ),
-      ),
-    );
+      );
+    });
   }
 
   Widget _buildList(BuildContext context, List<_WifiNetwork> nets,

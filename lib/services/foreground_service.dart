@@ -60,7 +60,7 @@ class FgService {
 
     FlutterForegroundTask.init(
       androidNotificationOptions: AndroidNotificationOptions(
-        channelId:          'simplynet_tasks',
+        channelId:          'simplynet_tasks_v2',  // v2: bumped to force DEFAULT importance
         channelName:        'SimplyNet background tasks',
         channelDescription: 'Keeps network scans and diagnostics running.',
         channelImportance:  NotificationChannelImportance.DEFAULT,

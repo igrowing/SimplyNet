@@ -229,10 +229,10 @@ class _HomeScreenState extends State<HomeScreen> {
       _ToolBtn(Icons.public,        'Public IP',      () => push(const PublicIpScreen()),      Colors.green),
       _ToolBtn(Icons.videocam,      'IP Cameras',     () => push(IpCameraScanScreen(cidr: scanTarget)), Colors.orange),
       _ToolBtn(Icons.memory,         'IoT Devices',    () => push(IotScanScreen(cidr: scanTarget)),        Colors.deepPurple),
-      _ToolBtn(Icons.manage_search, 'Who Is…',        () => push(const WhoisScreen()),         Colors.purple),
+      _ToolBtn(Icons.radar,          'Port Scan',      () => push(const PortScanScreen()),      Colors.purple),
       _ToolBtn(Icons.network_ping,  'Ping',           () => push(const PingScreen()),          Colors.teal),
       _ToolBtn(Icons.route,         'Traceroute',     () => push(const TracerouteScreen()),    Colors.deepOrange),
-      _ToolBtn(Icons.dns,           'NS Lookup',      () => push(const NslookupScreen()),      Colors.indigo),
+      _ToolBtn(Icons.manage_search, 'Who Is…',        () => push(const WhoisScreen()),         Colors.indigo),
       _ToolBtn(Icons.wifi_find,     'Wi-Fi Channels', () => push(const WifiChannelsScreen()),  Colors.cyan),
       _ToolBtn(Icons.cell_tower,    'Cellular Info',  () => push(const CellularScreen()),      Colors.deepPurple),
     ];
