@@ -142,7 +142,7 @@ class NetworkScanner {
           String? macAddress;
           try {
             // macAddress = await getMacForInterface(iface.name);
-            macAddress = await _macAddressPlusPlugin.getMacAddress()
+            macAddress = await _macAddressPlusPlugin.getMacAddress();
           } catch (_) {}
           map[ip] = macAddress ?? 'N/A';
         }
