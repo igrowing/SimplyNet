@@ -1,4 +1,4 @@
-flutter_icons:
+flutter_launcher_icons:
   # ── Android adaptive icon (API 26+) ──────────────────────────────────────
   # Adaptive icons have a foreground layer (108×108dp canvas) and a
   # background layer. The outer 18dp on each side is the "bleed zone" that
@@ -8,6 +8,8 @@ flutter_icons:
   android: true                     # generates ic_launcher and related res
   adaptive_icon_background: "assets/icon_bg.png"    # transparent PNG
   adaptive_icon_foreground: "assets/simplynet_fg.png"  # artwork with 20% padding
+  image_path_android: "assets/simplynet_fg.png"
+
   # ── iOS (keeps existing behaviour) ───────────────────────────────────────
   ios: true
   image_path_ios: "assets/simplynet.png"

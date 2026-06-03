@@ -47,6 +47,7 @@ android/local.properties
 android/.gradle/
 android/key.properties
 android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
+android/build/
 
 # iOS
 ios/Pods/

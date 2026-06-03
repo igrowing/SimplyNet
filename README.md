@@ -36,6 +36,10 @@ Ever wondered what's actually connected to your WiFi? SimplyNet gives you comple
 
 - Everything runs locally on your device. Your data never leaves your phone.
 - No ads, no tracking, no telemetry.
-- Built by developers, for developers. [Check out the source code](https://github.com/igrowing/SimplyNet) anytime.
+- Built by developers, for developers. [Check out the source code](https://github.com/igrowing/SimplyNet) anytime. Click the ⭐ "Star" 😊
 
 **SimplyNet: Because you'd better to know your network better. Pun intended.**
+
+#
+<a href="https://www.buymeacoffee.com/igrowing" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="41" width="174"></a>
+if you like the app and it makes your life a bit simpler.
