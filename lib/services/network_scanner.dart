@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:simply_net/models/host_result.dart';
 import 'package:simply_net/services/log_service.dart';
 import 'package:simply_net/services/oui_service.dart';
@@ -104,19 +103,6 @@ class NetworkScanner {
 
   static Map<String, String>? _selfMacCache; // populated once per scan
 
-  // static final _macChannel = MethodChannel('com.simplytools.simplynet/mac');
-
-  // static Future<String?> getMacForInterface(String ifaceName) async {
-  //   if (!Platform.isAndroid) return null;
-  //   try {
-  //     // final mac = await _macChannel.invokeMethod<String>('getMacForInterface', {'name': ifaceName});
-  //     // return mac;
-  //     return await GetMac.macAddress;
-  //   } catch (e) {
-  //     return null;
-  //   }
-  // }
-
   static Future<Map<String, String>> _getSelfMacs() async {
     if (_selfMacCache != null) return _selfMacCache!;
 
@@ -128,20 +114,10 @@ class NetworkScanner {
       );
       final _macAddressPlusPlugin = MacAddressPlus();
       for (final iface in interfaces) {
-        // NetworkInterface exposes the raw MAC bytes as a Uint8List in
-        // the `rawAddress` of the interface (Dart ≥ 3.x).
-        // Earlier SDKs don't expose MAC via NetworkInterface directly, so
-        // we fall back to parsing /proc/net/if_inet6 / /sys/class/net.
-        // Primary path: iface.rawAddress is the interface-level hardware addr.
-        // NOTE: iface.rawAddress is actually the first address's bytes, not
-        // the MAC.  The reliable cross-platform source is /sys/class/net/<name>/address
-        // (Android/Linux) or `ifconfig` output (iOS/macOS).  We try both.
-
         for (final addr in iface.addresses) {
           final ip = addr.address;
           String? macAddress;
           try {
-            // macAddress = await getMacForInterface(iface.name);
             macAddress = await _macAddressPlusPlugin.getMacAddress();
           } catch (_) {}
           map[ip] = macAddress ?? 'N/A';
@@ -223,45 +199,6 @@ class NetworkScanner {
 
     return '';
   }
-
-  // ── MAC resolution ───────────────────────────────────────────────────────
-  // Tries multiple methods to resolve IP → MAC address:
-  // 1. ARP table (/proc/net/arp)
-  // 2. arping command (active ARP query)
-  // 3. arp command fallback
-
-  // static Future<String> _resolveMac(String ip, Map<String, String> arpTable) async {
-  //   // 1. Try pre-populated ARP table
-  //   if (arpTable.containsKey(ip)) {
-  //     return arpTable[ip]!;
-  //   }
-
-  //   // 2. Re-read ARP table (kernel may have populated after ping)
-  //   var mac = await _readArpTable()[ip];
-  //   if (mac != null && mac.isNotEmpty) return mac;
-
-  //   // 3. Try arping command (active ARP query)
-  //   if (!kIsWeb) {
-  //     try {
-  //       final result = await Process.run(
-  //         'arping', ['-c', '1', ip],
-  //         runInShell: true,
-  //       ).timeout(const Duration(seconds: 1));
-  //       if (result.exitCode == 0) {
-  //         // arping output contains MAC address, extract it
-  //         final macMatch = RegExp(r'([0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2})')
-  //             .firstMatch(result.stdout as String);
-  //         if (macMatch != null) {
-  //           return macMatch.group(1)!.toUpperCase();
-  //         }
-  //       }
-  //     } catch (_) {}
-  //   }
-
-  //   // 4. Final ARP table check
-  //   mac = _readArpTable()[ip];
-  //   return mac ?? 'N/A';
-  // }
 
   // ── Device type detection ──────────────────────────────────────────────────
   // Infers device type from manufacturer name (OUI lookup).
