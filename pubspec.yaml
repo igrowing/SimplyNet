@@ -37,6 +37,7 @@ dependencies:
   intl: ^0.20.2
   http: ^1.6.0
   path_provider: ^2.1.5
+  mac_address: ^1.0.0
 
   # ── KGP warning note ────────────────────────────────────────────────────────
   # Flutter warns that network_info_plus, shared_preferences_android, and

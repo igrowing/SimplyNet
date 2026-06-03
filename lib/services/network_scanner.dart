@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:simply_net/models/host_result.dart';
 import 'package:simply_net/services/log_service.dart';
 import 'package:simply_net/services/oui_service.dart';
+import 'package:mac_address/mac_address.dart';
 
 class NetworkScanner {
   static const _pingTimeout  = Duration(milliseconds: 800);
@@ -103,17 +104,18 @@ class NetworkScanner {
 
   static Map<String, String>? _selfMacCache; // populated once per scan
 
-  static final _macChannel = MethodChannel('com.simplytools.simplynet/mac');
+  // static final _macChannel = MethodChannel('com.simplytools.simplynet/mac');
 
-  static Future<String?> getMacForInterface(String ifaceName) async {
-    if (!Platform.isAndroid) return null;
-    try {
-      final mac = await _macChannel.invokeMethod<String>('getMacForInterface', {'name': ifaceName});
-      return mac;
-    } catch (e) {
-      return null;
-    }
-  }
+  // static Future<String?> getMacForInterface(String ifaceName) async {
+  //   if (!Platform.isAndroid) return null;
+  //   try {
+  //     // final mac = await _macChannel.invokeMethod<String>('getMacForInterface', {'name': ifaceName});
+  //     // return mac;
+  //     return await GetMac.macAddress;
+  //   } catch (e) {
+  //     return null;
+  //   }
+  // }
 
   static Future<Map<String, String>> _getSelfMacs() async {
     if (_selfMacCache != null) return _selfMacCache!;
@@ -138,7 +140,8 @@ class NetworkScanner {
           final ip = addr.address;
           String? macAddress;
           try {
-            macAddress = await getMacForInterface(iface.name);
+            // macAddress = await getMacForInterface(iface.name);
+            macAddress = await GetMac.macAddress;
           } catch (_) {}
           map[ip] = macAddress ?? 'N/A';
         }

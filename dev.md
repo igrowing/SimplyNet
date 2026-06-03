@@ -100,4 +100,4 @@ Then verify all changes manually before submitting to stores!
 # TODO
 * Enhance device detection list: qnap, fritz, eero, samsung mobile, redmi mobile, huawei mobile, espressif, hui zhou camera reolin dahua, 
 * Detect self MAC. Don't use get_mac_address lib or /etc/... read. These don't work.
-* Detect IoT devices: Matter, eWeLink, Tasmota, what else?
+* Detect IoT devices: Matter, eWeLink, Tasmota, Espressif, Nordic, what else?
