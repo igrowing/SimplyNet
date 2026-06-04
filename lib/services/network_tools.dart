@@ -308,7 +308,6 @@ class NetworkTools {
 
   // Legacy aliases — keep existing callers compiling without changes.
   static List<int> get wellKnownPorts => wellKnownPortNames.keys.toList();
-  static const commonPorts = wellKnownPortNames;
 
   static Stream<String> portScan(
     String host, {

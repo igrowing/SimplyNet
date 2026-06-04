@@ -3,14 +3,14 @@ import 'package:simply_net/services/network_tools.dart';
 
 void main() {
   group('NetworkTools._portName (via portScan header)', () {
-    // We test the port-name lookup indirectly by checking the commonPorts list
+    // We test the port-name lookup indirectly by checking the wellKnownPorts list
     // and that portScan emits an initial header line.
-    test('commonPorts contains well-known ports', () {
-      expect(NetworkTools.commonPorts, contains(22));   // ssh
-      expect(NetworkTools.commonPorts, contains(80));   // http
-      expect(NetworkTools.commonPorts, contains(443));  // https
-      expect(NetworkTools.commonPorts, contains(3306)); // mysql
-      expect(NetworkTools.commonPorts, contains(3389)); // rdp
+    test('wellKnownPorts contains well-known ports', () {
+      expect(NetworkTools.wellKnownPorts, contains(22));   // ssh
+      expect(NetworkTools.wellKnownPorts, contains(80));   // http
+      expect(NetworkTools.wellKnownPorts, contains(443));  // https
+      expect(NetworkTools.wellKnownPorts, contains(3306)); // mysql
+      expect(NetworkTools.wellKnownPorts, contains(3389)); // rdp
     });
 
     test('portScan emits header as first event', () async {
