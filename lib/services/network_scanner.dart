@@ -204,10 +204,84 @@ class NetworkScanner {
   // Infers device type from manufacturer name (OUI lookup).
   // Can be extended with port-based detection (e.g., 554 = IP Camera).
 
+  // ── IoT OUI prefixes (subset of IotScanner._ouiVendors) ────────────────────
+  // Used to classify devices as 'IoT Device' when the general OUI lookup
+  // returns a vendor name that belongs to a known IoT hardware maker.
+  // Keep in sync with IotScanner._ouiVendors in lib/services/iot_scanner.dart.
+  static const _iotVendorKeywords = <String>[
+    // Chip vendors — virtually always IoT
+    'espressif', 'nordic semiconductor', 'silicon labs', 'texas instruments',
+    'stmicroelectronics', 'stmicro', 'nxp semiconductor', 'microchip technol',
+    'beken', 'renesas',
+    // Platform/firmware
+    'tuya', 'shelly', 'allterco', 'itead', 'sonoff',
+    'meross', 'ewelink',
+    // Consumer IoT brands
+    'philips hue', 'philips lighting', 'signify',
+    'ikea of sweden', 'ikea trådfri',
+    'belkin', 'wemo',
+    'xiaomi', 'wyze labs',
+    'smartthings',
+    'amazon technologies',
+    'google,',   // "Google, Inc." — trailing comma avoids matching "Google LLC" (Android phones)
+    'raspberry pi',
+    'arduino', 'particle industries',
+    'tp-link',   // Kasa smart devices
+    'realtek(iot',
+  ];
+
+  /// Returns 'IoT Device' when [mac] belongs to a known IoT OUI prefix.
+  /// Falls back to empty string if the MAC is unknown or N/A.
+  static String deviceTypeFromMac(String mac) {
+    if (mac == 'N/A' || mac.length < 8) return '';
+    final prefix = mac.toUpperCase().substring(0, 8);
+    // Check against the IoT prefixes used by IotScanner
+    // (inline check avoids importing iot_scanner to prevent circular deps)
+    const iotPrefixes = <String>{
+      '10:06:1C','18:FE:34','24:0A:C4','2C:3A:E8','30:AE:A4','3C:71:BF',
+      '48:3F:DA','48:E7:29','4C:11:AE','58:BF:25','5C:CF:7F','60:01:94',
+      '68:C6:3A','7C:9E:BD','80:64:6F','80:7D:3A','84:0D:8E','84:CC:A8',
+      '8C:AA:B5','A0:20:A6','A4:CF:12','A8:03:2A','AC:67:B2','B4:E6:2D',
+      'BC:DD:C2','C4:4F:33','CC:50:E3','D4:8A:FC','D8:A0:1D','DC:4F:22',
+      'E0:98:06','E4:65:B8','EC:FA:BC','F4:CF:A2','FC:F5:C4', // Espressif
+      'D0:F6:18','E6:9E:7E','F4:CE:36',                       // Nordic
+      '00:0D:6F','78:A5:04',                                  // Silicon Labs
+      '00:12:4B',                                             // TI
+      '00:80:E1','10:E7:7A','18:E8:EC','40:82:7B','50:0F:59', // STMicro
+      '1C:90:FF','CC:02:D1','CC:8C:BF','E4:AE:E4','FC:3C:D7','FC:67:1F', // Tuya
+      'C8:47:8C','70:87:9E','80:6D:DE','D8:5D:4C','E0:5A:1B', // Beken/Tuya
+      'C4:5B:BE',                                             // Shelly
+      '60:55:F9','BC:FF:4D',                                  // Sonoff/ITEAD
+      '50:C7:BF','98:DA:C4','B0:95:75','C0:06:C3','D8:0D:17', // TP-Link
+      '28:6C:07','34:CE:00','50:64:2B','64:09:80','78:11:DC',
+      '98:FA:E3','AC:29:3A','F4:F5:DB',                       // Xiaomi
+      '48:E1:E9','C4:E7:AE',                                  // Meross
+      'B4:75:0E','D8:EC:5E','E8:9F:80','EC:1A:59',            // Belkin/WeMo
+      '00:17:88','C4:29:96','EC:B5:FA','FC:26:8C',            // Philips Hue/Signify
+      '68:EC:8A','AC:23:3F',                                  // IKEA
+      '28:CD:C1','88:A2:9E','98:FE:54','DC:A6:32','D8:3A:DD','E4:5F:01', // RPi
+      '08:91:A3','28:73:F6','68:37:E9','84:28:59','E0:CB:1D','FC:D7:49', // Amazon
+      '08:B4:B1','24:29:34','54:60:09','60:70:6C','60:B7:6E','C8:2A:DD', // Google
+      '24:FD:5B',                                             // SmartThings
+      '2C:AA:8E','7C:78:B2','80:48:2C','D0:3F:27','F0:C8:8B', // Wyze
+      'A8:61:0A','94:94:4A',                                  // Arduino/Particle
+      'AC:9A:22','B4:3D:6B',                                  // NXP
+      '00:E0:4C',                                             // Realtek(IoT-bridge)
+    };
+    if (iotPrefixes.contains(prefix)) return 'IoT Device';
+    return '';
+  }
+
   static String _detectDeviceType(String manufacturer) {
     if (manufacturer.isEmpty) return '';
     
     final lower = manufacturer.toLowerCase();
+
+    // IoT / embedded chip vendors — checked first because e.g. "Espressif" or
+    // "Tuya Smart" would otherwise fall through to no match.
+    for (final kw in _iotVendorKeywords) {
+      if (lower.contains(kw)) return 'IoT Device';
+    }
     
     // Smart TV / Media devices
     if (lower.contains('samsung') || lower.contains('lg') || lower.contains('vizio') || 
@@ -215,15 +289,15 @@ class NetworkScanner {
       return 'Smart TV';
     }
     
-    // IoT / Smart Home
-    if (lower.contains('amazon') || lower.contains('echo') || lower.contains('google') ||
-        lower.contains('nest') || lower.contains('philips hue') || lower.contains('tp-link')) {
+    // Smart Home hubs / platforms
+    if (lower.contains('echo') || lower.contains('nest') || lower.contains('ring ') ||
+        lower.contains('arlo ')) {
       return 'Smart Home';
     }
     
     // Printers
     if (lower.contains('printer') || lower.contains('xerox') || lower.contains('canon') ||
-        lower.contains('hp') || lower.contains('epson') || lower.contains('ricoh')) {
+        lower.contains('hp inc') || lower.contains('epson') || lower.contains('ricoh')) {
       return 'Printer';
     }
     
@@ -240,13 +314,9 @@ class NetworkScanner {
       return 'Network Device';
     }
     
-    // Mobile devices
-    if (lower.contains('apple') || lower.contains('iphone') || lower.contains('ipad')) {
-      return 'Apple Device';
-    }
-    if (lower.contains('samsung') && lower.contains('mobile')) {
-      return 'Android Device';
-    }
+    // Mobile / Apple
+    if (lower.contains('apple')) return 'Apple Device';
+    if (lower.contains('samsung') && lower.contains('mobile')) return 'Android Device';
     
     // Workstations / Computers
     if (lower.contains('intel') || lower.contains('realtek') || lower.contains('broadcom') ||
@@ -254,7 +324,6 @@ class NetworkScanner {
       return 'Computer';
     }
     
-    // Default: Unknown
     return '';
   }
 
@@ -301,7 +370,11 @@ class NetworkScanner {
         host.manufacturer = host.manufacturer != '' ? host.manufacturer : '';
       }
       // Detect device type from manufacturer
-      host.deviceType = _detectDeviceType(host.manufacturer);
+      // MAC-based IoT classification takes priority over manufacturer name matching
+      final macType = deviceTypeFromMac(host.mac);
+      host.deviceType = macType.isNotEmpty
+          ? macType
+          : _detectDeviceType(host.manufacturer);
       yield host;
     }
   }

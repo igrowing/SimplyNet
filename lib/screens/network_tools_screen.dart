@@ -983,21 +983,38 @@ class _WhoisState extends State<WhoisScreen> {
     } catch (e) { _put('RDAP error: $e'); }
     setState(() {});
 
-    // ── 3. System nslookup ─────────────────────────────────────────────────
+    // ── 3. System nslookup ─────────────────────────────────────────────────────
+    // Process.run + runInShell:true avoids EACCES on Android systems that
+    // block direct exec() but allow shell-invoked binaries.
     _put(''); _put('=== System nslookup ===');
     try {
-      final proc = await Process.start('nslookup', [q]);
-      final out = await proc.stdout
-          .transform(const SystemEncoding().decoder)
-          .join().timeout(const Duration(seconds: 6));
-      await proc.exitCode;
-      bool inAns = false;
-      for (final line in out.split('\n')) {
-        final t = line.trim();
-        if (t.isEmpty) { inAns = true; continue; }
-        if (inAns && t.isNotEmpty) _put(t);
+      final result = await Process.run(
+        'nslookup', [q],
+        runInShell: true,
+        stdoutEncoding: const SystemEncoding(),
+        stderrEncoding: const SystemEncoding(),
+      ).timeout(const Duration(seconds: 8));
+      final out = (result.stdout as String).trim();
+      final err = (result.stderr as String).trim();
+      if (out.isNotEmpty) {
+        bool inAns = false;
+        for (final line in out.split('\n')) {
+          final t = line.trim();
+          if (t.isEmpty) { inAns = true; continue; }
+          if (inAns || t.startsWith('Server:') || t.startsWith('Name:') ||
+              t.startsWith('Address:') || t.contains('name =') ||
+              t.startsWith('Non-authoritative')) {
+            _put(t);
+          }
+        }
+      } else if (err.isNotEmpty) {
+        _put('nslookup: $err');
+      } else {
+        _put('No output from nslookup.');
       }
-    } catch (e) { _put('nslookup: $e'); }
+    } catch (e) {
+      _put('nslookup not available on this device.');
+    }
 
     setState(() { _loading = false; });
     WidgetsBinding.instance.addPostFrameCallback((_) {

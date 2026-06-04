@@ -56,35 +56,80 @@ class IotScanner {
 
   // ---------- well-known IoT MAC OUI prefixes (first 3 octets, uppercase) ---
   // Source: IEEE OUI + vendor product pages
+  // ── IoT MAC OUI prefixes (first 3 octets, uppercase) ────────────────────────
+  // Sources: IEEE OUI database (assets/oui.json) + vendor product pages.
+  // Each entry maps to a human-readable vendor name used for IoT classification.
+  // When a device's MAC matches any prefix here it is treated as an IoT device.
   static const _ouiVendors = <String, String>{
-    '18:FE:34': 'Espressif',  '24:0A:C4': 'Espressif',  '2C:3A:E8': 'Espressif',
-    '30:AE:A4': 'Espressif',  '3C:71:BF': 'Espressif',  '48:3F:DA': 'Espressif',
-    '4C:11:AE': 'Espressif',  '58:BF:25': 'Espressif',  '5C:CF:7F': 'Espressif',
-    '60:01:94': 'Espressif',  '68:C6:3A': 'Espressif',  '7C:9E:BD': 'Espressif',
+    // ── Espressif (ESP8266 / ESP32 — the most common IoT chip) ──────────────
+    '10:06:1C': 'Espressif',  '18:FE:34': 'Espressif',  '24:0A:C4': 'Espressif',
+    '2C:3A:E8': 'Espressif',  '30:AE:A4': 'Espressif',  '3C:71:BF': 'Espressif',
+    '48:3F:DA': 'Espressif',  '48:E7:29': 'Espressif',  '4C:11:AE': 'Espressif',
+    '58:BF:25': 'Espressif',  '5C:CF:7F': 'Espressif',  '60:01:94': 'Espressif',
+    '68:C6:3A': 'Espressif',  '7C:9E:BD': 'Espressif',  '80:64:6F': 'Espressif',
     '80:7D:3A': 'Espressif',  '84:0D:8E': 'Espressif',  '84:CC:A8': 'Espressif',
     '8C:AA:B5': 'Espressif',  'A0:20:A6': 'Espressif',  'A4:CF:12': 'Espressif',
     'A8:03:2A': 'Espressif',  'AC:67:B2': 'Espressif',  'B4:E6:2D': 'Espressif',
     'BC:DD:C2': 'Espressif',  'C4:4F:33': 'Espressif',  'CC:50:E3': 'Espressif',
-    'D8:A0:1D': 'Espressif',  'DC:4F:22': 'Espressif',  'E0:98:06': 'Espressif',
-    'EC:FA:BC': 'Espressif',  'F4:CF:A2': 'Espressif',  'FC:F5:C4': 'Espressif',
-    'F4:CE:36': 'Nordic',     'D0:F6:18': 'Nordic',     'E6:9E:7E': 'Nordic',
+    'D4:8A:FC': 'Espressif',  'D8:A0:1D': 'Espressif',  'DC:4F:22': 'Espressif',
+    'E0:98:06': 'Espressif',  'E4:65:B8': 'Espressif',  'EC:FA:BC': 'Espressif',
+    'F4:CF:A2': 'Espressif',  'FC:F5:C4': 'Espressif',
+    // ── Nordic Semiconductor (nRF52/nRF91 — Zigbee, Thread, BLE) ────────────
+    'D0:F6:18': 'Nordic',     'E6:9E:7E': 'Nordic',     'F4:CE:36': 'Nordic',
+    // ── Silicon Labs (EFR32 — Zigbee, Z-Wave, Thread) ───────────────────────
     '00:0D:6F': 'Silicon Labs','78:A5:04': 'Silicon Labs',
+    // ── Texas Instruments (CC26xx / CC13xx — Zigbee, BLE, Sub-GHz) ──────────
     '00:12:4B': 'TI',
-    '00:80:E1': 'STMicro',
+    // ── STMicroelectronics (STM32WB — BLE/Zigbee, STM32 MCU boards) ─────────
+    '00:80:E1': 'STMicro',    '10:E7:7A': 'STMicro',    '18:E8:EC': 'STMicro',
+    '40:82:7B': 'STMicro',    '50:0F:59': 'STMicro',
+    // ── Tuya Smart Inc. (cloud-based IoT platform, many white-label devices) ─
+    '1C:90:FF': 'Tuya',       'CC:02:D1': 'Tuya',       'CC:8C:BF': 'Tuya',
+    'E4:AE:E4': 'Tuya',       'FC:3C:D7': 'Tuya',       'FC:67:1F': 'Tuya',
+    // ── Beken Corporation (BK7231 chip — used exclusively in Tuya devices) ───
+    'C8:47:8C': 'Tuya/Beken', '70:87:9E': 'Tuya/Beken', '80:6D:DE': 'Tuya/Beken',
+    'D8:5D:4C': 'Tuya/Beken', 'E0:5A:1B': 'Tuya/Beken',
+    // ── Shelly / Allterco Robotics ───────────────────────────────────────────
     'C4:5B:BE': 'Shelly',
+    // ── Sonoff / ITEAD Studio (eWeLink firmware) ─────────────────────────────
     '60:55:F9': 'Sonoff/ITEAD','BC:FF:4D': 'Sonoff/ITEAD',
+    // ── TP-Link (Kasa smart plugs, Tapo cameras) ─────────────────────────────
     '50:C7:BF': 'TP-Link',    '98:DA:C4': 'TP-Link',    'B0:95:75': 'TP-Link',
     'C0:06:C3': 'TP-Link',    'D8:0D:17': 'TP-Link',
+    // ── Xiaomi (Mi Home, Yeelight, MiIO protocol) ────────────────────────────
     '28:6C:07': 'Xiaomi',     '34:CE:00': 'Xiaomi',     '50:64:2B': 'Xiaomi',
     '64:09:80': 'Xiaomi',     '78:11:DC': 'Xiaomi',     '98:FA:E3': 'Xiaomi',
     'AC:29:3A': 'Xiaomi',     'F4:F5:DB': 'Xiaomi',
-    '48:E1:E9': 'Meross',
-    'D8:5D:4C': 'Tuya/Beken', 'E0:5A:1B': 'Tuya/Beken',
-    'B4:75:0E': 'Belkin/WeMo','EC:1A:59': 'Belkin/WeMo',
-    '00:17:88': 'Philips Hue','EC:B5:FA': 'Philips Hue',
-    'AC:23:3F': 'IKEA Trådfri',
-    'DC:A6:32': 'RPi',        'E4:5F:01': 'RPi',        '28:CD:C1': 'RPi',
-    // HUSBZB / ConBee / Sonoff Zigbee dongle USB bridges (show as USB eth)
+    // ── Meross Technology ────────────────────────────────────────────────────
+    '48:E1:E9': 'Meross',     'C4:E7:AE': 'Meross',
+    // ── Belkin / WeMo smart plugs ────────────────────────────────────────────
+    'B4:75:0E': 'Belkin/WeMo','D8:EC:5E': 'Belkin/WeMo','E8:9F:80': 'Belkin/WeMo',
+    'EC:1A:59': 'Belkin/WeMo','58:EF:68': 'Belkin/WeMo','60:38:E0': 'Belkin/WeMo',
+    // ── Philips Hue / Signify ────────────────────────────────────────────────
+    '00:17:88': 'Philips Hue','C4:29:96': 'Philips Hue','EC:B5:FA': 'Philips Hue',
+    'FC:26:8C': 'Philips Hue',
+    // ── IKEA (Trådfri / DIRIGERA smart home) ─────────────────────────────────
+    '68:EC:8A': 'IKEA',       'AC:23:3F': 'IKEA Trådfri',
+    // ── Raspberry Pi Foundation ──────────────────────────────────────────────
+    '28:CD:C1': 'RPi',        '88:A2:9E': 'RPi',        '98:FE:54': 'RPi',
+    'D3:A6:32': 'RPi',        'D8:3A:DD': 'RPi',        'DC:A6:32': 'RPi',
+    'E4:5F:01': 'RPi',
+    // ── Amazon (Echo, Fire TV, Ring) ─────────────────────────────────────────
+    '08:91:A3': 'Amazon',     '28:73:F6': 'Amazon',     '68:37:E9': 'Amazon',
+    '84:28:59': 'Amazon',     'E0:CB:1D': 'Amazon',     'FC:D7:49': 'Amazon',
+    // ── Google (Nest, Chromecast, Google Home) ───────────────────────────────
+    '08:B4:B1': 'Google',     '24:29:34': 'Google',     '54:60:09': 'Google',
+    '60:70:6C': 'Google',     '60:B7:6E': 'Google',     'C8:2A:DD': 'Google',
+    // ── SmartThings (Samsung) ────────────────────────────────────────────────
+    '24:FD:5B': 'SmartThings',
+    // ── Wyze Labs (cameras, plugs, sensors) ──────────────────────────────────
+    '2C:AA:8E': 'Wyze',       '7C:78:B2': 'Wyze',       '80:48:2C': 'Wyze',
+    'D0:3F:27': 'Wyze',       'F0:C8:8B': 'Wyze',
+    // ── Arduino / Particle (maker boards) ───────────────────────────────────
+    'A8:61:0A': 'Arduino',    '94:94:4A': 'Particle',
+    // ── NXP Semiconductors (i.MX RT, LPC — embedded/IoT MCUs) ──────────────
+    'AC:9A:22': 'NXP',        'B4:3D:6B': 'NXP',
+    // ── Realtek (USB Ethernet bridges used in Zigbee/ZWave USB sticks) ──────
     '00:E0:4C': 'Realtek(IoT-bridge)',
   };
 
