@@ -289,6 +289,7 @@ class NetworkTools {
     8123:  'home-assistant',
     8443:  'https-alt',
     8554:  'rtsp-alt',
+    8883:  'mqtt-tls',
     8888:  'zigbee2mqtt',
     9000:  'openhab',
     9001:  'openhab-alt',
