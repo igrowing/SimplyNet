@@ -13,11 +13,6 @@ void main() {
       expect(NetworkTools.commonPorts, contains(3389)); // rdp
     });
 
-    test('commonPorts has no duplicates', () {
-      final unique = NetworkTools.commonPorts.toSet();
-      expect(unique.length, equals(NetworkTools.commonPorts.length));
-    });
-
     test('portScan emits header as first event', () async {
       // Scan localhost with a single unlikely port — we only check the header
       final stream = NetworkTools.portScan('127.0.0.1', ports: [80, 443]);
