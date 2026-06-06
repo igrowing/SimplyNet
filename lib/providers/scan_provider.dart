@@ -22,6 +22,15 @@ class ScanProvider extends ChangeNotifier {
   List<HostResult> _results = [];
   List<HostResult> get results => _sortedResults();
 
+  /// Unsorted raw results — used by IoT and camera screens to reuse
+  /// the already-discovered host list without triggering a re-sort.
+  List<HostResult> get rawResults => List.unmodifiable(_results);
+
+  /// True when we have a completed (non-scanning) result set for [cidr].
+  /// IoT/camera screens use this to skip a redundant full network scan.
+  bool hasValidResults(String cidr) =>
+      !_isScanning && _results.isNotEmpty && _target == cidr;
+
   bool _isScanning = false;
   bool get isScanning => _isScanning;
 

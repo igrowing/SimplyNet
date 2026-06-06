@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:simply_net/providers/scan_provider.dart';
+import 'package:simply_net/providers/settings_provider.dart';
 import 'package:simply_net/services/foreground_service.dart';
 import 'package:simply_net/services/iot_scanner.dart';
+import 'package:simply_net/services/log_service.dart';
 
 class IotScanScreen extends StatefulWidget {
   final String cidr;
@@ -43,27 +45,67 @@ class _IotScanScreenState extends State<IotScanScreen> {
       _done     = 0;
     });
 
-    // Calculate total hosts
-    final parts  = widget.cidr.split('/');
-    final prefix = int.tryParse(parts.length > 1 ? parts[1] : '24') ?? 24;
-    _total = (1 << (32 - prefix)) - 2;
+    final scanProv = context.read<ScanProvider>();
 
-    FgService.start(title: 'IoT Scan', body: 'Scanning ${widget.cidr} for IoT devices…');
+    if (scanProv.hasValidResults(widget.cidr)) {
+      // ── Fast path: reuse already-discovered IPs from ScanProvider ────────
+      // Skip the full subnet sweep and probe only the live hosts we already know.
+      final ips = scanProv.rawResults.map((h) => h.ip).toList();
+      _total = ips.length;
+      FgService.start(title: 'IoT Scan', body: 'Probing ${ips.length} known hosts…');
 
-    _sub = IotScanner.scanSubnet(widget.cidr).listen(
-      (dev) => setState(() => _devices.add(dev)),
-      onDone: () {
-        setState(() => _scanning = false);
-        FgService.stop(doneBody: 'IoT scan complete — ${_devices.length} device(s) found.');
-      },
-      onError: (_) => setState(() => _scanning = false),
+      _sub = IotScanner.scanHosts(ips).listen(
+        (dev) => setState(() {
+          _devices.add(dev);
+          _done++;
+        }),
+        onDone: () async {
+          setState(() => _scanning = false);
+          FgService.stop(doneBody: 'IoT scan complete — ${_devices.length} device(s) found.');
+          await _writeLog();
+        },
+        onError: (_) => setState(() => _scanning = false),
+      );
+    } else {
+      // ── Full scan path: no cached results yet ────────────────────────────
+      final parts  = widget.cidr.split('/');
+      final prefix = int.tryParse(parts.length > 1 ? parts[1] : '24') ?? 24;
+      _total = (1 << (32 - prefix)) - 2;
+
+      FgService.start(title: 'IoT Scan', body: 'Scanning ${widget.cidr} for IoT devices…');
+
+      _sub = IotScanner.scanSubnet(widget.cidr).listen(
+        (dev) => setState(() => _devices.add(dev)),
+        onDone: () async {
+          setState(() => _scanning = false);
+          FgService.stop(doneBody: 'IoT scan complete — ${_devices.length} device(s) found.');
+          await _writeLog();
+        },
+        onError: (_) => setState(() => _scanning = false),
+      );
+
+      // Progress ticker (full scan gives no per-host progress)
+      Timer.periodic(const Duration(milliseconds: 400), (t) {
+        if (!_scanning) { t.cancel(); return; }
+        setState(() => _done = (_done + 8).clamp(0, _total));
+      });
+    }
+  }
+
+  Future<void> _writeLog() async {
+    if (!context.mounted) return;
+    final settings = context.read<SettingsProvider>().settings;
+    if (!settings.loggingEnabled) return;
+    final buf = StringBuffer();
+    for (final dev in _devices) {
+      buf.writeln('${dev.ip}  ${dev.protocol}  ${dev.vendor}  '
+          '[${dev.detectionMethod}, ${dev.confidence.name}]');
+    }
+    await LogService.createLog(
+      function: 'iot_scan',
+      content:  buf.toString(),
+      summary:  'IoT scan ${widget.cidr}: ${_devices.length} device(s) found',
     );
-
-    // Progress ticker
-    Timer.periodic(const Duration(milliseconds: 400), (t) {
-      if (!_scanning) { t.cancel(); return; }
-      setState(() => _done = (_done + 8).clamp(0, _total));
-    });
   }
 
   void _stopScan() {

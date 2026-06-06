@@ -737,31 +737,48 @@ class _IpCameraScanState extends State<IpCameraScanScreen> {
       _total    = 0;
     });
 
-    _sub = IpCameraDetector.scanSubnet(
-      widget.cidr,
-      onProgress: (done, total) =>
-          setState(() { _done = done; _total = total; }),
-    ).listen(
-      (candidate) => setState(() => _results.add(candidate)),
-      onDone: () async {
-        setState(() => _scanning = false);
-        if (context.mounted) {
-          final settings = context.read<SettingsProvider>().settings;
-          if (settings.loggingEnabled) {
-            // Build log content from _results (List<CameraCandidate>)
-            final buf = StringBuffer();
-            for (final cam in _results) {
-              buf.writeln('${cam.ip}  ${cam.method.name}  ${cam.manufacturer} ${cam.evidence}');
-            }
-            await LogService.createLog(
-              function: 'ip_cameras',
-              content:  buf.toString(),
-              summary:  'IP camera scan ${widget.cidr}: ${_results.length} found',
-            );
-          }
+    final scanProv = context.read<ScanProvider>();
+
+    void _handleDone() async {
+      setState(() => _scanning = false);
+      if (!context.mounted) return;
+      final settings = context.read<SettingsProvider>().settings;
+      if (settings.loggingEnabled) {
+        final buf = StringBuffer();
+        for (final cam in _results) {
+          buf.writeln('${cam.ip}  ${cam.method.name}  ${cam.manufacturer}  ${cam.evidence}');
         }
-      },
-    );
+        await LogService.createLog(
+          function: 'ip_cameras',
+          content:  buf.toString(),
+          summary:  'IP camera scan ${widget.cidr}: ${_results.length} found',
+        );
+      }
+    }
+
+    if (scanProv.hasValidResults(widget.cidr)) {
+      // ── Fast path: probe only already-discovered hosts ───────────────────
+      final ips = scanProv.rawResults.map((h) => h.ip).toList();
+      _total = ips.length;
+      _sub = IpCameraDetector.scanHosts(
+        ips,
+        onProgress: (done, total) =>
+            setState(() { _done = done; _total = total; }),
+      ).listen(
+        (candidate) => setState(() => _results.add(candidate)),
+        onDone: _handleDone,
+      );
+    } else {
+      // ── Full scan path ───────────────────────────────────────────────────
+      _sub = IpCameraDetector.scanSubnet(
+        widget.cidr,
+        onProgress: (done, total) =>
+            setState(() { _done = done; _total = total; }),
+      ).listen(
+        (candidate) => setState(() => _results.add(candidate)),
+        onDone: _handleDone,
+      );
+    }
   }
 
   // ── Label helpers ──────────────────────────────────────────────────────────

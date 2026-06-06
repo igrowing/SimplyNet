@@ -1,10 +1,20 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
+import 'package:geolocator/geolocator.dart';
+import 'package:provider/provider.dart';
+import 'package:simply_net/providers/settings_provider.dart';
+import 'package:simply_net/services/log_service.dart';
 
 /// Cellular Info screen.
 /// Shows Rx/Tx signal levels, connected cell tower data, provider, and
 /// technology (LTE/5G/3G) sourced from Android's TelephonyManager
 /// via a MethodChannel (simplynet/cellular).
+///
+/// Also shows approximate GPS location and nearest city/village using
+/// the OS location service (no extra permissions beyond ACCESS_FINE_LOCATION
+/// which is already declared in AndroidManifest.xml for Wi-Fi scanning).
 ///
 /// Falls back to informative placeholders on iOS / unsupported devices.
 class CellularScreen extends StatefulWidget {
@@ -16,9 +26,14 @@ class CellularScreen extends StatefulWidget {
 class _CellularScreenState extends State<CellularScreen> {
   static const _channel = MethodChannel('simplynet/cellular');
 
-  Map<String, String> _data = {};
-  bool   _loading = false;
-  String _error   = '';
+  Map<String, String> _data    = {};
+  bool   _loading              = false;
+  String _error                = '';
+
+  // ── Location state ────────────────────────────────────────────────────────
+  String _locationLine  = '';   // "lat, lon"
+  String _placeName     = '';   // nearest city/village from Nominatim
+  bool   _locationBusy  = false;
 
   @override
   void initState() {
@@ -38,17 +53,110 @@ class _CellularScreenState extends State<CellularScreen> {
       }
     } on PlatformException catch (e) {
       setState(() {
-        _error = 'Platform error: ${e.message}';
+        _error = 'Platform error: \${e.message}';
         _data  = _demoData();
       });
     } catch (e) {
       setState(() {
-        _error = 'Error: $e';
+        _error = 'Error: \$e';
         _data  = _demoData();
       });
     } finally {
       setState(() => _loading = false);
     }
+
+    // Fetch location in parallel after cellular data is shown
+    unawaited(_fetchLocation());
+
+    // Log the result
+    if (context.mounted) {
+      final settings = context.read<SettingsProvider>().settings;
+      if (settings.loggingEnabled && _data.isNotEmpty) {
+        final buf = StringBuffer();
+        _data.forEach((k, v) => buf.writeln('$k: $v'));
+        await LogService.createLog(
+          function: 'cellular',
+          content:  buf.toString(),
+          summary:  'Cellular info: \${_data["provider"] ?? "?"} \${_data["technology"] ?? ""}',
+        );
+      }
+    }
+  }
+
+  Future<void> _fetchLocation() async {
+    setState(() { _locationBusy = true; _locationLine = ''; _placeName = ''; });
+    try {
+      // Check permission — we only use what's already granted.
+      // ACCESS_FINE_LOCATION is already in AndroidManifest for Wi-Fi scanning.
+      LocationPermission perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        // Try to request it once — the AndroidManifest already declares it.
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.denied ||
+          perm == LocationPermission.deniedForever) {
+        setState(() {
+          _locationLine = 'Denied by the user';
+          _placeName    = '';
+          _locationBusy = false;
+        });
+        return;
+      }
+
+      // Get last known position first (fast, no GPS cold-start delay)
+      Position? pos = await Geolocator.getLastKnownPosition();
+      // Fall back to current position if no cached fix
+      pos ??= await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.low,   // cell/wifi accuracy, no GPS needed
+          timeLimit: Duration(seconds: 8),
+        ),
+      );
+
+      final lat = pos.latitude;
+      final lon = pos.longitude;
+      setState(() => _locationLine = '\${lat.toStringAsFixed(5)}, \${lon.toStringAsFixed(5)}');
+
+      // Reverse-geocode via OpenStreetMap Nominatim (no API key required)
+      final place = await _reverseGeocode(lat, lon);
+      setState(() {
+        _placeName    = place;
+        _locationBusy = false;
+      });
+    } catch (e) {
+      setState(() {
+        _locationLine = 'Unavailable: \$e';
+        _locationBusy = false;
+      });
+    }
+  }
+
+  Future<String> _reverseGeocode(double lat, double lon) async {
+    try {
+      final uri = Uri.parse(
+        'https://nominatim.openstreetmap.org/reverse'
+        '?format=json&lat=\$lat&lon=\$lon&zoom=14',
+      );
+      final resp = await http
+          .get(uri, headers: {'User-Agent': 'SimplyNet/1.0'})
+          .timeout(const Duration(seconds: 6));
+      if (resp.statusCode == 200) {
+        final j   = json.decode(resp.body) as Map<String, dynamic>;
+        final adr = j['address'] as Map<String, dynamic>? ?? {};
+        // Pick the most specific populated place name available
+        final place =
+            (adr['village']      ??
+             adr['town']         ??
+             adr['city']         ??
+             adr['municipality'] ??
+             adr['county']       ??
+             adr['state']        ?? '') as String;
+        final country = (adr['country_code'] as String? ?? '').toUpperCase();
+        if (place.isEmpty) return '';
+        return country.isEmpty ? place : '\$place (\$country)';
+      }
+    } catch (_) {}
+    return '';
   }
 
   Map<String, String> _demoData() => {
@@ -103,7 +211,7 @@ class _CellularScreenState extends State<CellularScreen> {
                     color: Theme.of(context).colorScheme.onErrorContainer),
                 const SizedBox(width: 6),
                 Expanded(
-                  child: Text('${_error}\nShowing demo data.',
+                  child: Text('\${_error}\nShowing demo data.',
                       style: TextStyle(fontSize: 12,
                           color: Theme.of(context).colorScheme.onErrorContainer)),
                 ),
@@ -145,6 +253,21 @@ class _CellularScreenState extends State<CellularScreen> {
                             hint: 'E-UTRA Absolute Radio Freq Channel Number'),
                         _row('Est. distance', _data['tower_est_dist'] ?? '—',
                             hint: 'Very rough estimate from timing advance'),
+                      ]),
+                      const SizedBox(height: 12),
+                      // ── Location section ──────────────────────────────────
+                      _section('Location', [
+                        _row('Coordinates',
+                          _locationBusy
+                              ? 'Locating…'
+                              : _locationLine.isEmpty ? '—' : _locationLine),
+                        if (_locationBusy)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 4),
+                            child: LinearProgressIndicator(),
+                          ),
+                        if (_placeName.isNotEmpty)
+                          _row('Nearest place', _placeName),
                       ]),
                     ],
                   ),
@@ -200,10 +323,8 @@ class _CellularScreenState extends State<CellularScreen> {
   }
 
   Widget _signalBar(BuildContext context, String rsrpStr) {
-    // Parse e.g. "-105 dBm" → -105
     final match = RegExp(r'(-?\d+)').firstMatch(rsrpStr);
     final rsrp  = match != null ? int.tryParse(match.group(1)!) ?? -120 : -120;
-    // RSRP: -80 = excellent, -100 = good, -110 = poor, -120 = no signal
     final frac  = ((rsrp + 120) / 40.0).clamp(0.0, 1.0);
     final color = frac > 0.7
         ? Colors.green
@@ -241,3 +362,6 @@ class _CellularScreenState extends State<CellularScreen> {
     );
   }
 }
+
+// Convenience to fire-and-forget a Future without needing async context.
+void unawaited(Future<void> future) => future.ignore();
