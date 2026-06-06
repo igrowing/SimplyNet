@@ -4,9 +4,9 @@ plugins {
 }
 
 android {
-    namespace = "com.simplynet.app"
+    namespace = "com.simplytools.simplynet"
 
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36  // Google Play requires targetSdk >= 35 from Aug 2025
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -15,9 +15,9 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.simplynet.app"
-        minSdk        = flutter.minSdkVersion
-        targetSdk     = flutter.targetSdkVersion
+        applicationId = "com.simplytools.simplynet"
+        minSdk        = 21  // Android 5.0+
+        targetSdk     = 36  // required for new Play Store submissions
         versionCode   = flutter.versionCode
         versionName   = flutter.versionName
     }

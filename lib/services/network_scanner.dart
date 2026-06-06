@@ -1,14 +1,14 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:simply_net/models/host_result.dart';
 import 'package:simply_net/services/log_service.dart';
 import 'package:simply_net/services/oui_service.dart';
+import 'package:mac_address_plus/mac_address_plus.dart';
 
 class NetworkScanner {
-  static const _pingTimeout  = Duration(milliseconds: 800);
-  static const _tcpTimeout   = Duration(milliseconds: 400);
+  static const _pingTimeout  = Duration(milliseconds: 2000);
+  static const _tcpTimeout   = Duration(milliseconds: 900);
   static const _parallelism  = 64;
 
   // ── CIDR helpers ──────────────────────────────────────────────────────────
@@ -103,18 +103,6 @@ class NetworkScanner {
 
   static Map<String, String>? _selfMacCache; // populated once per scan
 
-  static final _macChannel = MethodChannel('com.simplynet.app/mac');
-
-  static Future<String?> getMacForInterface(String ifaceName) async {
-    if (!Platform.isAndroid) return null;
-    try {
-      final mac = await _macChannel.invokeMethod<String>('getMacForInterface', {'name': ifaceName});
-      return mac;
-    } catch (e) {
-      return null;
-    }
-  }
-
   static Future<Map<String, String>> _getSelfMacs() async {
     if (_selfMacCache != null) return _selfMacCache!;
 
@@ -124,21 +112,13 @@ class NetworkScanner {
         includeLoopback: false,
         type: InternetAddressType.IPv4,
       );
+      final _macAddressPlusPlugin = MacAddressPlus();
       for (final iface in interfaces) {
-        // NetworkInterface exposes the raw MAC bytes as a Uint8List in
-        // the `rawAddress` of the interface (Dart ≥ 3.x).
-        // Earlier SDKs don't expose MAC via NetworkInterface directly, so
-        // we fall back to parsing /proc/net/if_inet6 / /sys/class/net.
-        // Primary path: iface.rawAddress is the interface-level hardware addr.
-        // NOTE: iface.rawAddress is actually the first address's bytes, not
-        // the MAC.  The reliable cross-platform source is /sys/class/net/<name>/address
-        // (Android/Linux) or `ifconfig` output (iOS/macOS).  We try both.
-
         for (final addr in iface.addresses) {
           final ip = addr.address;
           String? macAddress;
           try {
-            macAddress = await getMacForInterface(iface.name);
+            macAddress = await _macAddressPlusPlugin.getMacAddress();
           } catch (_) {}
           map[ip] = macAddress ?? 'N/A';
         }
@@ -220,53 +200,88 @@ class NetworkScanner {
     return '';
   }
 
-  // ── MAC resolution ───────────────────────────────────────────────────────
-  // Tries multiple methods to resolve IP → MAC address:
-  // 1. ARP table (/proc/net/arp)
-  // 2. arping command (active ARP query)
-  // 3. arp command fallback
-
-  // static Future<String> _resolveMac(String ip, Map<String, String> arpTable) async {
-  //   // 1. Try pre-populated ARP table
-  //   if (arpTable.containsKey(ip)) {
-  //     return arpTable[ip]!;
-  //   }
-
-  //   // 2. Re-read ARP table (kernel may have populated after ping)
-  //   var mac = await _readArpTable()[ip];
-  //   if (mac != null && mac.isNotEmpty) return mac;
-
-  //   // 3. Try arping command (active ARP query)
-  //   if (!kIsWeb) {
-  //     try {
-  //       final result = await Process.run(
-  //         'arping', ['-c', '1', ip],
-  //         runInShell: true,
-  //       ).timeout(const Duration(seconds: 1));
-  //       if (result.exitCode == 0) {
-  //         // arping output contains MAC address, extract it
-  //         final macMatch = RegExp(r'([0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2})')
-  //             .firstMatch(result.stdout as String);
-  //         if (macMatch != null) {
-  //           return macMatch.group(1)!.toUpperCase();
-  //         }
-  //       }
-  //     } catch (_) {}
-  //   }
-
-  //   // 4. Final ARP table check
-  //   mac = _readArpTable()[ip];
-  //   return mac ?? 'N/A';
-  // }
-
   // ── Device type detection ──────────────────────────────────────────────────
   // Infers device type from manufacturer name (OUI lookup).
   // Can be extended with port-based detection (e.g., 554 = IP Camera).
+
+  // ── IoT OUI prefixes (subset of IotScanner._ouiVendors) ────────────────────
+  // Used to classify devices as 'IoT Device' when the general OUI lookup
+  // returns a vendor name that belongs to a known IoT hardware maker.
+  // Keep in sync with IotScanner._ouiVendors in lib/services/iot_scanner.dart.
+  static const _iotVendorKeywords = <String>[
+    // Chip vendors — virtually always IoT
+    'espressif', 'nordic semiconductor', 'silicon labs', 'texas instruments',
+    'stmicroelectronics', 'stmicro', 'nxp semiconductor', 'microchip technol',
+    'beken', 'renesas',
+    // Platform/firmware
+    'tuya', 'shelly', 'allterco', 'itead', 'sonoff',
+    'meross', 'ewelink',
+    // Consumer IoT brands
+    'philips hue', 'philips lighting', 'signify',
+    'ikea of sweden', 'ikea trådfri',
+    'belkin', 'wemo',
+    'xiaomi', 'wyze labs',
+    'smartthings',
+    'amazon technologies',
+    'google,',   // "Google, Inc." — trailing comma avoids matching "Google LLC" (Android phones)
+    'raspberry pi',
+    'arduino', 'particle industries',
+    'tp-link',   // Kasa smart devices
+    'realtek(iot',
+  ];
+
+  /// Returns 'IoT Device' when [mac] belongs to a known IoT OUI prefix.
+  /// Falls back to empty string if the MAC is unknown or N/A.
+  static String deviceTypeFromMac(String mac) {
+    if (mac == 'N/A' || mac.length < 8) return '';
+    final prefix = mac.toUpperCase().substring(0, 8);
+    // Check against the IoT prefixes used by IotScanner
+    // (inline check avoids importing iot_scanner to prevent circular deps)
+    const iotPrefixes = <String>{
+      '10:06:1C','18:FE:34','24:0A:C4','2C:3A:E8','30:AE:A4','3C:71:BF',
+      '48:3F:DA','48:E7:29','4C:11:AE','58:BF:25','5C:CF:7F','60:01:94',
+      '68:C6:3A','7C:9E:BD','80:64:6F','80:7D:3A','84:0D:8E','84:CC:A8',
+      '8C:AA:B5','A0:20:A6','A4:CF:12','A8:03:2A','AC:67:B2','B4:E6:2D',
+      'BC:DD:C2','C4:4F:33','CC:50:E3','D4:8A:FC','D8:A0:1D','DC:4F:22',
+      'E0:98:06','E4:65:B8','EC:FA:BC','F4:CF:A2','FC:F5:C4', // Espressif
+      'D0:F6:18','E6:9E:7E','F4:CE:36',                       // Nordic
+      '00:0D:6F','78:A5:04',                                  // Silicon Labs
+      '00:12:4B',                                             // TI
+      '00:80:E1','10:E7:7A','18:E8:EC','40:82:7B','50:0F:59', // STMicro
+      '1C:90:FF','CC:02:D1','CC:8C:BF','E4:AE:E4','FC:3C:D7','FC:67:1F', // Tuya
+      'C8:47:8C','70:87:9E','80:6D:DE','D8:5D:4C','E0:5A:1B', // Beken/Tuya
+      'C4:5B:BE',                                             // Shelly
+      '60:55:F9','BC:FF:4D',                                  // Sonoff/ITEAD
+      '50:C7:BF','98:DA:C4','B0:95:75','C0:06:C3','D8:0D:17', // TP-Link
+      '28:6C:07','34:CE:00','50:64:2B','64:09:80','78:11:DC',
+      '98:FA:E3','AC:29:3A','F4:F5:DB',                       // Xiaomi
+      '48:E1:E9','C4:E7:AE',                                  // Meross
+      'B4:75:0E','D8:EC:5E','E8:9F:80','EC:1A:59',            // Belkin/WeMo
+      '00:17:88','C4:29:96','EC:B5:FA','FC:26:8C',            // Philips Hue/Signify
+      '68:EC:8A','AC:23:3F',                                  // IKEA
+      '28:CD:C1','88:A2:9E','98:FE:54','DC:A6:32','D8:3A:DD','E4:5F:01', // RPi
+      '08:91:A3','28:73:F6','68:37:E9','84:28:59','E0:CB:1D','FC:D7:49', // Amazon
+      '08:B4:B1','24:29:34','54:60:09','60:70:6C','60:B7:6E','C8:2A:DD', // Google
+      '24:FD:5B',                                             // SmartThings
+      '2C:AA:8E','7C:78:B2','80:48:2C','D0:3F:27','F0:C8:8B', // Wyze
+      'A8:61:0A','94:94:4A',                                  // Arduino/Particle
+      'AC:9A:22','B4:3D:6B',                                  // NXP
+      '00:E0:4C',                                             // Realtek(IoT-bridge)
+    };
+    if (iotPrefixes.contains(prefix)) return 'IoT Device';
+    return '';
+  }
 
   static String _detectDeviceType(String manufacturer) {
     if (manufacturer.isEmpty) return '';
     
     final lower = manufacturer.toLowerCase();
+
+    // IoT / embedded chip vendors — checked first because e.g. "Espressif" or
+    // "Tuya Smart" would otherwise fall through to no match.
+    for (final kw in _iotVendorKeywords) {
+      if (lower.contains(kw)) return 'IoT Device';
+    }
     
     // Smart TV / Media devices
     if (lower.contains('samsung') || lower.contains('lg') || lower.contains('vizio') || 
@@ -274,15 +289,15 @@ class NetworkScanner {
       return 'Smart TV';
     }
     
-    // IoT / Smart Home
-    if (lower.contains('amazon') || lower.contains('echo') || lower.contains('google') ||
-        lower.contains('nest') || lower.contains('philips hue') || lower.contains('tp-link')) {
+    // Smart Home hubs / platforms
+    if (lower.contains('echo') || lower.contains('nest') || lower.contains('ring ') ||
+        lower.contains('arlo ')) {
       return 'Smart Home';
     }
     
     // Printers
     if (lower.contains('printer') || lower.contains('xerox') || lower.contains('canon') ||
-        lower.contains('hp') || lower.contains('epson') || lower.contains('ricoh')) {
+        lower.contains('hp inc') || lower.contains('epson') || lower.contains('ricoh')) {
       return 'Printer';
     }
     
@@ -299,13 +314,9 @@ class NetworkScanner {
       return 'Network Device';
     }
     
-    // Mobile devices
-    if (lower.contains('apple') || lower.contains('iphone') || lower.contains('ipad')) {
-      return 'Apple Device';
-    }
-    if (lower.contains('samsung') && lower.contains('mobile')) {
-      return 'Android Device';
-    }
+    // Mobile / Apple
+    if (lower.contains('apple')) return 'Apple Device';
+    if (lower.contains('samsung') && lower.contains('mobile')) return 'Android Device';
     
     // Workstations / Computers
     if (lower.contains('intel') || lower.contains('realtek') || lower.contains('broadcom') ||
@@ -313,7 +324,6 @@ class NetworkScanner {
       return 'Computer';
     }
     
-    // Default: Unknown
     return '';
   }
 
@@ -360,7 +370,11 @@ class NetworkScanner {
         host.manufacturer = host.manufacturer != '' ? host.manufacturer : '';
       }
       // Detect device type from manufacturer
-      host.deviceType = _detectDeviceType(host.manufacturer);
+      // MAC-based IoT classification takes priority over manufacturer name matching
+      final macType = deviceTypeFromMac(host.mac);
+      host.deviceType = macType.isNotEmpty
+          ? macType
+          : _detectDeviceType(host.manufacturer);
       yield host;
     }
   }
@@ -374,7 +388,7 @@ class NetworkScanner {
     if (!kIsWeb) {
       try {
         final result = await Process.run(
-          'ping', ['-c', '1', '-W', '1', ip],
+          'ping', ['-c', '1', '-W', '2', ip],
           runInShell: true,
         ).timeout(_pingTimeout);
         alive = result.exitCode == 0;
@@ -382,7 +396,8 @@ class NetworkScanner {
     }
 
     if (!alive) {
-      for (final port in [80, 443, 22, 445, 8080]) {
+      // Expanded port list covers web, SSH, SMB, Matter, MQTT, TP-Link, IoT HTTP
+      for (final port in [80, 443, 22, 445, 8080, 5540, 8123, 1883, 8883, 8081, 9999, 4040]) {
         try {
           final sock = await Socket.connect(ip, port, timeout: _tcpTimeout);
           sock.destroy();

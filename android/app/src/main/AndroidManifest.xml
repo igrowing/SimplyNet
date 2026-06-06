@@ -1,16 +1,29 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Network & WiFi permissions -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE"/>
+    <!-- Cellular info (READ_PHONE_STATE needed for TelephonyManager on API 29+) -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE"/>
+
+    <!-- Foreground service permissions (flutter_foreground_task) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <!-- API 34+: declare the specific type of foreground service -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+    <!-- Keep CPU alive while service is running (held by flutter_foreground_task) -->
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <!-- POST_NOTIFICATIONS required on API 33+ to show the persistent notification -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
     <application
         android:label="SimplyNet"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -23,24 +36,32 @@
 
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
-                android:resource="@style/NormalTheme"
-                />
+                android:resource="@style/NormalTheme"/>
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+
+        <!--
+          FlutterForegroundTaskService — runs in the same process as the app.
+          Required by flutter_foreground_task ≥ 8.x.
+          android:foregroundServiceType="dataSync" matches the permission above.
+          dataSync covers long-running network I/O (scan, ping, camera scan).
+        -->
+        <service
+            android:name="com.pravera.flutter_foreground_task.service.ForegroundTaskService"
+            android:foregroundServiceType="dataSync"
+            android:exported="false"/>
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
             android:name="flutterEmbedding"
-            android:value="2" />
+            android:value="2"/>
     </application>
 
-    <!-- Required to query activities that can process text, see:
-         https://developer.android.com/training/package-visibility and
-         https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT.
-         In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
+    <!-- Required to query activities that can process text -->
     <queries>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>

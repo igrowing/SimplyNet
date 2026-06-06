@@ -7,7 +7,7 @@ class SettingsProvider extends ChangeNotifier {
   AppSettings _settings = const AppSettings();
   AppSettings get settings => _settings;
 
-  static const _platform = MethodChannel('com.simplynet.app/screen');
+  static const _platform = MethodChannel('com.simplytools.simplynet/screen');
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();

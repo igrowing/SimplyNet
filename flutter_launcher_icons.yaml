@@ -1,9 +1,22 @@
-flutter_icons:
-  android: "ic_launcher"
+flutter_launcher_icons:
+  # ── Android adaptive icon (API 26+) ──────────────────────────────────────
+  # Adaptive icons have a foreground layer (108×108dp canvas) and a
+  # background layer. The outer 18dp on each side is the "bleed zone" that
+  # gets masked by the launcher shape (circle, squircle, etc.).
+  # Safe zone = inner 72dp × 72dp (0.667 of total canvas).
+  # To avoid cropping: keep artwork within 66% of canvas in each dimension.
+  android: true                     # generates ic_launcher and related res
+  adaptive_icon_background: "assets/icon_bg.png"    # transparent PNG
+  adaptive_icon_foreground: "assets/simplynet_fg.png"  # artwork with 20% padding
+  image_path_android: "assets/simplynet_fg.png"
+
+  # ── iOS (keeps existing behaviour) ───────────────────────────────────────
   ios: true
-  image_path: "assets/simplynet.png"
+  image_path_ios: "assets/simplynet.png"
+  # ── Legacy Android (API < 26 fallback) ───────────────────────────────────
+  # Uses the original PNG scaled to fit a standard square icon with
+  # 10% padding so nothing is clipped.
   min_sdk_android: 21
-  adaptive_icon_background: "#e0f0e0"
-  adaptive_icon_foreground: "assets/simplynet.png"
+  # ── Web (disabled) ───────────────────────────────────────────────────────
   web:
     generate: false

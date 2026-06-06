@@ -35,7 +35,7 @@ class _HostScreenState extends State<HostScreen> {
   // ── Port scan state ───────────────────────────────────────────────────────
   bool _portScanning = true;
   int _portDone = 0;
-  int _portTotal = NetworkTools.wellKnownPorts.length;
+  int _portTotal = NetworkTools.wellKnownPortNames.length;
   final List<_OpenPort> _openPorts = [];
   StreamSubscription? _portSub;
 
