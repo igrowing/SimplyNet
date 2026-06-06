@@ -751,7 +751,7 @@ class _IpCameraScanState extends State<IpCameraScanScreen> {
             // Build log content from _results (List<CameraCandidate>)
             final buf = StringBuffer();
             for (final cam in _results) {
-              buf.writeln('${cam.ip}  ${cam.method.name}  ${cam.label}');
+              buf.writeln('${cam.ip}  ${cam.method.name}  ${cam.manufacturer} ${cam.evidence}');
             }
             await LogService.createLog(
               function: 'ip_cameras',
