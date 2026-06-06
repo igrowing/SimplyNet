@@ -53,12 +53,12 @@ class _CellularScreenState extends State<CellularScreen> {
       }
     } on PlatformException catch (e) {
       setState(() {
-        _error = 'Platform error: \${e.message}';
+        _error = 'Platform error: ${e.message}';
         _data  = _demoData();
       });
     } catch (e) {
       setState(() {
-        _error = 'Error: \$e';
+        _error = 'Error: $e';
         _data  = _demoData();
       });
     } finally {
@@ -77,7 +77,7 @@ class _CellularScreenState extends State<CellularScreen> {
         await LogService.createLog(
           function: 'cellular',
           content:  buf.toString(),
-          summary:  'Cellular info: \${_data["provider"] ?? "?"} \${_data["technology"] ?? ""}',
+          summary:  'Cellular info: ${_data["provider"] ?? "?"} ${_data["technology"] ?? ""}',
         );
       }
     }
@@ -115,7 +115,7 @@ class _CellularScreenState extends State<CellularScreen> {
 
       final lat = pos.latitude;
       final lon = pos.longitude;
-      setState(() => _locationLine = '\${lat.toStringAsFixed(5)}, \${lon.toStringAsFixed(5)}');
+      setState(() => _locationLine = '${lat.toStringAsFixed(5)}, ${lon.toStringAsFixed(5)}');
 
       // Reverse-geocode via OpenStreetMap Nominatim (no API key required)
       final place = await _reverseGeocode(lat, lon);
@@ -125,7 +125,7 @@ class _CellularScreenState extends State<CellularScreen> {
       });
     } catch (e) {
       setState(() {
-        _locationLine = 'Unavailable: \$e';
+        _locationLine = 'Unavailable: $e';
         _locationBusy = false;
       });
     }
@@ -135,7 +135,7 @@ class _CellularScreenState extends State<CellularScreen> {
     try {
       final uri = Uri.parse(
         'https://nominatim.openstreetmap.org/reverse'
-        '?format=json&lat=\$lat&lon=\$lon&zoom=14',
+        '?format=json&lat=$lat&lon=$lon&zoom=14',
       );
       final resp = await http
           .get(uri, headers: {'User-Agent': 'SimplyNet/1.0'})
@@ -153,7 +153,7 @@ class _CellularScreenState extends State<CellularScreen> {
              adr['state']        ?? '') as String;
         final country = (adr['country_code'] as String? ?? '').toUpperCase();
         if (place.isEmpty) return '';
-        return country.isEmpty ? place : '\$place (\$country)';
+        return country.isEmpty ? place : '$place ($country)';
       }
     } catch (_) {}
     return '';
@@ -211,7 +211,7 @@ class _CellularScreenState extends State<CellularScreen> {
                     color: Theme.of(context).colorScheme.onErrorContainer),
                 const SizedBox(width: 6),
                 Expanded(
-                  child: Text('\${_error}\nShowing demo data.',
+                  child: Text('$_error\nShowing demo data.',
                       style: TextStyle(fontSize: 12,
                           color: Theme.of(context).colorScheme.onErrorContainer)),
                 ),

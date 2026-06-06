@@ -335,60 +335,7 @@ class _HomeScreenState extends State<HomeScreen> {
 //       ),
 //     );
 //   }
-
-//   // ── "Network Tools" group ─────────────────────────────────────────────────
-
-//   Widget _buildNetworkToolsGroup(BuildContext ctx) {
-//     // Use direct MaterialPageRoute pushes — named sub-routes like
-//     // '/network_tools/speed' are not registered in the router.
-//     void push(Widget screen) =>
-//         Navigator.push(ctx, MaterialPageRoute(builder: (_) => screen));
-//     final scanTarget = ctx.read<ScanProvider>().target;
-
-//     final tools = [
-//       _ToolBtn(Icons.speed,         'Speed Test',     'Download & upload speed',        () => push(const SpeedTestScreen()),              Colors.blue),
-//       _ToolBtn(Icons.public,        'Public IP',      'Your IP, ISP & location',        () => push(const PublicIpScreen()),               Colors.green),
-//       _ToolBtn(Icons.videocam,      'IP Cameras',     'Find cameras on your LAN',       () => push(IpCameraScanScreen(cidr: scanTarget)), Colors.orange),
-//       _ToolBtn(Icons.memory,        'IoT Devices',    'Matter, Tasmota, Shelly & more', () => push(IotScanScreen(cidr: scanTarget)),      Colors.deepPurple),
-//       _ToolBtn(Icons.radar,         'Port Scan',      'Open TCP/UDP ports on any host', () => push(const PortScanScreen()),               Colors.purple),
-//       _ToolBtn(Icons.network_ping,  'Ping',           'Live ping with graph',           () => push(const PingScreen()),                   Colors.teal),
-//       _ToolBtn(Icons.route,         'Traceroute',     'Hop-by-hop path to any host',    () => push(const TracerouteScreen()),             Colors.deepOrange),
-//       _ToolBtn(Icons.manage_search, 'Who Is…',   'WHOIS, DNS & reverse lookup',    () => push(const WhoisScreen()),                  Colors.indigo),
-//       _ToolBtn(Icons.wifi_find,     'Wi-Fi Channels', '2.4 & 5 GHz interference map',   () => push(const WifiChannelsScreen()),           Colors.cyan),
-//       _ToolBtn(Icons.cell_tower,    'Cellular Info',  'Signal, cell ID & tower data',   () => push(const CellularScreen()),               Colors.deepPurple),
-//     ];
-
-//     // Column of 2-item rows → each button takes intrinsic height so
-//     // the subtitle text wraps fully and is never clipped or ellipsised.
-//     final rows = <Widget>[];
-//     for (var i = 0; i < tools.length; i += 2) {
-//       final left  = tools[i];
-//       final right = i + 1 < tools.length ? tools[i + 1] : null;
-//       rows.add(
-//         IntrinsicHeight(
-//           child: Row(
-//             crossAxisAlignment: CrossAxisAlignment.stretch,
-//             children: [
-//               Expanded(child: _SmallToolBtn(left)),
-//               const SizedBox(width: 10),
-//               Expanded(child: right != null
-//                   ? _SmallToolBtn(right)
-//                   : const SizedBox()),
-//             ],
-//           ),
-//         ),
-//       );
-//       if (i + 2 < tools.length) rows.add(const SizedBox(height: 10));
-//     }
-
-//     return _GroupBox(
-//       label: 'Network Tools',
-//       child: Column(children: rows),
-//     );
-//   }
-// }
 }
-
 
 // ── Shared group box ──────────────────────────────────────────────────────────
 
