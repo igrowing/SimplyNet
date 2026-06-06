@@ -225,16 +225,16 @@ class _HomeScreenState extends State<HomeScreen> {
     final scanTarget = ctx.read<ScanProvider>().target;
 
     final tools = [
-      _ToolBtn(Icons.speed,         'Speed Test',     () => push(const SpeedTestScreen()),     Colors.blue),
-      _ToolBtn(Icons.public,        'Public IP',      () => push(const PublicIpScreen()),      Colors.green),
-      _ToolBtn(Icons.videocam,      'IP Cameras',     () => push(IpCameraScanScreen(cidr: scanTarget)), Colors.orange),
-      _ToolBtn(Icons.memory,         'IoT Devices',    () => push(IotScanScreen(cidr: scanTarget)),        Colors.deepPurple),
-      _ToolBtn(Icons.radar,          'Port Scan',      () => push(const PortScanScreen()),      Colors.purple),
-      _ToolBtn(Icons.network_ping,  'Ping',           () => push(const PingScreen()),          Colors.teal),
-      _ToolBtn(Icons.route,         'Traceroute',     () => push(const TracerouteScreen()),    Colors.deepOrange),
-      _ToolBtn(Icons.manage_search, 'Who Is…',        () => push(const WhoisScreen()),         Colors.indigo),
-      _ToolBtn(Icons.wifi_find,     'Wi-Fi Channels', () => push(const WifiChannelsScreen()),  Colors.cyan),
-      _ToolBtn(Icons.cell_tower,    'Cellular Info',  () => push(const CellularScreen()),      Colors.deepPurple),
+      _ToolBtn(Icons.speed,         'Speed Test',     'Download & upload speed',        () => push(const SpeedTestScreen()),              Colors.blue),
+      _ToolBtn(Icons.public,        'Public IP',      'Your IP, ISP & location',        () => push(const PublicIpScreen()),               Colors.green),
+      _ToolBtn(Icons.videocam,      'IP Cameras',     'Find cameras on your LAN',       () => push(IpCameraScanScreen(cidr: scanTarget)), Colors.orange),
+      _ToolBtn(Icons.memory,        'IoT Devices',    'Matter, Tasmota, Shelly & more', () => push(IotScanScreen(cidr: scanTarget)),      Colors.deepPurple),
+      _ToolBtn(Icons.radar,         'Port Scan',      'Open TCP/UDP ports on any host', () => push(const PortScanScreen()),               Colors.purple),
+      _ToolBtn(Icons.network_ping,  'Ping',           'Live ping with graph',           () => push(const PingScreen()),                   Colors.teal),
+      _ToolBtn(Icons.route,         'Traceroute',     'Hop-by-hop path to any host',    () => push(const TracerouteScreen()),             Colors.deepOrange),
+      _ToolBtn(Icons.manage_search, 'Who Is…',   'WHOIS, DNS & reverse lookup',    () => push(const WhoisScreen()),                  Colors.indigo),
+      _ToolBtn(Icons.wifi_find,     'Wi-Fi Channels', '2.4 & 5 GHz interference map',   () => push(const WifiChannelsScreen()),           Colors.cyan),
+      _ToolBtn(Icons.cell_tower,    'Cellular Info',  'Signal, cell ID & tower data',   () => push(const CellularScreen()),               Colors.deepPurple),
     ];
 
     // childAspectRatio adapts to screen size: taller on small screens.
@@ -245,7 +245,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ? (mq.size.width * 0.95 / 2) - 28   // 95% / 2 cols minus padding
         : (mq.size.width - 32) / 2 - 6;     // portrait: full width / 2
     // Target button height of ~44px → aspectRatio = colW / 44
-    final btnAspect = (colW / 44.0).clamp(1.8, 4.0);
+    final btnAspect = (colW / 58.0).clamp(1.4, 3.2);
 
     return _GroupBox(
       label: 'Network Tools',
@@ -310,9 +310,10 @@ class _GroupBox extends StatelessWidget {
 class _ToolBtn {
   final IconData     icon;
   final String       label;
+  final String       subtitle;
   final VoidCallback onTap;
   final Color        color;
-  const _ToolBtn(this.icon, this.label, this.onTap, this.color);
+  const _ToolBtn(this.icon, this.label, this.subtitle, this.onTap, this.color);
 }
 
 class _SmallToolBtn extends StatelessWidget {
@@ -329,15 +330,30 @@ class _SmallToolBtn extends StatelessWidget {
           border: Border.all(color: tool.color.withValues(alpha: 0.55), width: 1.5),
           borderRadius: BorderRadius.circular(10),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         child: Row(
           children: [
-            Icon(tool.icon, size: 20, color: tool.color),
+            Icon(tool.icon, size: 22, color: tool.color),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(tool.label,
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-                  overflow: TextOverflow.ellipsis),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(tool.label,
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1),
+                  if (tool.subtitle.isNotEmpty)
+                    Text(tool.subtitle,
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1),
+                ],
+              ),
             ),
           ],
         ),

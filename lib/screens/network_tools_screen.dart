@@ -16,6 +16,8 @@ import 'package:simply_net/screens/iot_scan_screen.dart';
 import 'package:simply_net/screens/wifi_channels_screen.dart';
 import 'package:simply_net/screens/cellular_screen.dart';
 import 'package:simply_net/services/foreground_service.dart';
+import 'package:simply_net/services/log_service.dart';
+import 'package:simply_net/providers/settings_provider.dart';
 
 class NetworkToolsScreen extends StatelessWidget {
   const NetworkToolsScreen({super.key});
@@ -741,7 +743,20 @@ class _IpCameraScanState extends State<IpCameraScanScreen> {
           setState(() { _done = done; _total = total; }),
     ).listen(
       (candidate) => setState(() => _results.add(candidate)),
-      onDone: () => setState(() => _scanning = false),
+      onDone: () async {
+        setState(() => _scanning = false);
+        if (context.mounted) {
+          final settings = context.read<SettingsProvider>().settings;
+          if (settings.loggingEnabled) {
+            final openCount = _openLines.where((l) => l.startsWith('OPEN')).length;
+            await LogService.createLog(
+              function: 'portscan',
+              content:  _openLines.join('\n'),
+              summary:  'Port scan → ${_ctrl.text.trim()}: $openCount open',
+            );
+          }
+        }
+      },
     );
   }
 
@@ -983,40 +998,32 @@ class _WhoisState extends State<WhoisScreen> {
     } catch (e) { _put('RDAP error: $e'); }
     setState(() {});
 
-    // ── 3. System nslookup ─────────────────────────────────────────────────────
-    // Process.run + runInShell:true avoids EACCES on Android systems that
-    // block direct exec() but allow shell-invoked binaries.
-    _put(''); _put('=== System nslookup ===');
+    // ── 3. DNS detail via NetworkTools.nslookup ─────────────────────────────────
+    // Reuse the well-tested NetworkTools.nslookup stream instead of
+    // shelling out to the nslookup binary (which is not accessible on
+    // many Android builds via /system/bin/sh).
+    _put(''); _put('=== DNS detail ===');
     try {
-      final result = await Process.run(
-        'nslookup', [q],
-        runInShell: true,
-        stdoutEncoding: const SystemEncoding(),
-        stderrEncoding: const SystemEncoding(),
-      ).timeout(const Duration(seconds: 8));
-      final out = (result.stdout as String).trim();
-      final err = (result.stderr as String).trim();
-      if (out.isNotEmpty) {
-        bool inAns = false;
-        for (final line in out.split('\n')) {
-          final t = line.trim();
-          if (t.isEmpty) { inAns = true; continue; }
-          if (inAns || t.startsWith('Server:') || t.startsWith('Name:') ||
-              t.startsWith('Address:') || t.contains('name =') ||
-              t.startsWith('Non-authoritative')) {
-            _put(t);
-          }
-        }
-      } else if (err.isNotEmpty) {
-        _put('nslookup: $err');
-      } else {
-        _put('No output from nslookup.');
+      await for (final line in NetworkTools.nslookup(q)
+          .timeout(const Duration(seconds: 10))) {
+        if (line.trim().isNotEmpty) _put(line.trim());
       }
     } catch (e) {
-      _put('nslookup not available on this device.');
+      _put('DNS detail unavailable: $e');
     }
 
-    setState(() { _loading = false; });
+        setState(() { _loading = false; });
+    // Log the lookup result
+    if (context.mounted) {
+      final settings = context.read<SettingsProvider>().settings;
+      if (settings.loggingEnabled) {
+        await LogService.createLog(
+          function: 'whois',
+          content:  _buf.toString(),
+          summary:  'Who Is → ${_ctrl.text.trim()}',
+        );
+      }
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scroll.hasClients) {
         _scroll.animateTo(_scroll.position.maxScrollExtent,
@@ -1125,7 +1132,7 @@ class _PingScreenState extends State<PingScreen> {
             _parsedUpTo = cursor;
           });
         },
-        onDone: () {
+        onDone: () async {
           final (tail, _) =
               parsePingTimings(_diagOutput.toString(), _parsedUpTo);
           setState(() {
@@ -1133,6 +1140,16 @@ class _PingScreenState extends State<PingScreen> {
             _running = false;
           });
           FgService.stop(doneBody: 'Ping complete.');
+          if (context.mounted) {
+            final settings = context.read<SettingsProvider>().settings;
+            if (settings.loggingEnabled) {
+              await LogService.createLog(
+                function: 'ping',
+                content:  _diagOutput.toString(),
+                summary:  'Ping → ${_ctrl.text.trim()}: ${_pingTimings.length} replies',
+              );
+            }
+          }
         },
       );
     }
@@ -1247,9 +1264,19 @@ class _TracerouteScreenState extends State<TracerouteScreen> {
           }
         });
       },
-      onDone: () {
+      onDone: () async {
         setState(() => _running = false);
         FgService.stop(doneBody: 'Traceroute complete.');
+        if (context.mounted) {
+          final settings = context.read<SettingsProvider>().settings;
+          if (settings.loggingEnabled) {
+            await LogService.createLog(
+              function: 'traceroute',
+              content:  _diagOutput.toString(),
+              summary:  'Traceroute → ${_ctrl.text.trim()}',
+            );
+          }
+        }
       },
     );
   }
@@ -1398,7 +1425,20 @@ class _PortScanScreenState extends State<PortScanScreen> {
           setState(() => _openLines.add(line.trim()));
         }
       },
-      onDone: () => setState(() => _scanning = false),
+      onDone: () async {
+        setState(() => _scanning = false);
+        if (context.mounted) {
+          final settings = context.read<SettingsProvider>().settings;
+          if (settings.loggingEnabled) {
+            final openCount = _openLines.where((l) => l.startsWith('OPEN')).length;
+            await LogService.createLog(
+              function: 'portscan',
+              content:  _openLines.join('\n'),
+              summary:  'Port scan → ${_ctrl.text.trim()}: $openCount open',
+            );
+          }
+        }
+      },
     );
   }
 
