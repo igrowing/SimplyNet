@@ -748,11 +748,15 @@ class _IpCameraScanState extends State<IpCameraScanScreen> {
         if (context.mounted) {
           final settings = context.read<SettingsProvider>().settings;
           if (settings.loggingEnabled) {
-            final openCount = _openLines.where((l) => l.startsWith('OPEN')).length;
+            // Build log content from _results (List<CameraCandidate>)
+            final buf = StringBuffer();
+            for (final cam in _results) {
+              buf.writeln('${cam.ip}  ${cam.method.name}  ${cam.label}');
+            }
             await LogService.createLog(
-              function: 'portscan',
-              content:  _openLines.join('\n'),
-              summary:  'Port scan → ${_ctrl.text.trim()}: $openCount open',
+              function: 'ip_cameras',
+              content:  buf.toString(),
+              summary:  'IP camera scan ${widget.cidr}: ${_results.length} found',
             );
           }
         }
