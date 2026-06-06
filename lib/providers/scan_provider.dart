@@ -31,6 +31,15 @@ class ScanProvider extends ChangeNotifier {
   bool hasValidResults(String cidr) =>
       !_isScanning && _results.isNotEmpty && _target == cidr;
 
+  /// Wipe the cached host list without starting a new scan.
+  /// Call this when the user explicitly requests a Rescan on IoT / camera
+  /// screens so the next hasValidResults() check returns false and forces
+  /// a fresh full subnet discovery.
+  void clearCache() {
+    _results = [];
+    notifyListeners();
+  }
+
   bool _isScanning = false;
   bool get isScanning => _isScanning;
 
@@ -141,7 +150,10 @@ class ScanProvider extends ChangeNotifier {
   void stopScan() {
     _sub?.cancel();
     _isScanning = false;
-    FgService.stop(doneBody: 'Scan stopped — ${_results.length} host(s) found.');
+    // Wipe results when user aborts: a partial host list should not be
+    // reused by IoT/camera screens — they would miss hosts.
+    _results = [];
+    FgService.stop(doneBody: 'Scan stopped.');
     notifyListeners();
   }
 

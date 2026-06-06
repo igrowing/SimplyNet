@@ -266,75 +266,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-// if (tool.subtitle.isNotEmpty)
-//                     Text(tool.subtitle,
-//                         style: TextStyle(
-//                           fontSize: 10,
-//                           color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
-//                         ),
-//                         softWrap: true),
-//           children: [
-//             Image.asset('assets/simplynet.png', height: 32, width: 32),
-//             const SizedBox(width: 12),
-//             Column(
-//               crossAxisAlignment: CrossAxisAlignment.start,
-//               mainAxisSize: MainAxisSize.min,
-//               children: [
-//                 const Text('SimplyNet',
-//                     style: TextStyle(fontWeight: FontWeight.bold)),
-//                 Text(_appVersion, style: const TextStyle(fontSize: 11)),
-//               ],
-//             ),
-//           ],
-//         ),
-//         actions: [
-//           // ── Settings gear ──────────────────────────────────────────────────
-//           IconButton(
-//             icon: const Icon(Icons.settings_outlined),
-//             tooltip: 'Settings',
-//             onPressed: () => Navigator.pushNamed(context, '/settings'),
-//           ),
-//           // ── About / README ─────────────────────────────────────────────────
-//           IconButton(
-//             icon: const Icon(Icons.info_outline),
-//             tooltip: 'About SimplyNet',
-//             onPressed: () => Navigator.pushNamed(context, '/about'),
-//           ),
-//         ],
-//       ),
-//       body: OrientationBuilder(
-//         builder: (ctx, orientation) {
-//           final isLandscape = orientation == Orientation.landscape;
-//           return SingleChildScrollView(
-//             padding: EdgeInsets.symmetric(
-//               // Portrait/tablet: generous 15% side margins.
-//               // Landscape phone: tight 2.5% so both groups fill 95% of width.
-//               horizontal: isLandscape
-//                   ? size.width * 0.025
-//                   : (isWide ? size.width * 0.15 : 16),
-//               vertical: 16,
-//             ),
-//             child: isLandscape
-//                 ? Row(
-//                     crossAxisAlignment: CrossAxisAlignment.start,
-//                     children: [
-//                       Expanded(child: _buildScanGroup(theme, ctx)),
-//                       const SizedBox(width: 24),
-//                       Expanded(child: _buildNetworkToolsGroup(ctx)),
-//                     ],
-//                   )
-//                 : Column(
-//                     children: [
-//                       _buildScanGroup(theme, ctx),
-//                       const SizedBox(height: 20),
-//                       _buildNetworkToolsGroup(ctx),
-//                     ],
-//                   ),
-//           );
-//         },
-//       ),
-//     );
-//   }
 }
 
 // ── Shared group box ──────────────────────────────────────────────────────────
@@ -424,8 +355,7 @@ class _SmallToolBtn extends StatelessWidget {
                           fontSize: 10,
                           color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
                         ),
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1),
+                        softWrap: true),
                 ],
               ),
             ),

@@ -36,7 +36,14 @@ class _IotScanScreenState extends State<IotScanScreen> {
     super.dispose();
   }
 
-  void _startScan() {
+  /// Called by the Rescan button — always does a fresh full scan,
+  /// discarding any cached host list from ScanProvider.
+  void _rescan() {
+    context.read<ScanProvider>().clearCache();
+    _startScan(forceFullScan: true);
+  }
+
+  void _startScan({bool forceFullScan = false}) {
     if (_scanning) return;
     _sub?.cancel();
     setState(() {
@@ -47,7 +54,7 @@ class _IotScanScreenState extends State<IotScanScreen> {
 
     final scanProv = context.read<ScanProvider>();
 
-    if (scanProv.hasValidResults(widget.cidr)) {
+    if (!forceFullScan && scanProv.hasValidResults(widget.cidr)) {
       // ── Fast path: reuse already-discovered IPs from ScanProvider ────────
       // Skip the full subnet sweep and probe only the live hosts we already know.
       final ips = scanProv.rawResults.map((h) => h.ip).toList();
@@ -112,6 +119,9 @@ class _IotScanScreenState extends State<IotScanScreen> {
     _sub?.cancel();
     setState(() => _scanning = false);
     FgService.stop();
+    // Wipe the shared host cache so the next Rescan triggers a fresh
+    // full subnet discovery rather than reusing stale results.
+    context.read<ScanProvider>().clearCache();
   }
 
   @override
@@ -134,7 +144,7 @@ class _IotScanScreenState extends State<IotScanScreen> {
                   : const Icon(Icons.refresh_rounded, key: ValueKey('r'), size: 26),
             ),
             tooltip: _scanning ? 'Stop' : 'Re-scan',
-            onPressed: _scanning ? _stopScan : _startScan,
+            onPressed: _scanning ? _stopScan : _rescan,
           ),
         ],
       ),

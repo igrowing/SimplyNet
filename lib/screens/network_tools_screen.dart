@@ -719,16 +719,32 @@ class _IpCameraScanState extends State<IpCameraScanScreen> {
     super.dispose();
   }
 
+  Future<void> _saveLog({bool partial = false}) async {
+    if (!context.mounted) return;
+    final settings = context.read<SettingsProvider>().settings;
+    if (!settings.loggingEnabled) return;
+    if (_diagOutput.isEmpty) return;
+    final label = partial ? 'stopped' : 'complete';
+    await LogService.createLog(
+      function: 'ping',
+      content:  _diagOutput.toString(),
+      summary:  'Ping → ${_ctrl.text.trim()}: '
+                '${_pingTimings.length} replies ($label)',
+    );
+  }
+
   void _toggle() {
     if (_scanning) {
       _sub?.cancel();
       setState(() => _scanning = false);
     } else {
-      _startScan();
+      // Rescan — wipe shared cache so we always do a fresh full sweep
+      context.read<ScanProvider>().clearCache();
+      _startScan(forceFullScan: true);
     }
   }
 
-  void _startScan() {
+  void _startScan({bool forceFullScan = false}) {
     _sub?.cancel();
     setState(() {
       _results.clear();
@@ -756,7 +772,7 @@ class _IpCameraScanState extends State<IpCameraScanScreen> {
       }
     }
 
-    if (scanProv.hasValidResults(widget.cidr)) {
+    if (!forceFullScan && scanProv.hasValidResults(widget.cidr)) {
       // ── Fast path: probe only already-discovered hosts ───────────────────
       final ips = scanProv.rawResults.map((h) => h.ip).toList();
       _total = ips.length;
@@ -1132,6 +1148,8 @@ class _PingScreenState extends State<PingScreen> {
       _sub?.cancel();
       FgService.stop(doneBody: 'Ping stopped.');
       setState(() => _running = false);
+      // Log whatever we captured so far (partial ping is still useful)
+      _saveLog(partial: true);
     } else {
       final host = _ctrl.text.trim();
       if (host.isEmpty) return;
@@ -1161,16 +1179,7 @@ class _PingScreenState extends State<PingScreen> {
             _running = false;
           });
           FgService.stop(doneBody: 'Ping complete.');
-          if (context.mounted) {
-            final settings = context.read<SettingsProvider>().settings;
-            if (settings.loggingEnabled) {
-              await LogService.createLog(
-                function: 'ping',
-                content:  _diagOutput.toString(),
-                summary:  'Ping → ${_ctrl.text.trim()}: ${_pingTimings.length} replies',
-              );
-            }
-          }
+          await _saveLog();
         },
       );
     }
