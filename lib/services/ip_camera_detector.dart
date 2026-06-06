@@ -409,7 +409,7 @@ class IpCameraDetector {
 
     for (var i = 0; i < ips.length; i += parallelism) {
       final batch   = ips.sublist(i, (i + parallelism).clamp(0, ips.length));
-      final futures = batch.map((ip) => _probeHost(
+      final futures = batch.map((ip) => detectHost(
         ip,
         manufacturer: arpTable[ip] ?? '',
         portTimeout:  portTimeout,
