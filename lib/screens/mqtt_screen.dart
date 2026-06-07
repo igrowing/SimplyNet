@@ -316,29 +316,36 @@ class MqttSubScreen extends StatefulWidget {
   State<MqttSubScreen> createState() => _MqttSubScreenState();
 }
 
+
 class _MqttSubScreenState extends State<MqttSubScreen> {
-  // ── Persisted connection settings ──────────────────────────────────────
+  // ── Persistence keys ───────────────────────────────────────────────────
   static const _kSubTopic      = 'mqtt_sub_topic';
   static const _kSubPrettyJson = 'mqtt_sub_pretty_json';
 
   MqttSettings _cfg    = const MqttSettings();
   bool         _loaded = false;
 
-  // ── Own topic (separate from Pub) ──────────────────────────────────────
+  // ── Own topic ──────────────────────────────────────────────────────────
   final _topicCtrl = TextEditingController();
 
   // ── MQTT client ────────────────────────────────────────────────────────
-  MqttServerClient?              _client;
-  StreamSubscription?            _msgSub;   // ← stored, cancelled on disconnect
-  bool   _connected  = false;
+  MqttServerClient? _client;
+  StreamSubscription? _msgSub;
+
+  bool   _listening  = false;   // true while actively connected + subscribed
   bool   _connecting = false;
   String _statusMsg  = '';
 
   // ── UI state ───────────────────────────────────────────────────────────
-  final List<String>   _messages   = [];
-  final ScrollController _scroll   = ScrollController();
+  // Messages are stored newest-first (index 0 = most recent).
+  final List<String>    _messages   = [];
+  final ScrollController _scroll    = ScrollController();
   bool _keepScreenOn = false;
   bool _prettyJson   = true;
+
+  // ── Session log buffer — flushed to LogService on Stop ─────────────────
+  final StringBuffer _sessionLog = StringBuffer();
+  DateTime?          _sessionStart;
 
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -350,6 +357,8 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
 
   @override
   void dispose() {
+    // If the user backs out while listening, end the session and log it.
+    if (_listening) _flushSessionLog();
     _cancelMsgSub();
     _disconnectClient();
     if (_keepScreenOn) _ScreenKeepOn.restore(widget.appScreenTimeoutMode);
@@ -365,16 +374,14 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
     final cfg = await MqttSettings.load();
     if (!mounted) return;
     setState(() {
-      _cfg        = cfg;
-      _loaded     = true;
-      _topicCtrl.text = p.getString(_kSubTopic)      ?? '';
-      _prettyJson     = p.getBool(_kSubPrettyJson)    ?? true;
+      _cfg            = cfg;
+      _loaded         = true;
+      _topicCtrl.text = p.getString(_kSubTopic)   ?? '';
+      _prettyJson     = p.getBool(_kSubPrettyJson) ?? true;
     });
-    if (cfg.isEmpty) {
-      await _openSettings();
-    } else {
-      _connect();
-    }
+    // Open settings immediately if broker is not yet configured.
+    // Do NOT auto-start listening — user controls that explicitly.
+    if (cfg.isEmpty) await _openSettings();
   }
 
   Future<void> _saveTopic(String v) async {
@@ -390,12 +397,11 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
   // ── Settings ─────────────────────────────────────────────────────────────
 
   Future<void> _openSettings() async {
+    // Stop active session before changing connection params.
+    if (_listening) await _stopListening();
     final updated = await showMqttSettingsDialog(context, _cfg);
     if (updated == null || !mounted) return;
     setState(() => _cfg = updated);
-    _cancelMsgSub();
-    _disconnectClient();
-    _connect();
   }
 
   // ── Screen keep-on ────────────────────────────────────────────────────────
@@ -409,22 +415,45 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
     }
   }
 
-  // ── MQTT connection ──────────────────────────────────────────────────────
-  //
-  // KEY FIX: _msgSub is stored and cancelled explicitly.
-  // Previously _client!.updates!.listen() was called every time _onConnected
-  // fired (including on auto-reconnect), stacking duplicate listeners on the
-  // same BehaviorSubject stream.  After the first event the extra listeners
-  // caused setState() calls on potentially disposed widgets and the stream
-  // appeared to stop delivering. Fix: cancel old subscription, subscribe once.
+  // ── Listen / Stop ─────────────────────────────────────────────────────────
 
-  void _connect() {
+  Future<void> _startListening() async {
     final topic = _topicCtrl.text.trim();
-    if (_cfg.isEmpty) return;
-    if (topic.isEmpty) {
-      setState(() => _statusMsg = 'Enter a topic to subscribe to.');
+    if (_cfg.isEmpty) {
+      await _openSettings();
       return;
     }
+    if (topic.isEmpty) {
+      setState(() => _statusMsg = 'Enter a topic first.');
+      return;
+    }
+    _sessionLog.clear();
+    _sessionStart = DateTime.now();
+    _connect(topic);
+  }
+
+  Future<void> _stopListening() async {
+    _cancelMsgSub();
+    _disconnectClient();
+    setState(() {
+      _listening  = false;
+      _connecting = false;
+      _statusMsg  = 'Stopped.';
+    });
+    await _flushSessionLog();
+  }
+
+  void _toggleListening() {
+    if (_listening || _connecting) {
+      _stopListening();
+    } else {
+      _startListening();
+    }
+  }
+
+  // ── MQTT connection ───────────────────────────────────────────────────────
+
+  void _connect(String topic) {
     setState(() { _connecting = true; _statusMsg = 'Connecting…'; });
 
     final clientId = 'sn_sub_${DateTime.now().millisecondsSinceEpoch}';
@@ -432,7 +461,7 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
       ..port            = _cfg.port
       ..keepAlivePeriod = 20
       ..logging(on: false)
-      ..onConnected     = _onConnected
+      ..onConnected     = () => _onConnected(topic)
       ..onDisconnected  = _onDisconnected
       ..onAutoReconnect = () {
           if (mounted) setState(() => _statusMsg = 'Reconnecting…');
@@ -451,64 +480,51 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
 
     client.connect().catchError((e) {
       if (mounted) setState(() {
+        _listening  = false;
         _connecting = false;
         _statusMsg  = 'Connection failed: $e';
       });
     });
   }
 
-  void _onConnected() {
+  void _onConnected(String topic) {
     if (!mounted) return;
-    final topic = _topicCtrl.text.trim();
     setState(() {
-      _connected  = true;
+      _listening  = true;
       _connecting = false;
-      _statusMsg  = 'Subscribed to "$topic"';
+      _statusMsg  = 'Listening on "$topic"';
     });
-
     _client!.subscribe(topic, MqttQos.atLeastOnce);
 
-    // Cancel any previous subscription before creating a new one.
-    // This is the core fix for the "only first batch" bug.
+    // Cancel any stale subscription before attaching the new one.
     _cancelMsgSub();
     _msgSub = _client!.updates!.listen(_onMessage);
   }
 
   void _onDisconnected() {
+    // Only update UI if we didn't stop intentionally
+    // (_stopListening sets _listening=false before disconnecting).
     if (!mounted) return;
-    setState(() {
-      _connected  = false;
-      _connecting = false;
-      _statusMsg  = 'Disconnected';
-    });
-    // Don't cancel _msgSub here — autoReconnect will call _onConnected again
-    // which will replace it properly.
+    if (_listening) {
+      setState(() => _statusMsg = 'Reconnecting…');
+    }
   }
 
   void _onMessage(List<MqttReceivedMessage<MqttMessage?>>? msgs) {
     if (msgs == null || !mounted) return;
-    final newEntries = <String>[];
     for (final m in msgs) {
-      final pub    = m.payload as MqttPublishMessage;
-      final raw    = MqttPublishPayload.bytesToStringAsString(
-                         pub.payload.message);
-      final body   = _prettyJson ? _tryPrettyJson(raw) : raw;
-      final entry  = '[${_timestamp()}]  ${m.topic}\n$body';
-      newEntries.add(entry);
+      final pub   = m.payload as MqttPublishMessage;
+      final raw   = MqttPublishPayload.bytesToStringAsString(
+                        pub.payload.message);
+      final body  = _prettyJson ? _tryPrettyJson(raw) : raw;
+      final entry = '[${_timestamp()}]  ${m.topic}\n$body';
+
+      // Newest at top — insert at index 0.
+      setState(() => _messages.insert(0, entry));
+
+      // Accumulate into session buffer (chronological order for the log).
+      _sessionLog.writeln(entry);
     }
-    setState(() => _messages.addAll(newEntries));
-
-    // Log each received message
-    _logMessages(newEntries);
-
-    // Auto-scroll to bottom
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scroll.hasClients) {
-        _scroll.animateTo(_scroll.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 150),
-            curve:    Curves.easeOut);
-      }
-    });
   }
 
   void _cancelMsgSub() {
@@ -521,16 +537,21 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
     _client = null;
   }
 
-  // ── Logging ──────────────────────────────────────────────────────────────
+  // ── Session logging ───────────────────────────────────────────────────────
 
-  Future<void> _logMessages(List<String> entries) async {
-    if (entries.isEmpty) return;
-    final topic = _topicCtrl.text.trim();
+  Future<void> _flushSessionLog() async {
+    if (_sessionLog.isEmpty) return;
+    final topic    = _topicCtrl.text.trim();
+    final start    = _sessionStart;
+    final duration = start == null
+        ? ''
+        : ' (${DateTime.now().difference(start).inSeconds}s)';
     await LogService.createLog(
       function: 'mqtt_sub',
-      content:  entries.join('\n'),
-      summary:  'MQTT Sub [$topic]: ${entries.length} message(s)',
+      content:  _sessionLog.toString(),
+      summary:  'MQTT Sub [$topic]$duration: ${_messages.length} message(s)',
     );
+    _sessionLog.clear();
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -545,24 +566,16 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
 
   String _timestamp() {
     final now = DateTime.now();
-    return '${now.hour.toString().padLeft(2,'0')}:'
-           '${now.minute.toString().padLeft(2,'0')}:'
-           '${now.second.toString().padLeft(2,'0')}';
-  }
-
-  // ── Reconnect when topic changes ─────────────────────────────────────────
-
-  void _applyTopic() {
-    _saveTopic(_topicCtrl.text);
-    _cancelMsgSub();
-    _disconnectClient();
-    _connect();
+    return '${now.hour.toString().padLeft(2, '0')}:'
+           '${now.minute.toString().padLeft(2, '0')}:'
+           '${now.second.toString().padLeft(2, '0')}';
   }
 
   // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
+    final isActive = _listening || _connecting;
     return Scaffold(
       appBar: AppBar(
         title: const Text('MQTT Subscribe',
@@ -578,20 +591,23 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
           : Column(
               children: [
                 _MqttStatusBar(
-                    connected: _connected,
+                    connected: _listening,
                     connecting: _connecting,
                     message: _statusMsg),
 
-                // ── Topic field ────────────────────────────────────────────
+                // ── Topic + Listen/Stop ────────────────────────────────────
                 Padding(
                   padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
                   child: Row(children: [
                     Expanded(
                       child: TextField(
                         controller:      _topicCtrl,
+                        enabled:         !isActive,
                         textInputAction: TextInputAction.go,
-                        onChanged: (v) => _saveTopic(v),
-                        onSubmitted:     (_) => _applyTopic(),
+                        onChanged:       _saveTopic,
+                        onSubmitted:     (_) {
+                          if (!isActive) _startListening();
+                        },
                         decoration: InputDecoration(
                           labelText: 'Topic',
                           hintText:  'e.g. home/sensor/# or home/sensor/temp',
@@ -602,11 +618,16 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    FilledButton(
-                      onPressed: _applyTopic,
+                    FilledButton.icon(
+                      onPressed: _toggleListening,
                       style: FilledButton.styleFrom(
-                          minimumSize: const Size(64, 40)),
-                      child: const Text('Subscribe'),
+                        backgroundColor: isActive
+                            ? Theme.of(context).colorScheme.error
+                            : Theme.of(context).colorScheme.primary,
+                        minimumSize: const Size(80, 40),
+                      ),
+                      icon: Icon(isActive ? Icons.stop : Icons.hearing),
+                      label: Text(isActive ? 'Stop' : 'Listen'),
                     ),
                   ]),
                 ),
@@ -642,16 +663,16 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
                   ]),
                 ),
 
-                // ── Messages area ──────────────────────────────────────────
+                // ── Messages area (newest at top, scrollbar on right) ──────
                 Expanded(
                   child: _messages.isEmpty
                       ? Center(
                           child: Text(
-                            _connected
+                            isActive
                                 ? 'Waiting for messages…'
                                 : (_topicCtrl.text.trim().isEmpty
-                                    ? 'Enter a topic and tap Subscribe'
-                                    : 'Not connected'),
+                                    ? 'Enter a topic and tap Listen'
+                                    : 'Tap Listen to start receiving'),
                             style: TextStyle(
                                 color: Theme.of(context)
                                     .colorScheme
@@ -659,16 +680,20 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
                                     .withValues(alpha: 0.4)),
                           ),
                         )
-                      : ListView.separated(
-                          controller: _scroll,
-                          padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-                          itemCount:  _messages.length,
-                          separatorBuilder: (_, _2) =>
-                              const Divider(height: 8, thickness: 0.5),
-                          itemBuilder: (_, i) => SelectableText(
-                            _messages[i],
-                            style: const TextStyle(
-                                fontSize: 12, fontFamily: 'monospace'),
+                      : Scrollbar(
+                          controller:    _scroll,
+                          thumbVisibility: true,
+                          child: ListView.separated(
+                            controller:  _scroll,
+                            padding: const EdgeInsets.fromLTRB(12, 4, 20, 12),
+                            itemCount:   _messages.length,
+                            separatorBuilder: (_, _2) =>
+                                const Divider(height: 8, thickness: 0.5),
+                            itemBuilder: (_, i) => SelectableText(
+                              _messages[i],
+                              style: const TextStyle(
+                                  fontSize: 12, fontFamily: 'monospace'),
+                            ),
                           ),
                         ),
                 ),
@@ -677,6 +702,7 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
     );
   }
 }
+
 
 // ════════════════════════════════════════════════════════════════════════════
 //  MQTT Publish screen
