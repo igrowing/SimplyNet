@@ -3,21 +3,23 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:simply_net/services/log_service.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Shared MQTT settings model
+//  Shared MQTT connection settings (broker, auth).
+//  Topic is NOT stored here — each screen keeps its own topic independently.
 // ════════════════════════════════════════════════════════════════════════════
 
-/// Persisted MQTT configuration.  Survives app restart via SharedPreferences.
+/// Persisted MQTT broker configuration.  Survives app restart via SharedPreferences.
+/// Topic is intentionally absent — Sub and Pub each persist their own topic.
 class MqttSettings {
-  final String  broker;
-  final int     port;
-  final String  username;
-  final String  password;
-  final bool    keepPassword;
-  final String  topic;
+  final String broker;
+  final int    port;
+  final String username;
+  final String password;
+  final bool   keepPassword;
 
   const MqttSettings({
     this.broker      = '',
@@ -25,17 +27,15 @@ class MqttSettings {
     this.username    = '',
     this.password    = '',
     this.keepPassword = false,
-    this.topic       = '',
   });
 
   bool get isEmpty => broker.isEmpty;
 
-  static const _kBroker      = 'mqtt_broker';
-  static const _kPort        = 'mqtt_port';
-  static const _kUsername    = 'mqtt_username';
-  static const _kPassword    = 'mqtt_password';
-  static const _kKeepPwd     = 'mqtt_keep_password';
-  static const _kTopic       = 'mqtt_topic';
+  static const _kBroker   = 'mqtt_broker';
+  static const _kPort     = 'mqtt_port';
+  static const _kUsername = 'mqtt_username';
+  static const _kPassword = 'mqtt_password';
+  static const _kKeepPwd  = 'mqtt_keep_password';
 
   static Future<MqttSettings> load() async {
     final p = await SharedPreferences.getInstance();
@@ -46,7 +46,6 @@ class MqttSettings {
       username:     p.getString(_kUsername) ?? '',
       password:     keepPwd ? (p.getString(_kPassword) ?? '') : '',
       keepPassword: keepPwd,
-      topic:        p.getString(_kTopic)    ?? '',
     );
   }
 
@@ -61,7 +60,6 @@ class MqttSettings {
     } else {
       await p.remove(_kPassword);
     }
-    await p.setString(_kTopic, topic);
   }
 }
 
@@ -72,40 +70,31 @@ class MqttSettings {
 
 class _ScreenKeepOn {
   static const _ch = MethodChannel('com.simplytools.simplynet/screen');
-
-  static Future<void> enable()  async {
-    try { await _ch.invokeMethod('setScreenTimeout', {'mode': 1}); } catch (_) {}
-  }
-
-  static Future<void> restore(int appMode) async {
-    try { await _ch.invokeMethod('setScreenTimeout', {'mode': appMode}); } catch (_) {}
-  }
+  static Future<void> enable()         async =>
+      _ch.invokeMethod('setScreenTimeout', {'mode': 1}).catchError((_) {});
+  static Future<void> restore(int mode) async =>
+      _ch.invokeMethod('setScreenTimeout', {'mode': mode}).catchError((_) {});
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  MQTT settings dialog
+//  MQTT settings dialog (broker, port, auth only — no topic)
 // ════════════════════════════════════════════════════════════════════════════
 
-/// Shows a modal bottom-sheet with all MQTT configuration fields.
-/// Returns the saved [MqttSettings] or null if the user dismissed without saving.
 Future<MqttSettings?> showMqttSettingsDialog(
   BuildContext context,
   MqttSettings current,
-) async {
-  return showModalBottomSheet<MqttSettings>(
-    context:       context,
-    isScrollControlled: true,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
-    builder: (ctx) => _MqttSettingsSheet(current: current),
-  );
-}
+) =>
+    showModalBottomSheet<MqttSettings>(
+      context:            context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => _MqttSettingsSheet(current: current),
+    );
 
 class _MqttSettingsSheet extends StatefulWidget {
   final MqttSettings current;
   const _MqttSettingsSheet({required this.current});
-
   @override
   State<_MqttSettingsSheet> createState() => _MqttSettingsSheetState();
 }
@@ -115,7 +104,6 @@ class _MqttSettingsSheetState extends State<_MqttSettingsSheet> {
   late final TextEditingController _portCtrl;
   late final TextEditingController _userCtrl;
   late final TextEditingController _pwdCtrl;
-  late final TextEditingController _topicCtrl;
   late bool _keepPassword;
   bool _obscurePwd = true;
 
@@ -127,14 +115,13 @@ class _MqttSettingsSheetState extends State<_MqttSettingsSheet> {
     _portCtrl     = TextEditingController(text: s.port.toString());
     _userCtrl     = TextEditingController(text: s.username);
     _pwdCtrl      = TextEditingController(text: s.password);
-    _topicCtrl    = TextEditingController(text: s.topic);
     _keepPassword = s.keepPassword;
   }
 
   @override
   void dispose() {
-    _brokerCtrl.dispose(); _portCtrl.dispose(); _userCtrl.dispose();
-    _pwdCtrl.dispose();    _topicCtrl.dispose();
+    _brokerCtrl.dispose(); _portCtrl.dispose();
+    _userCtrl.dispose();   _pwdCtrl.dispose();
     super.dispose();
   }
 
@@ -145,7 +132,6 @@ class _MqttSettingsSheetState extends State<_MqttSettingsSheet> {
       username:    _userCtrl.text.trim(),
       password:    _pwdCtrl.text,
       keepPassword: _keepPassword,
-      topic:       _topicCtrl.text.trim(),
     );
     await settings.save();
     if (mounted) Navigator.pop(context, settings);
@@ -155,17 +141,14 @@ class _MqttSettingsSheetState extends State<_MqttSettingsSheet> {
   Widget build(BuildContext context) {
     final mq = MediaQuery.of(context);
     return Padding(
-      // Push content above keyboard
       padding: EdgeInsets.only(
-        left: 20, right: 20, top: 20,
-        bottom: mq.viewInsets.bottom + 24,
-      ),
+          left: 20, right: 20, top: 20,
+          bottom: mq.viewInsets.bottom + 24),
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header
             Row(children: [
               const Icon(Icons.settings_input_antenna),
               const SizedBox(width: 10),
@@ -174,35 +157,26 @@ class _MqttSettingsSheetState extends State<_MqttSettingsSheet> {
                       ?.copyWith(fontWeight: FontWeight.bold)),
             ]),
             const SizedBox(height: 20),
-
-            // Broker
             _field(controller: _brokerCtrl,
-                   label: 'Broker IP / FQDN',
-                   hint:  'e.g. 192.168.1.10 or broker.example.com',
-                   keyboard: TextInputType.url),
+                label: 'Broker IP / FQDN',
+                hint: 'e.g. 192.168.1.10 or broker.example.com',
+                keyboard: TextInputType.url),
             const SizedBox(height: 12),
-
-            // Port
             _field(controller: _portCtrl,
-                   label: 'Port',
-                   hint:  '1883',
-                   keyboard: TextInputType.number),
+                label: 'Port', hint: '1883',
+                keyboard: TextInputType.number),
             const SizedBox(height: 12),
-
-            // Username (optional)
             _field(controller: _userCtrl,
-                   label: 'Username (optional)',
-                   hint:  'leave empty if not required'),
+                label: 'Username (optional)',
+                hint: 'leave empty if not required'),
             const SizedBox(height: 12),
-
-            // Password (optional)
             TextField(
-              controller:    _pwdCtrl,
-              obscureText:   _obscurePwd,
+              controller:  _pwdCtrl,
+              obscureText: _obscurePwd,
               decoration: InputDecoration(
-                labelText:   'Password (optional)',
-                hintText:    'leave empty if not required',
-                border:      OutlineInputBorder(
+                labelText: 'Password (optional)',
+                hintText:  'leave empty if not required',
+                border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10)),
                 isDense: true,
                 suffixIcon: IconButton(
@@ -215,8 +189,6 @@ class _MqttSettingsSheetState extends State<_MqttSettingsSheet> {
               ),
             ),
             const SizedBox(height: 4),
-
-            // Keep password checkbox
             CheckboxListTile(
               value:    _keepPassword,
               onChanged: (v) => setState(() => _keepPassword = v ?? false),
@@ -229,15 +201,7 @@ class _MqttSettingsSheetState extends State<_MqttSettingsSheet> {
               contentPadding: EdgeInsets.zero,
               dense: true,
             ),
-            const SizedBox(height: 12),
-
-            // Topic
-            _field(controller: _topicCtrl,
-                   label: 'Topic',
-                   hint:  'e.g. home/sensor/temperature'),
             const SizedBox(height: 24),
-
-            // Save button
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
@@ -259,12 +223,12 @@ class _MqttSettingsSheetState extends State<_MqttSettingsSheet> {
     TextInputType keyboard = TextInputType.text,
   }) =>
       TextField(
-        controller:  controller,
+        controller:   controller,
         keyboardType: keyboard,
         decoration: InputDecoration(
           labelText: label,
           hintText:  hint,
-          border:    OutlineInputBorder(
+          border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10)),
           isDense: true,
         ),
@@ -272,10 +236,9 @@ class _MqttSettingsSheetState extends State<_MqttSettingsSheet> {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  AppBar actions shared by both Pub and Sub screens
+//  Shared AppBar actions
 // ════════════════════════════════════════════════════════════════════════════
 
-/// Builds the two right-hand AppBar actions (keep-screen-on toggle + gear).
 List<Widget> mqttAppBarActions({
   required bool keepScreenOn,
   required VoidCallback onToggleScreen,
@@ -298,68 +261,144 @@ List<Widget> mqttAppBarActions({
     ];
 
 // ════════════════════════════════════════════════════════════════════════════
-//  MQTT Subscriber screen
+//  Shared status-bar widget
+// ════════════════════════════════════════════════════════════════════════════
+
+class _MqttStatusBar extends StatelessWidget {
+  final bool connected;
+  final bool connecting;
+  final String message;
+
+  const _MqttStatusBar({
+    required this.connected,
+    required this.connecting,
+    required this.message,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = connected
+        ? Colors.green
+        : (connecting ? Colors.orange : Colors.red);
+    return Container(
+      color: color.withValues(alpha: 0.12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      child: Row(children: [
+        Icon(
+          connected
+              ? Icons.check_circle_outline
+              : (connecting
+                  ? Icons.hourglass_top_outlined
+                  : Icons.error_outline),
+          size: 16, color: color,
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(message,
+              style: TextStyle(fontSize: 12, color: color)),
+        ),
+        if (connecting)
+          const SizedBox(width: 14, height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2)),
+      ]),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  MQTT Subscribe screen
 // ════════════════════════════════════════════════════════════════════════════
 
 class MqttSubScreen extends StatefulWidget {
-  /// App-level screen-timeout mode index (from AppSettings.screenTimeout).
   final int appScreenTimeoutMode;
-
   const MqttSubScreen({super.key, this.appScreenTimeoutMode = 0});
-
   @override
   State<MqttSubScreen> createState() => _MqttSubScreenState();
 }
 
 class _MqttSubScreenState extends State<MqttSubScreen> {
-  MqttSettings  _cfg         = const MqttSettings();
-  bool          _loaded       = false;
+  // ── Persisted connection settings ──────────────────────────────────────
+  static const _kSubTopic      = 'mqtt_sub_topic';
+  static const _kSubPrettyJson = 'mqtt_sub_pretty_json';
 
-  MqttServerClient? _client;
-  bool   _connected   = false;
-  bool   _connecting  = false;
-  String _statusMsg   = '';
-  final  List<String> _messages = [];
-  final  ScrollController _scroll = ScrollController();
+  MqttSettings _cfg    = const MqttSettings();
+  bool         _loaded = false;
 
-  bool   _keepScreenOn  = false;
-  bool   _prettyJson    = true;   // "Human-readable JSON" checkbox
+  // ── Own topic (separate from Pub) ──────────────────────────────────────
+  final _topicCtrl = TextEditingController();
+
+  // ── MQTT client ────────────────────────────────────────────────────────
+  MqttServerClient?              _client;
+  StreamSubscription?            _msgSub;   // ← stored, cancelled on disconnect
+  bool   _connected  = false;
+  bool   _connecting = false;
+  String _statusMsg  = '';
+
+  // ── UI state ───────────────────────────────────────────────────────────
+  final List<String>   _messages   = [];
+  final ScrollController _scroll   = ScrollController();
+  bool _keepScreenOn = false;
+  bool _prettyJson   = true;
+
+  // ─────────────────────────────────────────────────────────────────────────
 
   @override
   void initState() {
     super.initState();
-    _loadAndConnect();
+    _loadPrefs();
   }
 
   @override
   void dispose() {
-    _disconnect();
-    if (_keepScreenOn) {
-      _ScreenKeepOn.restore(widget.appScreenTimeoutMode);
-    }
+    _cancelMsgSub();
+    _disconnectClient();
+    if (_keepScreenOn) _ScreenKeepOn.restore(widget.appScreenTimeoutMode);
+    _topicCtrl.dispose();
     _scroll.dispose();
     super.dispose();
   }
 
-  Future<void> _loadAndConnect() async {
+  // ── Persistence ──────────────────────────────────────────────────────────
+
+  Future<void> _loadPrefs() async {
+    final p   = await SharedPreferences.getInstance();
     final cfg = await MqttSettings.load();
     if (!mounted) return;
-    setState(() { _cfg = cfg; _loaded = true; });
+    setState(() {
+      _cfg        = cfg;
+      _loaded     = true;
+      _topicCtrl.text = p.getString(_kSubTopic)      ?? '';
+      _prettyJson     = p.getBool(_kSubPrettyJson)    ?? true;
+    });
     if (cfg.isEmpty) {
-      // No broker configured yet — open settings immediately
       await _openSettings();
     } else {
       _connect();
     }
   }
 
+  Future<void> _saveTopic(String v) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_kSubTopic, v.trim());
+  }
+
+  Future<void> _savePrettyJson(bool v) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setBool(_kSubPrettyJson, v);
+  }
+
+  // ── Settings ─────────────────────────────────────────────────────────────
+
   Future<void> _openSettings() async {
     final updated = await showMqttSettingsDialog(context, _cfg);
     if (updated == null || !mounted) return;
     setState(() => _cfg = updated);
-    _disconnect();
+    _cancelMsgSub();
+    _disconnectClient();
     _connect();
   }
+
+  // ── Screen keep-on ────────────────────────────────────────────────────────
 
   Future<void> _toggleScreenOn() async {
     setState(() => _keepScreenOn = !_keepScreenOn);
@@ -370,53 +409,69 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
     }
   }
 
+  // ── MQTT connection ──────────────────────────────────────────────────────
+  //
+  // KEY FIX: _msgSub is stored and cancelled explicitly.
+  // Previously _client!.updates!.listen() was called every time _onConnected
+  // fired (including on auto-reconnect), stacking duplicate listeners on the
+  // same BehaviorSubject stream.  After the first event the extra listeners
+  // caused setState() calls on potentially disposed widgets and the stream
+  // appeared to stop delivering. Fix: cancel old subscription, subscribe once.
+
   void _connect() {
+    final topic = _topicCtrl.text.trim();
     if (_cfg.isEmpty) return;
+    if (topic.isEmpty) {
+      setState(() => _statusMsg = 'Enter a topic to subscribe to.');
+      return;
+    }
     setState(() { _connecting = true; _statusMsg = 'Connecting…'; });
 
-    final clientId = 'simplynet_sub_${DateTime.now().millisecondsSinceEpoch}';
-    final client = MqttServerClient(_cfg.broker, clientId)
-      ..port           = _cfg.port
+    final clientId = 'sn_sub_${DateTime.now().millisecondsSinceEpoch}';
+    final client   = MqttServerClient(_cfg.broker, clientId)
+      ..port            = _cfg.port
       ..keepAlivePeriod = 20
       ..logging(on: false)
-      ..onConnected    = _onConnected
-      ..onDisconnected = _onDisconnected
-      ..onAutoReconnect  = () {
+      ..onConnected     = _onConnected
+      ..onDisconnected  = _onDisconnected
+      ..onAutoReconnect = () {
           if (mounted) setState(() => _statusMsg = 'Reconnecting…');
         }
-      ..autoReconnect  = true;
+      ..autoReconnect   = true;
 
     final connMsg = MqttConnectMessage()
         .withClientIdentifier(clientId)
         .startClean()
         .withWillQos(MqttQos.atLeastOnce);
-
     if (_cfg.username.isNotEmpty) {
       connMsg.authenticateAs(_cfg.username, _cfg.password);
     }
-
     client.connectionMessage = connMsg;
     _client = client;
 
     client.connect().catchError((e) {
-      if (mounted) {
-        setState(() {
-          _connecting = false;
-          _statusMsg  = 'Connection failed: $e';
-        });
-      }
+      if (mounted) setState(() {
+        _connecting = false;
+        _statusMsg  = 'Connection failed: $e';
+      });
     });
   }
 
   void _onConnected() {
     if (!mounted) return;
+    final topic = _topicCtrl.text.trim();
     setState(() {
       _connected  = true;
       _connecting = false;
-      _statusMsg  = 'Subscribed to "${_cfg.topic}"';
+      _statusMsg  = 'Subscribed to "$topic"';
     });
-    _client!.subscribe(_cfg.topic, MqttQos.atLeastOnce);
-    _client!.updates!.listen(_onMessage);
+
+    _client!.subscribe(topic, MqttQos.atLeastOnce);
+
+    // Cancel any previous subscription before creating a new one.
+    // This is the core fix for the "only first batch" bug.
+    _cancelMsgSub();
+    _msgSub = _client!.updates!.listen(_onMessage);
   }
 
   void _onDisconnected() {
@@ -426,19 +481,26 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
       _connecting = false;
       _statusMsg  = 'Disconnected';
     });
+    // Don't cancel _msgSub here — autoReconnect will call _onConnected again
+    // which will replace it properly.
   }
 
   void _onMessage(List<MqttReceivedMessage<MqttMessage?>>? msgs) {
     if (msgs == null || !mounted) return;
+    final newEntries = <String>[];
     for (final m in msgs) {
-      final pub     = m.payload as MqttPublishMessage;
-      final raw     = MqttPublishPayload.bytesToStringAsString(
-                          pub.payload.message);
-      final display = _prettyJson ? _tryPrettyJson(raw) : raw;
-      setState(() {
-        _messages.add('[${_timestamp()}]  ${m.topic}\n$display');
-      });
+      final pub    = m.payload as MqttPublishMessage;
+      final raw    = MqttPublishPayload.bytesToStringAsString(
+                         pub.payload.message);
+      final body   = _prettyJson ? _tryPrettyJson(raw) : raw;
+      final entry  = '[${_timestamp()}]  ${m.topic}\n$body';
+      newEntries.add(entry);
     }
+    setState(() => _messages.addAll(newEntries));
+
+    // Log each received message
+    _logMessages(newEntries);
+
     // Auto-scroll to bottom
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scroll.hasClients) {
@@ -449,10 +511,33 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
     });
   }
 
+  void _cancelMsgSub() {
+    _msgSub?.cancel();
+    _msgSub = null;
+  }
+
+  void _disconnectClient() {
+    _client?.disconnect();
+    _client = null;
+  }
+
+  // ── Logging ──────────────────────────────────────────────────────────────
+
+  Future<void> _logMessages(List<String> entries) async {
+    if (entries.isEmpty) return;
+    final topic = _topicCtrl.text.trim();
+    await LogService.createLog(
+      function: 'mqtt_sub',
+      content:  entries.join('\n'),
+      summary:  'MQTT Sub [$topic]: ${entries.length} message(s)',
+    );
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
   String _tryPrettyJson(String raw) {
     try {
-      final decoded = json.decode(raw);
-      return const JsonEncoder.withIndent('  ').convert(decoded);
+      return const JsonEncoder.withIndent('  ').convert(json.decode(raw));
     } catch (_) {
       return raw;
     }
@@ -465,17 +550,19 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
            '${now.second.toString().padLeft(2,'0')}';
   }
 
-  void _disconnect() {
-    _client?.disconnect();
-    _client = null;
+  // ── Reconnect when topic changes ─────────────────────────────────────────
+
+  void _applyTopic() {
+    _saveTopic(_topicCtrl.text);
+    _cancelMsgSub();
+    _disconnectClient();
+    _connect();
   }
+
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    final statusColor = _connected
-        ? Colors.green
-        : (_connecting ? Colors.orange : Colors.red);
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('MQTT Subscribe',
@@ -490,43 +577,53 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                // ── Status bar ─────────────────────────────────────────────
-                Container(
-                  color: statusColor.withValues(alpha: 0.12),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 6),
+                _MqttStatusBar(
+                    connected: _connected,
+                    connecting: _connecting,
+                    message: _statusMsg),
+
+                // ── Topic field ────────────────────────────────────────────
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
                   child: Row(children: [
-                    Icon(
-                      _connected
-                          ? Icons.check_circle_outline
-                          : (_connecting
-                              ? Icons.hourglass_top_outlined
-                              : Icons.error_outline),
-                      size: 16, color: statusColor,
-                    ),
-                    const SizedBox(width: 6),
                     Expanded(
-                      child: Text(_statusMsg,
-                          style: TextStyle(fontSize: 12,
-                              color: statusColor)),
+                      child: TextField(
+                        controller:      _topicCtrl,
+                        textInputAction: TextInputAction.go,
+                        onChanged: (v) => _saveTopic(v),
+                        onSubmitted:     (_) => _applyTopic(),
+                        decoration: InputDecoration(
+                          labelText: 'Topic',
+                          hintText:  'e.g. home/sensor/# or home/sensor/temp',
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10)),
+                          isDense: true,
+                        ),
+                      ),
                     ),
-                    if (_connecting)
-                      const SizedBox(width: 14, height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2)),
+                    const SizedBox(width: 8),
+                    FilledButton(
+                      onPressed: _applyTopic,
+                      style: FilledButton.styleFrom(
+                          minimumSize: const Size(64, 40)),
+                      child: const Text('Subscribe'),
+                    ),
                   ]),
                 ),
 
                 // ── Controls row ───────────────────────────────────────────
                 Padding(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 6),
+                      horizontal: 12, vertical: 4),
                   child: Row(children: [
-                    // Human-readable JSON
                     Expanded(
                       child: CheckboxListTile(
                         value:    _prettyJson,
-                        onChanged: (v) =>
-                            setState(() => _prettyJson = v ?? true),
+                        onChanged: (v) {
+                          final val = v ?? true;
+                          setState(() => _prettyJson = val);
+                          _savePrettyJson(val);
+                        },
                         title: const Text('Human-readable JSON',
                             style: TextStyle(fontSize: 13)),
                         controlAffinity:
@@ -535,7 +632,6 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
                         dense: true,
                       ),
                     ),
-                    // Clear button
                     if (_messages.isNotEmpty)
                       TextButton.icon(
                         onPressed: () =>
@@ -553,7 +649,9 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
                           child: Text(
                             _connected
                                 ? 'Waiting for messages…'
-                                : 'Not connected',
+                                : (_topicCtrl.text.trim().isEmpty
+                                    ? 'Enter a topic and tap Subscribe'
+                                    : 'Not connected'),
                             style: TextStyle(
                                 color: Theme.of(context)
                                     .colorScheme
@@ -562,16 +660,15 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
                           ),
                         )
                       : ListView.separated(
-                          controller:  _scroll,
+                          controller: _scroll,
                           padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-                          itemCount:   _messages.length,
+                          itemCount:  _messages.length,
                           separatorBuilder: (_, _2) =>
                               const Divider(height: 8, thickness: 0.5),
                           itemBuilder: (_, i) => SelectableText(
                             _messages[i],
                             style: const TextStyle(
-                                fontSize: 12,
-                                fontFamily: 'monospace'),
+                                fontSize: 12, fontFamily: 'monospace'),
                           ),
                         ),
                 ),
@@ -582,53 +679,69 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  MQTT Publisher screen
+//  MQTT Publish screen
 // ════════════════════════════════════════════════════════════════════════════
 
 class MqttPubScreen extends StatefulWidget {
-  /// App-level screen-timeout mode index (from AppSettings.screenTimeout).
   final int appScreenTimeoutMode;
-
   const MqttPubScreen({super.key, this.appScreenTimeoutMode = 0});
-
   @override
   State<MqttPubScreen> createState() => _MqttPubScreenState();
 }
 
 class _MqttPubScreenState extends State<MqttPubScreen> {
-  MqttSettings  _cfg    = const MqttSettings();
-  bool          _loaded  = false;
+  // ── Persistence keys ───────────────────────────────────────────────────
+  static const _kPubTopic   = 'mqtt_pub_topic';
+  static const _kPubMessage = 'mqtt_pub_message';
+  static const _kPubRetain  = 'mqtt_pub_retain';
 
+  MqttSettings _cfg    = const MqttSettings();
+  bool         _loaded = false;
+
+  // ── Own topic (separate from Sub) ──────────────────────────────────────
+  final _topicCtrl = TextEditingController();
+  final _msgCtrl   = TextEditingController();
+
+  // ── MQTT client ────────────────────────────────────────────────────────
   MqttServerClient? _client;
   bool   _connected  = false;
   bool   _connecting = false;
   String _statusMsg  = '';
 
-  bool   _keepScreenOn = false;
-  bool   _retain       = false;
+  // ── UI state ───────────────────────────────────────────────────────────
+  bool _keepScreenOn = false;
+  bool _retain       = false;
 
-  final _msgCtrl    = TextEditingController();
+  // ─────────────────────────────────────────────────────────────────────────
 
   @override
   void initState() {
     super.initState();
-    _loadAndConnect();
+    _loadPrefs();
   }
 
   @override
   void dispose() {
-    _disconnect();
-    if (_keepScreenOn) {
-      _ScreenKeepOn.restore(widget.appScreenTimeoutMode);
-    }
+    _disconnectClient();
+    if (_keepScreenOn) _ScreenKeepOn.restore(widget.appScreenTimeoutMode);
+    _topicCtrl.dispose();
     _msgCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _loadAndConnect() async {
+  // ── Persistence ──────────────────────────────────────────────────────────
+
+  Future<void> _loadPrefs() async {
+    final p   = await SharedPreferences.getInstance();
     final cfg = await MqttSettings.load();
     if (!mounted) return;
-    setState(() { _cfg = cfg; _loaded = true; });
+    setState(() {
+      _cfg             = cfg;
+      _loaded          = true;
+      _topicCtrl.text  = p.getString(_kPubTopic)   ?? '';
+      _msgCtrl.text    = p.getString(_kPubMessage)  ?? '';
+      _retain          = p.getBool(_kPubRetain)     ?? false;
+    });
     if (cfg.isEmpty) {
       await _openSettings();
     } else {
@@ -636,13 +749,32 @@ class _MqttPubScreenState extends State<MqttPubScreen> {
     }
   }
 
+  Future<void> _saveTopic(String v) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_kPubTopic, v.trim());
+  }
+
+  Future<void> _saveMessage(String v) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_kPubMessage, v);
+  }
+
+  Future<void> _saveRetain(bool v) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setBool(_kPubRetain, v);
+  }
+
+  // ── Settings ─────────────────────────────────────────────────────────────
+
   Future<void> _openSettings() async {
     final updated = await showMqttSettingsDialog(context, _cfg);
     if (updated == null || !mounted) return;
     setState(() => _cfg = updated);
-    _disconnect();
+    _disconnectClient();
     _connect();
   }
+
+  // ── Screen keep-on ────────────────────────────────────────────────────────
 
   Future<void> _toggleScreenOn() async {
     setState(() => _keepScreenOn = !_keepScreenOn);
@@ -653,14 +785,16 @@ class _MqttPubScreenState extends State<MqttPubScreen> {
     }
   }
 
+  // ── MQTT connection ───────────────────────────────────────────────────────
+
   void _connect() {
     if (_cfg.isEmpty) return;
     setState(() { _connecting = true; _statusMsg = 'Connecting…'; });
 
-    final clientId = 'simplynet_pub_${DateTime.now().millisecondsSinceEpoch}';
-    final client = MqttServerClient(_cfg.broker, clientId)
+    final clientId = 'sn_pub_${DateTime.now().millisecondsSinceEpoch}';
+    final client   = MqttServerClient(_cfg.broker, clientId)
       ..port            = _cfg.port
-      ..keepAlivePeriod  = 20
+      ..keepAlivePeriod = 20
       ..logging(on: false)
       ..onConnected     = _onConnected
       ..onDisconnected  = _onDisconnected
@@ -673,30 +807,29 @@ class _MqttPubScreenState extends State<MqttPubScreen> {
         .withClientIdentifier(clientId)
         .startClean()
         .withWillQos(MqttQos.atLeastOnce);
-
     if (_cfg.username.isNotEmpty) {
       connMsg.authenticateAs(_cfg.username, _cfg.password);
     }
-
     client.connectionMessage = connMsg;
     _client = client;
 
     client.connect().catchError((e) {
-      if (mounted) {
-        setState(() {
-          _connecting = false;
-          _statusMsg  = 'Connection failed: $e';
-        });
-      }
+      if (mounted) setState(() {
+        _connecting = false;
+        _statusMsg  = 'Connection failed: $e';
+      });
     });
   }
 
   void _onConnected() {
     if (!mounted) return;
+    final topic = _topicCtrl.text.trim();
     setState(() {
       _connected  = true;
       _connecting = false;
-      _statusMsg  = 'Connected — topic: "${_cfg.topic}"';
+      _statusMsg  = topic.isEmpty
+          ? 'Connected — enter a topic below'
+          : 'Connected — topic: "$topic"';
     });
   }
 
@@ -709,36 +842,45 @@ class _MqttPubScreenState extends State<MqttPubScreen> {
     });
   }
 
-  void _publish() {
+  void _disconnectClient() {
+    _client?.disconnect();
+    _client = null;
+  }
+
+  // ── Publish ───────────────────────────────────────────────────────────────
+
+  Future<void> _publish() async {
     if (!_connected || _client == null) return;
-    final msg = _msgCtrl.text;
-    if (msg.isEmpty) return;
+    final topic = _topicCtrl.text.trim();
+    final msg   = _msgCtrl.text;
+    if (topic.isEmpty || msg.isEmpty) return;
 
     final builder = MqttClientPayloadBuilder()..addString(msg);
     _client!.publishMessage(
-      _cfg.topic,
+      topic,
       MqttQos.atLeastOnce,
       builder.payload!,
       retain: _retain,
     );
 
+    // Log the publish action
+    await LogService.createLog(
+      function: 'mqtt_pub',
+      content:  msg,
+      summary:  'MQTT Pub [$topic]${_retain ? " (retained)" : ""}',
+    );
+
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('Published to "${_cfg.topic}"'),
+      content: Text('Published to "$topic"'),
       duration: const Duration(seconds: 2),
     ));
   }
 
-  void _disconnect() {
-    _client?.disconnect();
-    _client = null;
-  }
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    final statusColor = _connected
-        ? Colors.green
-        : (_connecting ? Colors.orange : Colors.red);
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('MQTT Publish',
@@ -751,108 +893,88 @@ class _MqttPubScreenState extends State<MqttPubScreen> {
       ),
       body: !_loaded
           ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                // ── Status bar ─────────────────────────────────────────────
-                Container(
-                  color: statusColor.withValues(alpha: 0.12),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 6),
-                  child: Row(children: [
-                    Icon(
-                      _connected
-                          ? Icons.check_circle_outline
-                          : (_connecting
-                              ? Icons.hourglass_top_outlined
-                              : Icons.error_outline),
-                      size: 16, color: statusColor,
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _MqttStatusBar(
+                      connected: _connected,
+                      connecting: _connecting,
+                      message: _statusMsg),
+                  const SizedBox(height: 12),
+
+                  // ── Topic (editable, per-screen) ───────────────────────
+                  TextField(
+                    controller:      _topicCtrl,
+                    textInputAction: TextInputAction.next,
+                    onChanged:       _saveTopic,
+                    onEditingComplete: () {
+                      final topic = _topicCtrl.text.trim();
+                      if (mounted && _connected) {
+                        setState(() => _statusMsg =
+                            topic.isEmpty
+                                ? 'Connected — enter a topic below'
+                                : 'Connected — topic: "$topic"');
+                      }
+                    },
+                    decoration: InputDecoration(
+                      labelText: 'Topic',
+                      hintText:  'e.g. home/light/switch',
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                      isDense: true,
                     ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(_statusMsg,
-                          style: TextStyle(fontSize: 12,
-                              color: statusColor)),
-                    ),
-                    if (_connecting)
-                      const SizedBox(width: 14, height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2)),
-                  ]),
-                ),
-
-                // ── Publish form ───────────────────────────────────────────
-                Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Topic display (read-only, from settings)
-                      InputDecorator(
-                        decoration: InputDecoration(
-                          labelText: 'Topic',
-                          border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10)),
-                          isDense: true,
-                          suffixIcon: Icon(Icons.lock_outline,
-                              size: 16,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurface
-                                  .withValues(alpha: 0.4)),
-                        ),
-                        child: Text(_cfg.topic.isEmpty ? '(not set)' : _cfg.topic,
-                            style: TextStyle(
-                              fontFamily: 'monospace',
-                              color: _cfg.topic.isEmpty
-                                  ? Theme.of(context)
-                                      .colorScheme
-                                      .onSurface
-                                      .withValues(alpha: 0.4)
-                                  : null,
-                            )),
-                      ),
-                      const SizedBox(height: 12),
-
-                      // Message input
-                      TextField(
-                        controller: _msgCtrl,
-                        maxLines:   5,
-                        decoration: InputDecoration(
-                          labelText: 'Message',
-                          hintText:  'Enter payload…',
-                          alignLabelWithHint: true,
-                          border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10)),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-
-                      // Retain checkbox
-                      CheckboxListTile(
-                        value:    _retain,
-                        onChanged: (v) =>
-                            setState(() => _retain = v ?? false),
-                        title: const Text('Retain',
-                            style: TextStyle(fontSize: 13)),
-                        subtitle: const Text(
-                            'Broker keeps the last message for new subscribers.',
-                            style: TextStyle(fontSize: 11)),
-                        controlAffinity:
-                            ListTileControlAffinity.leading,
-                        contentPadding: EdgeInsets.zero,
-                        dense: true,
-                      ),
-                      const SizedBox(height: 12),
-
-                      // Publish button
-                      FilledButton.icon(
-                        onPressed: _connected ? _publish : null,
-                        icon:  const Icon(Icons.send_outlined),
-                        label: const Text('Publish'),
-                      ),
-                    ],
                   ),
-                ),
-              ],
+                  const SizedBox(height: 12),
+
+                  // ── Message ────────────────────────────────────────────
+                  TextField(
+                    controller: _msgCtrl,
+                    maxLines:   5,
+                    onChanged:  _saveMessage,
+                    decoration: InputDecoration(
+                      labelText: 'Message',
+                      hintText:  'Enter payload…',
+                      alignLabelWithHint: true,
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+
+                  // ── Retain ─────────────────────────────────────────────
+                  CheckboxListTile(
+                    value:    _retain,
+                    onChanged: (v) {
+                      final val = v ?? false;
+                      setState(() => _retain = val);
+                      _saveRetain(val);
+                    },
+                    title: const Text('Retain',
+                        style: TextStyle(fontSize: 13)),
+                    subtitle: const Text(
+                        'Broker keeps the last message for new subscribers.',
+                        style: TextStyle(fontSize: 11)),
+                    controlAffinity:
+                        ListTileControlAffinity.leading,
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                  ),
+                  const SizedBox(height: 12),
+
+                  // ── Publish button ─────────────────────────────────────
+                  FilledButton.icon(
+                    onPressed: (_connected &&
+                                _topicCtrl.text.trim().isNotEmpty &&
+                                _msgCtrl.text.isNotEmpty)
+                        ? _publish
+                        : null,
+                    icon:  const Icon(Icons.send_outlined),
+                    label: const Text('Publish'),
+                  ),
+                ],
+              ),
             ),
     );
   }
