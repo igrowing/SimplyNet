@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:simply_net/providers/scan_provider.dart';
 import 'package:simply_net/screens/cellular_screen.dart';
+import 'package:simply_net/screens/mqtt_screen.dart';
+import 'package:simply_net/providers/settings_provider.dart';
 import 'package:simply_net/screens/iot_scan_screen.dart';
 import 'package:simply_net/screens/network_tools_screen.dart';
 import 'package:simply_net/screens/wifi_channels_screen.dart';
@@ -229,6 +231,8 @@ class _HomeScreenState extends State<HomeScreen> {
       _ToolBtn(Icons.public,        'Public IP',      'Your IP, ISP & location',        () => push(const PublicIpScreen()),               Colors.green),
       _ToolBtn(Icons.videocam,      'IP Cameras',     'Find cameras on your LAN',       () => push(IpCameraScanScreen(cidr: scanTarget)), Colors.orange),
       _ToolBtn(Icons.memory,        'IoT Devices',    'Matter, Tasmota, Shelly & more', () => push(IotScanScreen(cidr: scanTarget)),      Colors.deepPurple),
+      _ToolBtn(Icons.subscriptions, 'MQTT Sub',       'Subscribe to an MQTT topic',     () => push(MqttSubScreen(appScreenTimeoutMode: ctx.read<SettingsProvider>().settings.screenTimeout.index)), Colors.brown),
+      _ToolBtn(Icons.publish,       'MQTT Pub',       'Publish to an MQTT topic',       () => push(MqttPubScreen(appScreenTimeoutMode: ctx.read<SettingsProvider>().settings.screenTimeout.index)), Colors.deepOrange),
       _ToolBtn(Icons.radar,         'Port Scan',      'Open TCP/UDP ports on any host', () => push(const PortScanScreen()),               Colors.purple),
       _ToolBtn(Icons.network_ping,  'Ping',           'Live ping with graph',           () => push(const PingScreen()),                   Colors.teal),
       _ToolBtn(Icons.route,         'Traceroute',     'Hop-by-hop path to any host',    () => push(const TracerouteScreen()),             Colors.deepOrange),
