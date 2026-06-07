@@ -1145,13 +1145,14 @@ class _PingScreenState extends State<PingScreen> {
     super.dispose();
   }
 
+  //  TODO: refactor: use One subnet scan for IP cameras, General scan, and IOT devices search.
   void _toggle() {
     if (_running) {
       _sub?.cancel();
       FgService.stop(doneBody: 'Ping stopped.');
       setState(() => _running = false);
-      // Log whatever we captured so far (partial ping is still useful)
-      _saveLog(partial: true);
+      // TODO: accomplish saving log after ping
+      // _saveLog(partial: true);
     } else {
       final host = _ctrl.text.trim();
       if (host.isEmpty) return;
@@ -1163,6 +1164,7 @@ class _PingScreenState extends State<PingScreen> {
         _pingTimings.clear();
       });
       FgService.start(title: 'Ping', body: 'Pinging $host…');
+      /// TODO: refactor: use rawResults ping scan cache if available. Scan if cache is empty.
       _sub = NetworkTools.ping(host, count: 50).listen(
         (chunk) {
           setState(() {
@@ -1181,7 +1183,8 @@ class _PingScreenState extends State<PingScreen> {
             _running = false;
           });
           FgService.stop(doneBody: 'Ping complete.');
-          await _saveLog();
+          // TODO: accomplish saving log after ping
+          // await _saveLog();
         },
       );
     }
