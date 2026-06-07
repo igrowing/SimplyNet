@@ -719,26 +719,39 @@ class _IpCameraScanState extends State<IpCameraScanScreen> {
     super.dispose();
   }
 
+  // ── Logging ───────────────────────────────────────────────────────────────
+
+  /// Write a log entry for the camera scan results collected so far.
+  /// [partial] is true when the user stopped the scan before it completed.
   Future<void> _saveLog({bool partial = false}) async {
     if (!context.mounted) return;
     final settings = context.read<SettingsProvider>().settings;
     if (!settings.loggingEnabled) return;
-    if (_diagOutput.isEmpty) return;
+    if (_results.isEmpty) return;
     final label = partial ? 'stopped' : 'complete';
+    final buf = StringBuffer();
+    for (final cam in _results) {
+      buf.writeln('${cam.ip}  :${cam.port}  ${cam.method.name}  '
+          '${cam.manufacturer}  ${cam.evidence}');
+    }
     await LogService.createLog(
-      function: 'ping',
-      content:  _diagOutput.toString(),
-      summary:  'Ping → ${_ctrl.text.trim()}: '
-                '${_pingTimings.length} replies ($label)',
+      function: 'ip_cameras',
+      content:  buf.toString(),
+      summary:  'IP camera scan ${widget.cidr}: '
+                '${_results.length} found ($label)',
     );
   }
+
+  // ── Scan control ──────────────────────────────────────────────────────────
 
   void _toggle() {
     if (_scanning) {
       _sub?.cancel();
       setState(() => _scanning = false);
+      // Log partial results — same as Ping stop behaviour.
+      _saveLog(partial: true);
     } else {
-      // Rescan — wipe shared cache so we always do a fresh full sweep
+      // Rescan — wipe shared cache so we always do a fresh full sweep.
       context.read<ScanProvider>().clearCache();
       _startScan(forceFullScan: true);
     }
@@ -755,46 +768,35 @@ class _IpCameraScanState extends State<IpCameraScanScreen> {
 
     final scanProv = context.read<ScanProvider>();
 
-    void _handleDone() async {
-      setState(() => _scanning = false);
-      if (!context.mounted) return;
-      final settings = context.read<SettingsProvider>().settings;
-      if (settings.loggingEnabled) {
-        final buf = StringBuffer();
-        for (final cam in _results) {
-          buf.writeln('${cam.ip}  ${cam.method.name}  ${cam.manufacturer}  ${cam.evidence}');
-        }
-        await LogService.createLog(
-          function: 'ip_cameras',
-          content:  buf.toString(),
-          summary:  'IP camera scan ${widget.cidr}: ${_results.length} found',
-        );
-      }
-    }
-
+    // Choose stream source: fast-path (known live hosts) vs full subnet sweep.
+    // Both paths produce the same Stream<CameraCandidate> interface — the only
+    // difference is the discovery strategy, so we unify the .listen() call.
+    final Stream<CameraCandidate> stream;
     if (!forceFullScan && scanProv.hasValidResults(widget.cidr)) {
       // ── Fast path: probe only already-discovered hosts ───────────────────
       final ips = scanProv.rawResults.map((h) => h.ip).toList();
       _total = ips.length;
-      _sub = IpCameraDetector.scanHosts(
+      stream = IpCameraDetector.scanHosts(
         ips,
         onProgress: (done, total) =>
             setState(() { _done = done; _total = total; }),
-      ).listen(
-        (candidate) => setState(() => _results.add(candidate)),
-        onDone: _handleDone,
       );
     } else {
       // ── Full scan path ───────────────────────────────────────────────────
-      _sub = IpCameraDetector.scanSubnet(
+      stream = IpCameraDetector.scanSubnet(
         widget.cidr,
         onProgress: (done, total) =>
             setState(() { _done = done; _total = total; }),
-      ).listen(
-        (candidate) => setState(() => _results.add(candidate)),
-        onDone: _handleDone,
       );
     }
+
+    _sub = stream.listen(
+      (candidate) => setState(() => _results.add(candidate)),
+      onDone: () async {
+        setState(() => _scanning = false);
+        await _saveLog();
+      },
+    );
   }
 
   // ── Label helpers ──────────────────────────────────────────────────────────
