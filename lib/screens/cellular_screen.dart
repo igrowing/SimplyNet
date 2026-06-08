@@ -66,7 +66,7 @@ class _CellularScreenState extends State<CellularScreen> {
     }
 
     // Fetch location in parallel after cellular data is shown
-    unawaited(_fetchLocation());
+    await _fetchLocation();
 
     // Log the result
     if (context.mounted) {
@@ -77,7 +77,7 @@ class _CellularScreenState extends State<CellularScreen> {
         await LogService.createLog(
           function: 'cellular',
           content:  buf.toString(),
-          summary:  'Cellular info: ${_data["provider"] ?? "?"} ${_data["technology"] ?? ""}',
+          summary:  'Cellular info: ${_data["provider"] ?? "?"} ${_data["technology"] ?? ""} $_placeName ?? "Location denied"',
         );
       }
     }
@@ -100,6 +100,10 @@ class _CellularScreenState extends State<CellularScreen> {
           _placeName    = '';
           _locationBusy = false;
         });
+
+        // Report to log
+        _data['location'] = _locationLine;
+        _data['place']    = _placeName;
         return;
       }
 
