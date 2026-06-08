@@ -33,6 +33,7 @@ class _HomeScreenState extends State<HomeScreen> {
       for (final line in yaml.split('\n')) {
         if (line.startsWith('version:')) {
           final raw = line.replaceFirst('version:', '').trim();
+          setState(() => _appVersion = 'v${raw.split('-').first}');
           if (mounted) setState(() => _appVersion = 'v${raw.split('+').first}');
           break;
         }
