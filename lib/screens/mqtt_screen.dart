@@ -460,13 +460,15 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
     final client   = MqttServerClient(_cfg.broker, clientId)
       ..port            = _cfg.port
       ..keepAlivePeriod = 20
-      ..logging(on: false)
-      ..onConnected     = () => _onConnected(topic)
       ..onDisconnected  = _onDisconnected
       ..onAutoReconnect = () {
           if (mounted) setState(() => _statusMsg = 'Reconnecting…');
         }
       ..autoReconnect   = true;
+    
+    // Move outside cascade chain because functions which return void break the cascade.
+    client.logging(on: false);
+    client.onConnected     = () => _onConnected(topic);
 
     final connMsg = MqttConnectMessage()
         .withClientIdentifier(clientId)

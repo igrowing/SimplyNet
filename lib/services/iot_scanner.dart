@@ -198,6 +198,7 @@ class IotScanner {
 
   /// Scans [cidr] for IoT devices.
   /// Yields results as they are found.
+  /// TODO: refactor: use rawResults ping scan cache if available. Scan if cache is empty.
   static Stream<IotDevice> scanSubnet(String cidr) async* {
     final parts   = cidr.split('/');
     if (parts.length != 2) return;
