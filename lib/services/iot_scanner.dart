@@ -198,6 +198,7 @@ class IotScanner {
 
   /// Scans [cidr] for IoT devices.
   /// Yields results as they are found.
+  /// TODO: refactor: use rawResults ping scan cache if available. Scan if cache is empty.
   static Stream<IotDevice> scanSubnet(String cidr) async* {
     final parts   = cidr.split('/');
     if (parts.length != 2) return;
@@ -236,7 +237,35 @@ class IotScanner {
     yield* controller.stream;
   }
 
-  // ---------- per-host probe ---------------------------------------------------
+  // ---------- scan a pre-discovered IP list (skips full subnet sweep) ---------
+
+  /// Probe [ips] for IoT devices without a full subnet sweep.
+  /// Used when ScanProvider already has a fresh host list so we skip
+  /// redundant ARP/ping discovery and go straight to IoT fingerprinting.
+  static Stream<IotDevice> scanHosts(List<String> ips) {
+    final sem        = _Semaphore(32);
+    final controller = StreamController<IotDevice>();
+    var   pending    = ips.length;
+
+    if (pending == 0) {
+      controller.close();
+      return controller.stream;
+    }
+
+    for (final ip in ips) {
+      sem.run(() => _probeHost(ip)).then((dev) {
+        if (dev != null) controller.add(dev);
+        pending--;
+        if (pending == 0) controller.close();
+      }).catchError((_) {
+        pending--;
+        if (pending == 0) controller.close();
+      });
+    }
+    return controller.stream;
+  }
+
+    // ---------- per-host probe ---------------------------------------------------
 
   static Future<IotDevice?> _probeHost(String ip) async {
     // Step 1 — quick connectivity check: try port 80 first, then scan IoT ports

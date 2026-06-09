@@ -393,6 +393,39 @@ class IpCameraDetector {
     // }
   }
 
+  /// Probe a pre-discovered list of IPs for cameras without a full CIDR sweep.
+  /// Used when ScanProvider already has a fresh host list so we can skip the
+  /// redundant ARP/ping step and go straight to camera fingerprinting.
+  static Stream<CameraCandidate> scanHosts(
+    List<String> ips, {
+    Map<String, String> arpTable = const {},
+    Duration portTimeout = const Duration(milliseconds: 800),
+    void Function(int done, int total)? onProgress,
+    int parallelism = 24,
+  }) async* {
+    if (ips.isEmpty) return;
+    final seenIps = <String>{};
+    int done = 0;
+
+    for (var i = 0; i < ips.length; i += parallelism) {
+      final batch   = ips.sublist(i, (i + parallelism).clamp(0, ips.length));
+      final futures = batch.map((ip) => detectHost(
+        ip,
+        manufacturer: arpTable[ip] ?? '',
+        portTimeout:  portTimeout,
+      ));
+      final batchResults = await Future.wait(futures);
+      for (final candidates in batchResults) {
+        for (final c in candidates) {
+          if (seenIps.add(c.ip)) yield c;
+        }
+      }
+      done += batch.length;
+      onProgress?.call(done, ips.length);
+    }
+  }
+
+
   /// Expand a CIDR string to a list of host IP strings.
   /// Returns null if the CIDR is invalid.
   static List<String>? _expandCidr(String cidr) {

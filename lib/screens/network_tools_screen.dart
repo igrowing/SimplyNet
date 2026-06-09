@@ -16,6 +16,8 @@ import 'package:simply_net/screens/iot_scan_screen.dart';
 import 'package:simply_net/screens/wifi_channels_screen.dart';
 import 'package:simply_net/screens/cellular_screen.dart';
 import 'package:simply_net/services/foreground_service.dart';
+import 'package:simply_net/services/log_service.dart';
+import 'package:simply_net/providers/settings_provider.dart';
 
 class NetworkToolsScreen extends StatelessWidget {
   const NetworkToolsScreen({super.key});
@@ -717,16 +719,45 @@ class _IpCameraScanState extends State<IpCameraScanScreen> {
     super.dispose();
   }
 
+  // ── Logging ───────────────────────────────────────────────────────────────
+
+  /// Write a log entry for the camera scan results collected so far.
+  /// [partial] is true when the user stopped the scan before it completed.
+  Future<void> _saveLog({bool partial = false}) async {
+    if (!context.mounted) return;
+    final settings = context.read<SettingsProvider>().settings;
+    if (!settings.loggingEnabled) return;
+    if (_results.isEmpty) return;
+    final label = partial ? 'stopped' : 'complete';
+    final buf = StringBuffer();
+    for (final cam in _results) {
+      buf.writeln('${cam.ip}  :${cam.port}  ${cam.method.name}  '
+          '${cam.manufacturer}  ${cam.evidence}');
+    }
+    await LogService.createLog(
+      function: 'ip_cameras',
+      content:  buf.toString(),
+      summary:  'IP camera scan ${widget.cidr}: '
+                '${_results.length} found ($label)',
+    );
+  }
+
+  // ── Scan control ──────────────────────────────────────────────────────────
+
   void _toggle() {
     if (_scanning) {
       _sub?.cancel();
       setState(() => _scanning = false);
+      // Log partial results — same as Ping stop behaviour.
+      _saveLog(partial: true);
     } else {
-      _startScan();
+      // Rescan — wipe shared cache so we always do a fresh full sweep.
+      context.read<ScanProvider>().clearCache();
+      _startScan(forceFullScan: true);
     }
   }
 
-  void _startScan() {
+  void _startScan({bool forceFullScan = false}) {
     _sub?.cancel();
     setState(() {
       _results.clear();
@@ -735,13 +766,36 @@ class _IpCameraScanState extends State<IpCameraScanScreen> {
       _total    = 0;
     });
 
-    _sub = IpCameraDetector.scanSubnet(
-      widget.cidr,
-      onProgress: (done, total) =>
-          setState(() { _done = done; _total = total; }),
-    ).listen(
+    final scanProv = context.read<ScanProvider>();
+
+    // Choose stream source: fast-path (known live hosts) vs full subnet sweep.
+    // Both paths produce the same Stream<CameraCandidate> interface — the only
+    // difference is the discovery strategy, so we unify the .listen() call.
+    final Stream<CameraCandidate> stream;
+    if (!forceFullScan && scanProv.hasValidResults(widget.cidr)) {
+      // ── Fast path: probe only already-discovered hosts ───────────────────
+      final ips = scanProv.rawResults.map((h) => h.ip).toList();
+      _total = ips.length;
+      stream = IpCameraDetector.scanHosts(
+        ips,
+        onProgress: (done, total) =>
+            setState(() { _done = done; _total = total; }),
+      );
+    } else {
+      // ── Full scan path ───────────────────────────────────────────────────
+      stream = IpCameraDetector.scanSubnet(
+        widget.cidr,
+        onProgress: (done, total) =>
+            setState(() { _done = done; _total = total; }),
+      );
+    }
+
+    _sub = stream.listen(
       (candidate) => setState(() => _results.add(candidate)),
-      onDone: () => setState(() => _scanning = false),
+      onDone: () async {
+        setState(() => _scanning = false);
+        await _saveLog();
+      },
     );
   }
 
@@ -983,40 +1037,32 @@ class _WhoisState extends State<WhoisScreen> {
     } catch (e) { _put('RDAP error: $e'); }
     setState(() {});
 
-    // ── 3. System nslookup ─────────────────────────────────────────────────────
-    // Process.run + runInShell:true avoids EACCES on Android systems that
-    // block direct exec() but allow shell-invoked binaries.
-    _put(''); _put('=== System nslookup ===');
+    // ── 3. DNS detail via NetworkTools.nslookup ─────────────────────────────────
+    // Reuse the well-tested NetworkTools.nslookup stream instead of
+    // shelling out to the nslookup binary (which is not accessible on
+    // many Android builds via /system/bin/sh).
+    _put(''); _put('=== DNS detail ===');
     try {
-      final result = await Process.run(
-        'nslookup', [q],
-        runInShell: true,
-        stdoutEncoding: const SystemEncoding(),
-        stderrEncoding: const SystemEncoding(),
-      ).timeout(const Duration(seconds: 8));
-      final out = (result.stdout as String).trim();
-      final err = (result.stderr as String).trim();
-      if (out.isNotEmpty) {
-        bool inAns = false;
-        for (final line in out.split('\n')) {
-          final t = line.trim();
-          if (t.isEmpty) { inAns = true; continue; }
-          if (inAns || t.startsWith('Server:') || t.startsWith('Name:') ||
-              t.startsWith('Address:') || t.contains('name =') ||
-              t.startsWith('Non-authoritative')) {
-            _put(t);
-          }
-        }
-      } else if (err.isNotEmpty) {
-        _put('nslookup: $err');
-      } else {
-        _put('No output from nslookup.');
+      await for (final line in NetworkTools.nslookup(q)
+          .timeout(const Duration(seconds: 10))) {
+        if (line.trim().isNotEmpty) _put(line.trim());
       }
     } catch (e) {
-      _put('nslookup not available on this device.');
+      _put('DNS detail unavailable: $e');
     }
 
-    setState(() { _loading = false; });
+        setState(() { _loading = false; });
+    // Log the lookup result
+    if (context.mounted) {
+      final settings = context.read<SettingsProvider>().settings;
+      if (settings.loggingEnabled) {
+        await LogService.createLog(
+          function: 'whois',
+          content:  _buf.toString(),
+          summary:  'Who Is → ${_ctrl.text.trim()}',
+        );
+      }
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scroll.hasClients) {
         _scroll.animateTo(_scroll.position.maxScrollExtent,
@@ -1099,11 +1145,14 @@ class _PingScreenState extends State<PingScreen> {
     super.dispose();
   }
 
+  //  TODO: refactor: use One subnet scan for IP cameras, General scan, and IOT devices search.
   void _toggle() {
     if (_running) {
       _sub?.cancel();
       FgService.stop(doneBody: 'Ping stopped.');
       setState(() => _running = false);
+      // TODO: accomplish saving log after ping
+      // _saveLog(partial: true);
     } else {
       final host = _ctrl.text.trim();
       if (host.isEmpty) return;
@@ -1115,6 +1164,7 @@ class _PingScreenState extends State<PingScreen> {
         _pingTimings.clear();
       });
       FgService.start(title: 'Ping', body: 'Pinging $host…');
+      /// TODO: refactor: use rawResults ping scan cache if available. Scan if cache is empty.
       _sub = NetworkTools.ping(host, count: 50).listen(
         (chunk) {
           setState(() {
@@ -1125,7 +1175,7 @@ class _PingScreenState extends State<PingScreen> {
             _parsedUpTo = cursor;
           });
         },
-        onDone: () {
+        onDone: () async {
           final (tail, _) =
               parsePingTimings(_diagOutput.toString(), _parsedUpTo);
           setState(() {
@@ -1133,6 +1183,8 @@ class _PingScreenState extends State<PingScreen> {
             _running = false;
           });
           FgService.stop(doneBody: 'Ping complete.');
+          // TODO: accomplish saving log after ping
+          // await _saveLog();
         },
       );
     }
@@ -1247,9 +1299,19 @@ class _TracerouteScreenState extends State<TracerouteScreen> {
           }
         });
       },
-      onDone: () {
+      onDone: () async {
         setState(() => _running = false);
         FgService.stop(doneBody: 'Traceroute complete.');
+        if (context.mounted) {
+          final settings = context.read<SettingsProvider>().settings;
+          if (settings.loggingEnabled) {
+            await LogService.createLog(
+              function: 'traceroute',
+              content:  _diagOutput.toString(),
+              summary:  'Traceroute → ${_ctrl.text.trim()}',
+            );
+          }
+        }
       },
     );
   }
@@ -1398,7 +1460,20 @@ class _PortScanScreenState extends State<PortScanScreen> {
           setState(() => _openLines.add(line.trim()));
         }
       },
-      onDone: () => setState(() => _scanning = false),
+      onDone: () async {
+        setState(() => _scanning = false);
+        if (context.mounted) {
+          final settings = context.read<SettingsProvider>().settings;
+          if (settings.loggingEnabled) {
+            final openCount = _openLines.where((l) => l.startsWith('OPEN')).length;
+            await LogService.createLog(
+              function: 'portscan',
+              content:  _openLines.join('\n'),
+              summary:  'Port scan → ${_ctrl.text.trim()}: $openCount open',
+            );
+          }
+        }
+      },
     );
   }
 

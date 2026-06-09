@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:simply_net/providers/scan_provider.dart';
 import 'package:simply_net/screens/cellular_screen.dart';
+import 'package:simply_net/screens/mqtt_screen.dart';
+import 'package:simply_net/providers/settings_provider.dart';
 import 'package:simply_net/screens/iot_scan_screen.dart';
 import 'package:simply_net/screens/network_tools_screen.dart';
 import 'package:simply_net/screens/wifi_channels_screen.dart';
@@ -31,7 +33,8 @@ class _HomeScreenState extends State<HomeScreen> {
       for (final line in yaml.split('\n')) {
         if (line.startsWith('version:')) {
           final raw = line.replaceFirst('version:', '').trim();
-          if (mounted) setState(() => _appVersion = 'v${raw.split('+').first}');
+          setState(() => _appVersion = 'v${raw.split('-').first}');
+          if (mounted) setState(() => _appVersion = 'v${raw.split('+').first.split('-').first}');
           break;
         }
       }
@@ -225,43 +228,49 @@ class _HomeScreenState extends State<HomeScreen> {
     final scanTarget = ctx.read<ScanProvider>().target;
 
     final tools = [
-      _ToolBtn(Icons.speed,         'Speed Test',     () => push(const SpeedTestScreen()),     Colors.blue),
-      _ToolBtn(Icons.public,        'Public IP',      () => push(const PublicIpScreen()),      Colors.green),
-      _ToolBtn(Icons.videocam,      'IP Cameras',     () => push(IpCameraScanScreen(cidr: scanTarget)), Colors.orange),
-      _ToolBtn(Icons.memory,         'IoT Devices',    () => push(IotScanScreen(cidr: scanTarget)),        Colors.deepPurple),
-      _ToolBtn(Icons.radar,          'Port Scan',      () => push(const PortScanScreen()),      Colors.purple),
-      _ToolBtn(Icons.network_ping,  'Ping',           () => push(const PingScreen()),          Colors.teal),
-      _ToolBtn(Icons.route,         'Traceroute',     () => push(const TracerouteScreen()),    Colors.deepOrange),
-      _ToolBtn(Icons.manage_search, 'Who Is…',        () => push(const WhoisScreen()),         Colors.indigo),
-      _ToolBtn(Icons.wifi_find,     'Wi-Fi Channels', () => push(const WifiChannelsScreen()),  Colors.cyan),
-      _ToolBtn(Icons.cell_tower,    'Cellular Info',  () => push(const CellularScreen()),      Colors.deepPurple),
+      _ToolBtn(Icons.speed,         'Speed Test',     'Download & upload speed',        () => push(const SpeedTestScreen()),              Colors.blue),
+      _ToolBtn(Icons.public,        'Public IP',      'Your IP, ISP & location',        () => push(const PublicIpScreen()),               Colors.green),
+      _ToolBtn(Icons.videocam,      'IP Cameras',     'Find cameras on your LAN',       () => push(IpCameraScanScreen(cidr: scanTarget)), Colors.orange),
+      _ToolBtn(Icons.memory,        'IoT Devices',    'Matter, Tasmota, Shelly & more', () => push(IotScanScreen(cidr: scanTarget)),      Colors.deepPurple),
+      _ToolBtn(Icons.subscriptions, 'MQTT Sub',       'Subscribe to an MQTT topic',     () => push(MqttSubScreen(appScreenTimeoutMode: ctx.read<SettingsProvider>().settings.screenTimeout.index)), Colors.brown),
+      _ToolBtn(Icons.publish,       'MQTT Pub',       'Publish to an MQTT topic',       () => push(MqttPubScreen(appScreenTimeoutMode: ctx.read<SettingsProvider>().settings.screenTimeout.index)), Colors.deepOrange),
+      _ToolBtn(Icons.radar,         'Port Scan',      'Open TCP/UDP ports on any host', () => push(const PortScanScreen()),               Colors.purple),
+      _ToolBtn(Icons.network_ping,  'Ping',           'Live ping with graph',           () => push(const PingScreen()),                   Colors.teal),
+      _ToolBtn(Icons.route,         'Traceroute',     'Hop-by-hop path to any host',    () => push(const TracerouteScreen()),             Colors.deepOrange),
+      _ToolBtn(Icons.manage_search, 'Who Is…',   'WHOIS, DNS & reverse lookup',    () => push(const WhoisScreen()),                  Colors.indigo),
+      _ToolBtn(Icons.wifi_find,     'Wi-Fi Channels', '2.4 & 5 GHz interference map',   () => push(const WifiChannelsScreen()),           Colors.cyan),
+      _ToolBtn(Icons.cell_tower,    'Cellular Info',  'Signal, cell ID & tower data',   () => push(const CellularScreen()),               Colors.deepPurple),
     ];
 
-    // childAspectRatio adapts to screen size: taller on small screens.
-    // In landscape each column is ≈ 45% of screen width; compute ratio from that.
-    final mq        = MediaQuery.of(ctx);
-    final isLandNow = mq.size.width > mq.size.height;
-    final colW      = isLandNow
-        ? (mq.size.width * 0.95 / 2) - 28   // 95% / 2 cols minus padding
-        : (mq.size.width - 32) / 2 - 6;     // portrait: full width / 2
-    // Target button height of ~44px → aspectRatio = colW / 44
-    final btnAspect = (colW / 44.0).clamp(1.8, 4.0);
+    // Column of 2-item rows → each button takes intrinsic height so
+    // the subtitle text wraps fully and is never clipped or ellipsised.
+    final rows = <Widget>[];
+    for (var i = 0; i < tools.length; i += 2) {
+      final left  = tools[i];
+      final right = i + 1 < tools.length ? tools[i + 1] : null;
+      rows.add(
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: _SmallToolBtn(left)),
+              const SizedBox(width: 10),
+              Expanded(child: right != null
+                  ? _SmallToolBtn(right)
+                  : const SizedBox()),
+            ],
+          ),
+        ),
+      );
+      if (i + 2 < tools.length) rows.add(const SizedBox(height: 10));
+    }
 
     return _GroupBox(
       label: 'Network Tools',
-      child: GridView.count(
-        crossAxisCount: 2,
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        mainAxisSpacing: 14,
-        crossAxisSpacing: 10,
-        childAspectRatio: btnAspect,
-        children: tools
-            .map((t) => _SmallToolBtn(t))
-            .toList(),
-      ),
+      child: Column(children: rows),
     );
   }
+
 }
 
 // ── Shared group box ──────────────────────────────────────────────────────────
@@ -305,14 +314,16 @@ class _GroupBox extends StatelessWidget {
   }
 }
 
+
 // ── Small tool button for the 2-column grid ───────────────────────────────────
 
 class _ToolBtn {
   final IconData     icon;
   final String       label;
+  final String       subtitle;
   final VoidCallback onTap;
   final Color        color;
-  const _ToolBtn(this.icon, this.label, this.onTap, this.color);
+  const _ToolBtn(this.icon, this.label, this.subtitle, this.onTap, this.color);
 }
 
 class _SmallToolBtn extends StatelessWidget {
@@ -329,15 +340,29 @@ class _SmallToolBtn extends StatelessWidget {
           border: Border.all(color: tool.color.withValues(alpha: 0.55), width: 1.5),
           borderRadius: BorderRadius.circular(10),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         child: Row(
           children: [
-            Icon(tool.icon, size: 20, color: tool.color),
+            Icon(tool.icon, size: 22, color: tool.color),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(tool.label,
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-                  overflow: TextOverflow.ellipsis),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(tool.label,
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1),
+                  if (tool.subtitle.isNotEmpty)
+                    Text(tool.subtitle,
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+                        ),
+                        softWrap: true),
+                ],
+              ),
             ),
           ],
         ),

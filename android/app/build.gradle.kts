@@ -16,7 +16,7 @@ android {
 
     defaultConfig {
         applicationId = "com.simplytools.simplynet"
-        minSdk        = 21  // Android 5.0+
+        minSdk = flutter.minSdkVersion  // Android 5.0+
         targetSdk     = 36  // required for new Play Store submissions
         versionCode   = flutter.versionCode
         versionName   = flutter.versionName
