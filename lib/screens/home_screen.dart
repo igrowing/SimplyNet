@@ -34,7 +34,7 @@ class _HomeScreenState extends State<HomeScreen> {
         if (line.startsWith('version:')) {
           final raw = line.replaceFirst('version:', '').trim();
           setState(() => _appVersion = 'v${raw.split('-').first}');
-          if (mounted) setState(() => _appVersion = 'v${raw.split('+').first}');
+          if (mounted) setState(() => _appVersion = 'v${raw.split('+').first.split('-').first}');
           break;
         }
       }

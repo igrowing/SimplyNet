@@ -77,7 +77,7 @@ class _CellularScreenState extends State<CellularScreen> {
         await LogService.createLog(
           function: 'cellular',
           content:  buf.toString(),
-          summary:  'Cellular info: ${_data["provider"] ?? "?"} ${_data["technology"] ?? ""} $_placeName ?? "Location denied"',
+          summary:  'Cellular info: ${_data["provider"] ?? "Cell.data error"} ${_data["technology"] ?? ", "} ${_data["place"] ?? "Location denied"}',
         );
       }
     }
@@ -120,12 +120,14 @@ class _CellularScreenState extends State<CellularScreen> {
       final lat = pos.latitude;
       final lon = pos.longitude;
       setState(() => _locationLine = '${lat.toStringAsFixed(5)}, ${lon.toStringAsFixed(5)}');
+      _data['location'] = _locationLine;
 
       // Reverse-geocode via OpenStreetMap Nominatim (no API key required)
       final place = await _reverseGeocode(lat, lon);
       setState(() {
         _placeName    = place;
         _locationBusy = false;
+        _data['place']    = _placeName;
       });
     } catch (e) {
       setState(() {
@@ -179,6 +181,8 @@ class _CellularScreenState extends State<CellularScreen> {
     'tower_est_dist': '~0.8 km (estimated)',
     'data_state':     'Connected',
     'roaming':        'No',
+    'loccation':      '51.50735, -0.12776',
+    'place':          'London (GB)',
   };
 
   @override
