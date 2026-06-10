@@ -278,19 +278,21 @@ class _MqttStatusBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isIdle = !connected && !connecting;
     final color = connected
         ? Colors.green
-        : (connecting ? Colors.orange : Colors.red);
+        : (connecting ? Colors.orange : (isIdle ? Colors.blue : Colors.red));
+    final icon = connected
+        ? Icons.check_circle_outline
+        : (connecting
+            ? Icons.hourglass_top_outlined
+            : (isIdle ? Icons.info_outline : Icons.error_outline));
     return Container(
       color: color.withValues(alpha: 0.12),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       child: Row(children: [
         Icon(
-          connected
-              ? Icons.check_circle_outline
-              : (connecting
-                  ? Icons.hourglass_top_outlined
-                  : Icons.error_outline),
+          icon,
           size: 16, color: color,
         ),
         const SizedBox(width: 6),
@@ -333,8 +335,8 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
   late final MqttSubService _mqttService;
 
   bool   _listening  = false;   // true while actively connected + subscribed
-  bool   _connecting = true;
-  String _statusMsg  = 'Enter a topic and tap Listen';
+  bool   _connecting = false;   // false initially (idle state with info icon)
+  String _statusMsg  = 'Enter the topic and tap Listen';
 
   // ── UI state ───────────────────────────────────────────────────────────
   // Messages are stored newest-first (index 0 = most recent).
