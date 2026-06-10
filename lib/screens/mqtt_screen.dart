@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:simply_net/services/log_service.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
+import 'package:simply_net/providers/mqtt_provider.dart';
 
 // ════════════════════════════════════════════════════════════════════════════
 //  Shared MQTT connection settings (broker, auth).
@@ -328,9 +329,8 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
   // ── Own topic ──────────────────────────────────────────────────────────
   final _topicCtrl = TextEditingController();
 
-  // ── MQTT client ────────────────────────────────────────────────────────
-  MqttServerClient? _client;
-  StreamSubscription? _msgSub;
+  // ── MQTT service (persists connection across screen navigation) ────────
+  late final MqttSubService _mqttService;
 
   bool   _listening  = false;   // true while actively connected + subscribed
   bool   _connecting = true;
@@ -352,15 +352,16 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
   @override
   void initState() {
     super.initState();
+    _mqttService = MqttSubService();
     _loadPrefs();
   }
 
   @override
   void dispose() {
-    // If the user backs out while listening, end the session and log it.
+    // Only flush session log and restore screen timeout.
+    // DO NOT disconnect the MQTT client here — it should persist across navigation.
+    // The connection is only closed when user clicks Stop or app terminates.
     if (_listening) _flushSessionLog();
-    _cancelMsgSub();
-    _disconnectClient();
     if (_keepScreenOn) _ScreenKeepOn.restore(widget.appScreenTimeoutMode);
     _topicCtrl.dispose();
     _scroll.dispose();
@@ -433,8 +434,7 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
   }
 
   Future<void> _stopListening() async {
-    _cancelMsgSub();
-    _disconnectClient();
+    _mqttService.disconnect();  // Only disconnect when explicitly stopping
     setState(() {
       _listening  = false;
       _connecting = false;
@@ -478,7 +478,7 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
       connMsg.authenticateAs(_cfg.username, _cfg.password);
     }
     client.connectionMessage = connMsg;
-    _client = client;
+    _mqttService.setClient(client);
 
     client.connect().catchError((e) {
       if (mounted) setState(() {
@@ -496,11 +496,12 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
       _connecting = false;
       _statusMsg  = 'Listening on "$topic"';
     });
-    _client!.subscribe(topic, MqttQos.atLeastOnce);
+    _mqttService.client!.subscribe(topic, MqttQos.atLeastOnce);
 
     // Cancel any stale subscription before attaching the new one.
-    _cancelMsgSub();
-    _msgSub = _client!.updates!.listen(_onMessage);
+    _mqttService.cancelMsgSub();
+    final sub = _mqttService.client!.updates!.listen(_onMessage);
+    _mqttService.setMsgSubscription(sub);
   }
 
   void _onDisconnected() {
@@ -529,15 +530,8 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
     }
   }
 
-  void _cancelMsgSub() {
-    _msgSub?.cancel();
-    _msgSub = null;
-  }
-
-  void _disconnectClient() {
-    _client?.disconnect();
-    _client = null;
-  }
+  // Note: _cancelMsgSub and _disconnectClient have been removed.
+  // Use _mqttService.cancelMsgSub() or _mqttService.disconnect() instead.
 
   // ── Session logging ───────────────────────────────────────────────────────
 
