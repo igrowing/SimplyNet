@@ -333,8 +333,8 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
   StreamSubscription? _msgSub;
 
   bool   _listening  = false;   // true while actively connected + subscribed
-  bool   _connecting = false;
-  String _statusMsg  = '';
+  bool   _connecting = true;
+  String _statusMsg  = 'Enter a topic and tap Listen';
 
   // ── UI state ───────────────────────────────────────────────────────────
   // Messages are stored newest-first (index 0 = most recent).
@@ -733,7 +733,7 @@ class _MqttPubScreenState extends State<MqttPubScreen> {
   // ── MQTT client ────────────────────────────────────────────────────────
   MqttServerClient? _client;
   bool   _connected  = false;
-  bool   _connecting = false;
+  bool   _connecting = true;
   String _statusMsg  = '';
 
   // ── UI state ───────────────────────────────────────────────────────────
@@ -881,7 +881,7 @@ class _MqttPubScreenState extends State<MqttPubScreen> {
     if (!_connected || _client == null) return;
     final topic = _topicCtrl.text.trim();
     final msg   = _msgCtrl.text;
-    if (topic.isEmpty || msg.isEmpty) return;
+    if (topic.isEmpty) return;
 
     final builder = MqttClientPayloadBuilder()..addString(msg);
     _client!.publishMessage(
@@ -994,8 +994,7 @@ class _MqttPubScreenState extends State<MqttPubScreen> {
                   // ── Publish button ─────────────────────────────────────
                   FilledButton.icon(
                     onPressed: (_connected &&
-                                _topicCtrl.text.trim().isNotEmpty &&
-                                _msgCtrl.text.isNotEmpty)
+                                _topicCtrl.text.trim().isNotEmpty)
                         ? _publish
                         : null,
                     icon:  const Icon(Icons.send_outlined),
