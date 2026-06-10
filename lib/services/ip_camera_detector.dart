@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:simply_net/constants/network_ports.dart';
+
 // ════════════════════════════════════════════════════════════════════════════
 // IP Camera Detection Model
 //
@@ -58,24 +60,14 @@ class IpCameraDetector {
   // ── Port groups ────────────────────────────────────────────────────────────
 
   /// Ports that are unambiguously camera protocols — any open port = camera.
-  static const specificPorts = [
-    554,   // RTSP (standard)
-    5554,  // RTSP (alt)
-    8554,  // RTSP (alt)
-    10554, // RTSP (alt)
-    37777, // Dahua / Reolink proprietary
-    37778, // Dahua / Reolink proprietary
-    1935,  // RTMP streaming
-    34567, // XMEye / Generic DVR
-    34599, // XMEye / Generic DVR
-  ];
+  static const specificPorts = NetworkPorts.cameraSpecificPorts;
 
   /// Ports that host web interfaces on many device types.
   /// Require extra evidence (manufacturer name or HTTP banner).
-  static const genericPorts = [80, 443, 8080, 8443, 8000, 9000, 9001, 81, 82, 83, 84, 85];
+  static const genericPorts = NetworkPorts.cameraGenericPorts;
 
   /// All ports to probe per host during a scan.
-  static const allPorts = [...specificPorts, ...genericPorts];
+  static const allPorts = NetworkPorts.cameraAllPorts;
 
   // ── Known camera manufacturer substrings (case-insensitive OUI match) ─────
   static const _cameraManufacturers = [
@@ -172,7 +164,7 @@ class IpCameraDetector {
   // ── WS-Discovery ───────────────────────────────────────────────────────────
 
   static const _wsDiscoveryAddr = '239.255.255.250';
-  static const _wsDiscoveryPort = 3702;
+  static const _wsDiscoveryPort = NetworkPorts.wsDiscoveryPort;
 
   /// WS-Discovery Probe message (SOAP envelope, device type any).
   /// Exposed for unit tests — do not use in production UI.
