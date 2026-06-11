@@ -22,6 +22,11 @@ class MqttSubService {
 
   StreamSubscription? get msgSub => _msgSub;
 
+  /// Check if there's an active MQTT connection
+  bool get isConnected =>
+      _client != null &&
+      _client!.connectionStatus?.state == MqttConnectionState.connected;
+
   void setClient(MqttServerClient client) {
     _client = client;
   }

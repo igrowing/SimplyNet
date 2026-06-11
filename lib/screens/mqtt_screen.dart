@@ -377,11 +377,21 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
     final p   = await SharedPreferences.getInstance();
     final cfg = await MqttSettings.load();
     if (!mounted) return;
+    
+    // Check if service has an active connection from a previous screen visit
+    final hasActiveConnection = _mqttService.isConnected;
+    
     setState(() {
       _cfg            = cfg;
       _loaded         = true;
       _topicCtrl.text = p.getString(_kSubTopic)   ?? '';
       _prettyJson     = p.getBool(_kSubPrettyJson) ?? true;
+      // Sync UI state with service state
+      _listening      = hasActiveConnection;
+      _connecting     = false;
+      _statusMsg      = hasActiveConnection
+          ? 'Listening on "${_topicCtrl.text.trim()}"'
+          : 'Enter the topic and tap Listen';
     });
     // Open settings immediately if broker is not yet configured.
     // Do NOT auto-start listening — user controls that explicitly.
@@ -777,6 +787,7 @@ class _MqttPubScreenState extends State<MqttPubScreen> {
   Future<void> _saveTopic(String v) async {
     final p = await SharedPreferences.getInstance();
     await p.setString(_kPubTopic, v.trim());
+    if (mounted) setState(() {});  // Rebuild to update button state
   }
 
   Future<void> _saveMessage(String v) async {
