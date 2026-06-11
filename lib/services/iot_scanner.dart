@@ -3,6 +3,8 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:simply_net/constants/network_ports.dart';
+
 /// IoT device detection service.
 ///
 /// Detection pipeline:
@@ -134,29 +136,8 @@ class IotScanner {
   };
 
   // ---------- IoT TCP port definitions ----------------------------------------
-  // port → (protocol label, description)
-  static const _iotPorts = <int, String>{
-    80:   'HTTP',
-    443:  'HTTPS',
-    1883: 'MQTT',
-    8883: 'MQTT-TLS',
-    8080: 'HTTP-alt',
-    8081: 'HTTP-alt2',
-    8123: 'Home Assistant',
-    8443: 'HTTPS-alt',
-    1080: 'SOCKS/proxy',
-    5353: 'mDNS',          // UDP — handled separately
-    5540: 'Matter',
-    8888: 'Zigbee2MQTT',
-    9000: 'openHAB',
-    9443: 'openHAB-TLS',
-    49153: 'WeMo',
-    55443: 'Xiaomi MiIO',
-    6668:  'Meross',
-    4040:  'TP-Link Kasa',
-    9999:  'TP-Link Kasa legacy',
-    20202: 'Matter commissioning',
-  };
+  // port → protocol label. Defined centrally in [NetworkPorts].
+  static const _iotPorts = NetworkPorts.iotPortNames;
 
   // ---------- HTTP fingerprints -----------------------------------------------
   // Each rule: { headerOrBody fragment → (protocol, model-hint) }
@@ -345,8 +326,8 @@ class IotScanner {
 
   static Future<List<int>> _scanPorts(String ip, List<int> ports) async {
     final results = <int>[];
-    // Skip UDP port 5353 for TCP scan
-    final tcpPorts = ports.where((p) => p != 5353).toList();
+    // Skip UDP mDNS port for TCP scan
+    final tcpPorts = ports.where((p) => p != NetworkPorts.mdnsPort).toList();
     final futs = tcpPorts.map((port) async {
       try {
         final sock = await Socket.connect(ip, port,

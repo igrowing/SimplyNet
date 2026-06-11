@@ -7,6 +7,7 @@ import 'package:simply_net/services/log_service.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
 import 'package:simply_net/providers/mqtt_provider.dart';
+import 'package:simply_net/constants/network_ports.dart';
 
 // ════════════════════════════════════════════════════════════════════════════
 //  Shared MQTT connection settings (broker, auth).
@@ -24,7 +25,7 @@ class MqttSettings {
 
   const MqttSettings({
     this.broker      = '',
-    this.port        = 1883,
+    this.port        = NetworkPorts.defaultMqttPort,
     this.username    = '',
     this.password    = '',
     this.keepPassword = false,
@@ -43,7 +44,7 @@ class MqttSettings {
     final keepPwd = p.getBool(_kKeepPwd) ?? false;
     return MqttSettings(
       broker:       p.getString(_kBroker)   ?? '',
-      port:         p.getInt(_kPort)        ?? 1883,
+      port:         p.getInt(_kPort)        ?? NetworkPorts.defaultMqttPort,
       username:     p.getString(_kUsername) ?? '',
       password:     keepPwd ? (p.getString(_kPassword) ?? '') : '',
       keepPassword: keepPwd,
@@ -129,7 +130,7 @@ class _MqttSettingsSheetState extends State<_MqttSettingsSheet> {
   Future<void> _save() async {
     final settings = MqttSettings(
       broker:      _brokerCtrl.text.trim(),
-      port:        int.tryParse(_portCtrl.text.trim()) ?? 1883,
+      port:        int.tryParse(_portCtrl.text.trim()) ?? NetworkPorts.defaultMqttPort,
       username:    _userCtrl.text.trim(),
       password:    _pwdCtrl.text,
       keepPassword: _keepPassword,
