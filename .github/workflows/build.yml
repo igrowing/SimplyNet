@@ -33,7 +33,25 @@ jobs:
         run: flutter pub get
 
       - name: Run unit tests
-        run: flutter test --reporter expanded
+        run: flutter test --coverage --reporter expanded
+
+      - name: Code coverage report
+        if: always()
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y lcov
+          # --ignore-errors keeps lcov 2.x from failing on Dart lcov quirks.
+          lcov --summary coverage/lcov.info --ignore-errors inconsistent,empty
+          genhtml coverage/lcov.info --output-directory coverage/html --quiet \
+            --ignore-errors inconsistent,category,corrupt
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/html
+          retention-days: 30
 
   # ───────────────────────────────────────────────────────────────────────────
   # 2. APK build — every non-main branch (pre-release, sideload / testing)

@@ -175,9 +175,6 @@ class IpCameraDetector {
   static const _wsDiscoveryPort = 3702;
 
   /// WS-Discovery Probe message (SOAP envelope, device type any).
-  /// Exposed for unit tests — do not use in production UI.
-  static String get wsProbeXmlForTest => _wsProbeXml;
-
   static String get _wsProbeXml => '''<?xml version="1.0" encoding="UTF-8"?>
 <soap:Envelope
   xmlns:soap="http://www.w3.org/2003/05/soap-envelope"

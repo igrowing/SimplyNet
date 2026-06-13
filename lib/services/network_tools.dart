@@ -344,8 +344,6 @@ class NetworkTools {
     final controller = StreamController<String>();
     int done = 0;
     int pending = scanPorts.length * (useTcp && useUdp ? 2 : 1);
-    int tcpPending = useTcp ? scanPorts.length : 0;
-    int udpPending = useUdp ? scanPorts.length : 0;
     if (pending == 0) pending = 1; // safety
 
     final sem = _Semaphore(128);
@@ -430,89 +428,10 @@ class NetworkTools {
     yield* controller.stream;
   }
 
-  /// Look up service name for a port number.
-  /// Uses wellKnownPortNames dict; returns '' for unknown ports.
-  static String portName(int port) => wellKnownPortNames[port] ?? '';
-
-
   // ── IP Camera Scan ─────────────────────────────────────────────────────────
   // Moved to lib/services/ip_camera_detector.dart (IpCameraDetector.scanSubnet).
   // The multi-signal detection model (specific ports, manufacturer, HTTP
   // banner, WS-Discovery) lives there and replaces the old plain port-check.
-
-  // ── Speed Test ─────────────────────────────────────────────────────────────
-  /// Returns a single SpeedResult via the stream (one event then done).
-  static Stream<SpeedResult> speedTest() async* {
-    // Use Cloudflare's speed test endpoint for a reliable, CORS-friendly test.
-    const downloadUrl = 'https://speed.cloudflare.com/__down?bytes=10000000'; // 10 MB
-    const uploadUrl   = 'https://speed.cloudflare.com/__up';
-
-    double downloadMbps = 0;
-    double uploadMbps   = 0;
-    double pingMs       = 0;
-
-    // Ping
-    try {
-      final sw  = Stopwatch()..start();
-      final req = await HttpClient().getUrl(Uri.parse('https://speed.cloudflare.com/'));
-      final res = await req.close().timeout(const Duration(seconds: 5));
-      await res.drain<void>();
-      sw.stop();
-      pingMs = sw.elapsedMilliseconds.toDouble();
-    } catch (_) {}
-
-    // Download
-    try {
-      final sw     = Stopwatch()..start();
-      final req    = await HttpClient().getUrl(Uri.parse(downloadUrl));
-      final res    = await req.close().timeout(const Duration(seconds: 20));
-      int bytes    = 0;
-      await for (final chunk in res) {
-        bytes += chunk.length;
-      }
-      sw.stop();
-      final secs   = sw.elapsedMilliseconds / 1000.0;
-      downloadMbps = secs > 0 ? (bytes * 8) / secs / 1e6 : 0;
-    } catch (_) {}
-
-    // Upload (send 2 MB)
-    try {
-      final payload = List<int>.filled(2 * 1024 * 1024, 0);
-      final sw      = Stopwatch()..start();
-      final req     = await HttpClient().postUrl(Uri.parse(uploadUrl));
-      req.headers.contentType =
-          ContentType('application', 'octet-stream');
-      req.add(payload);
-      final res = await req.close().timeout(const Duration(seconds: 20));
-      await res.drain<void>();
-      sw.stop();
-      final secs = sw.elapsedMilliseconds / 1000.0;
-      uploadMbps = secs > 0 ? (payload.length * 8) / secs / 1e6 : 0;
-    } catch (_) {}
-
-    yield SpeedResult(
-      downloadMbps: downloadMbps,
-      uploadMbps:   uploadMbps,
-      pingMs:       pingMs,
-      timestamp:    DateTime.now(),
-    );
-  }
-}
-
-// ── Speed result model ────────────────────────────────────────────────────────
-
-class SpeedResult {
-  final double downloadMbps;
-  final double uploadMbps;
-  final double pingMs;
-  final DateTime timestamp;
-
-  const SpeedResult({
-    required this.downloadMbps,
-    required this.uploadMbps,
-    required this.pingMs,
-    required this.timestamp,
-  });
 }
 
 // ── Semaphore for concurrent port scanning ───────────────────────────────────

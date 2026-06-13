@@ -202,14 +202,6 @@ void main() {
       expect(detectedPort, 80);
     });
 
-    test('WS-Discovery probe XML is non-empty and well-formed snippet', () {
-      final probe = IpCameraDetector.wsProbeXmlForTest;
-      expect(probe, isNotEmpty);
-      expect(probe, contains('Probe'));
-      expect(probe, contains('discovery'));
-      expect(probe, contains('soap'));
-    });
-
     test('Multiple XAddrs separated by space — first is extracted', () {
       const xml = '''<d:XAddrs>http://192.168.1.5:80/onvif/device_service http://192.168.1.5:8080/onvif/device_service</d:XAddrs>''';
       final xaddrs = extractXAddrs(xml);

@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:simply_net/services/network_tools.dart';
 
@@ -38,26 +37,6 @@ void main() {
       final keys = NetworkTools.wellKnownPortNames.keys.toList();
       final unique = keys.toSet();
       expect(keys.length, equals(unique.length));
-    });
-
-    test('portName returns correct service name', () {
-      expect(NetworkTools.portName(22),    equals('ssh'));
-      expect(NetworkTools.portName(80),    equals('http'));
-      expect(NetworkTools.portName(443),   equals('https'));
-      expect(NetworkTools.portName(1883),  equals('mqtt'));
-      expect(NetworkTools.portName(5540),  equals('matter'));
-    });
-
-    test('portName returns empty string for unknown port', () {
-      expect(NetworkTools.portName(12345), equals(''));
-      expect(NetworkTools.portName(0),     equals(''));
-      expect(NetworkTools.portName(65535), equals(''));
-    });
-
-    test('portName handles common surveillance ports', () {
-      expect(NetworkTools.portName(554),  equals(''));     // rtsp not in dict
-      expect(NetworkTools.portName(5554), equals('rtsp')); // is in dict
-      expect(NetworkTools.portName(8554), equals('rtsp-alt'));
     });
   });
 
@@ -169,11 +148,10 @@ void main() {
     });
 
     test('OPEN line includes service name for known port', () async {
-      // Port 80 is in wellKnownPortNames as 'http'
-      // We can't guarantee 80 is open but we can test the format logic:
-      // If we open a server on port 80 we would see 'http' in the OPEN line.
-      // Instead, test portName consistency:
-      final name = NetworkTools.portName(80);
+      // Port 80 is in wellKnownPortNames as 'http'. We can't guarantee 80 is
+      // open, but the OPEN line is formatted from wellKnownPortNames[port], so
+      // assert the dict lookup that drives that formatting.
+      final name = NetworkTools.wellKnownPortNames[80] ?? '';
       expect(name, equals('http'));
     });
   });
@@ -230,23 +208,6 @@ void main() {
       final first = await NetworkTools.traceroute('127.0.0.1').first;
       expect(first, contains('TRACEROUTE'));
       expect(first, contains('127.0.0.1'));
-    });
-  });
-
-  // ── speedTest ────────────────────────────────────────────────────────────
-
-  group('NetworkTools.speedTest', () {
-    test('SpeedResult model has correct fields', () {
-      final r = SpeedResult(
-        downloadMbps: 100.5,
-        uploadMbps:   50.2,
-        pingMs:       12.3,
-        timestamp:    DateTime(2026, 1, 1),
-      );
-      expect(r.downloadMbps, closeTo(100.5, 0.001));
-      expect(r.uploadMbps,   closeTo(50.2, 0.001));
-      expect(r.pingMs,       closeTo(12.3, 0.001));
-      expect(r.timestamp,    equals(DateTime(2026, 1, 1)));
     });
   });
 }

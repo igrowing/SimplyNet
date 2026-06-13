@@ -980,7 +980,6 @@ class _WhoisState extends State<WhoisScreen> {
       }
     } catch (e) { _put('Forward lookup failed: $e'); }
     // Reverse PTR
-    final ipForPTR = isIp ? q : null;
     if (!isIp) {
       try {
         final addrs = await InternetAddress.lookup(q).timeout(const Duration(seconds: 3));

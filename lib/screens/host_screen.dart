@@ -28,7 +28,6 @@ class _HostScreenState extends State<HostScreen> {
   final ScrollController _diagScroll = ScrollController();
 
   // Ping count
-  int _pingCount = 10;
   final TextEditingController _pingCountCtrl = TextEditingController(text: '10');
   final List<double> _pingTimings = []; // Track ping response times (ms)
 
@@ -536,7 +535,6 @@ class _HostScreenState extends State<HostScreen> {
                   hintText: '10',
                   suffixText: '×',
                 ),
-                onChanged: (v) => _pingCount = int.tryParse(v) ?? 10,
               ),
             ),
             const SizedBox(width: 6),
