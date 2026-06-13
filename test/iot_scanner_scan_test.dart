@@ -10,6 +10,12 @@ void main() {
   });
 
   group('IotScanner.scanSubnet', () {
+    test('normal CIDR', () async {
+      final devices = await IotScanner.scanSubnet('192.168.1.0/30').toList();
+      expect(devices, isList);
+      expect(devices.length, 0);
+    });
+
     test('malformed CIDR (no prefix) yields no devices and completes', () async {
       final devices = await IotScanner.scanSubnet('192.168.1.0').toList();
       expect(devices, isEmpty);
