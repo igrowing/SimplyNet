@@ -30,7 +30,6 @@ void main() {
     test('initial settings are the defaults', () {
       final p = SettingsProvider();
       expect(p.settings.theme, AppTheme.system);
-      expect(p.settings.fontSize, AppFontSize.medium);
       expect(p.settings.screenTimeout, AppScreenTimeout.system);
       expect(p.settings.resolveNames, isTrue);
       expect(p.settings.loggingEnabled, isTrue);
@@ -43,13 +42,11 @@ void main() {
       final p = SettingsProvider();
       await p.load();
       expect(p.settings.theme, AppTheme.system);
-      expect(p.settings.fontSize, AppFontSize.medium);
     });
 
     test('reads persisted values', () async {
       SharedPreferences.setMockInitialValues({
         'theme': AppTheme.dark.index,
-        'fontSize': AppFontSize.large.index,
         'screenTimeout': AppScreenTimeout.stayOn.index,
         'resolveNames': false,
         'loggingEnabled': false,
@@ -58,7 +55,6 @@ void main() {
       final p = SettingsProvider();
       await p.load();
       expect(p.settings.theme, AppTheme.dark);
-      expect(p.settings.fontSize, AppFontSize.large);
       expect(p.settings.screenTimeout, AppScreenTimeout.stayOn);
       expect(p.settings.resolveNames, isFalse);
       expect(p.settings.loggingEnabled, isFalse);
@@ -69,7 +65,6 @@ void main() {
       SharedPreferences.setMockInitialValues({'fontSize': 999});
       final p = SettingsProvider();
       await p.load();
-      expect(p.settings.fontSize, AppFontSize.medium);
     });
 
     test('applies the screen timeout via the platform channel', () async {
@@ -85,7 +80,6 @@ void main() {
       final p = SettingsProvider();
       await p.load();
       expect(p.settings.theme, AppTheme.system);
-      expect(p.settings.fontSize, AppFontSize.medium);
     });
   });
 
@@ -99,14 +93,6 @@ void main() {
       expect(notified, 1);
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getInt('theme'), AppTheme.light.index);
-    });
-
-    test('setFontSize', () async {
-      final p = SettingsProvider();
-      await p.setFontSize(AppFontSize.large);
-      expect(p.settings.fontSize, AppFontSize.large);
-      final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getInt('fontSize'), AppFontSize.large.index);
     });
 
     test('setShowMac', () async {

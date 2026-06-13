@@ -36,15 +36,12 @@ class SimplyNetApp extends StatelessWidget {
       ],
       child: Consumer<SettingsProvider>(
         builder: (_, settings, _) {
-          double scale = settings.settings.fontScale;
-          if (scale <= 0 || scale.isNaN || scale.isInfinite) scale = 1.0;
           return MaterialApp(
-            key: ValueKey(scale),
             title: 'SimplyNet',
             debugShowCheckedModeBanner: false,
             themeMode: settings.themeMode,
-            theme: _buildTheme(Brightness.light, scale),
-            darkTheme: _buildTheme(Brightness.dark, scale),
+            theme: _buildTheme(Brightness.light),
+            darkTheme: _buildTheme(Brightness.dark),
             initialRoute: '/',
             routes: {
               '/':              (_) => const HomeScreen(),
@@ -60,9 +57,8 @@ class SimplyNetApp extends StatelessWidget {
     );
   }
 
-  ThemeData _buildTheme(Brightness brightness, double fontScale) {
+  ThemeData _buildTheme(Brightness brightness) {
     const seed = Color(0xFF1976D2);
-    fontScale = fontScale.clamp(0.5, 2.0);
     final base = ThemeData(
       useMaterial3: true,
       colorScheme: ColorScheme.fromSeed(
@@ -77,10 +73,6 @@ class SimplyNetApp extends StatelessWidget {
         style: FilledButton.styleFrom(backgroundColor: seed),
       ),
     );
-    final scaled = base.textTheme.apply(fontSizeFactor: fontScale);
-    return base.copyWith(
-      textTheme: scaled,
-      primaryTextTheme: base.primaryTextTheme.apply(fontSizeFactor: fontScale),
-    );
+    return base;
   }
 }
