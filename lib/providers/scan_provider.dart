@@ -51,6 +51,11 @@ class ScanProvider extends ChangeNotifier {
   StreamSubscription? _sub;
   final StringBuffer _logBuffer = StringBuffer();
 
+  /// Current scan log text. Exposed so the log accumulated by [startScan]
+  /// can be asserted in tests.
+  @visibleForTesting
+  String get logText => _logBuffer.toString();
+
   // Notifier so LogProvider can refresh when a new log is written
   final ValueNotifier<int> logVersion = ValueNotifier(0);
 

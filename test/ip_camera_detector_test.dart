@@ -5,10 +5,45 @@ import 'package:simply_net/services/ip_camera_detector.dart';
 
 void main() {
 
-   test('IpCameraDetector.wsDiscoveryScan', () {
-      // TODO
-      // expect(await IpCameraDetector.wsDiscoveryScan(const Duration(seconds: 1)), isList);
+   group('IpCameraDetector.wsDiscoveryScan', () {
+    // wsDiscoveryScan returns a Stream<CameraCandidate>; the corrected syntax
+    // collects it with toList() inside an async test. No ONVIF camera answers
+    // the multicast probe on the CI host, so the stream completes (after the
+    // short listen window) with an empty list.
+    test('completes and yields a candidate list within the listen window',
+        () async {
+      final found = await IpCameraDetector
+          .wsDiscoveryScan(listenDuration: const Duration(seconds: 1))
+          .toList();
+      expect(found, isA<List<CameraCandidate>>());
+      expect(found, isEmpty);
     });
+  });
+
+  group('IpCameraDetector.detectHost', () {
+    // 192.0.2.1 is in RFC 5737 TEST-NET-1 (reserved, guaranteed unroutable),
+    // so every port probe fails and detectHost returns no candidates without
+    // touching the real network. A short port timeout keeps the test fast.
+    test('returns no candidates for an unreachable host', () async {
+      final found = await IpCameraDetector.detectHost(
+        '192.0.2.1',
+        portTimeout: const Duration(milliseconds: 300),
+      );
+      expect(found, isA<List<CameraCandidate>>());
+      expect(found, isEmpty);
+    });
+
+    test('still returns no candidates when a manufacturer is supplied', () async {
+      // The manufacturer only matters once an open port is found; with no open
+      // ports the early-return path is taken regardless of manufacturer.
+      final found = await IpCameraDetector.detectHost(
+        '192.0.2.2',
+        manufacturer: 'Hikvision',
+        portTimeout: const Duration(milliseconds: 300),
+      );
+      expect(found, isEmpty);
+    });
+  });
 
 
   // ── Method 2: Generic port + manufacturer matching ─────────────────────────

@@ -31,7 +31,8 @@ class NetworkScanner {
   static bool isValidCidr(String cidr) => parseCidr(cidr) != null;
 
   // ── ARP table ─────────────────────────────────────────────────────────────
-  static Future<Map<String, String>> _readArpTable() async {
+  @visibleForTesting
+  static Future<Map<String, String>> readArpTable() async {
     final map = <String, String>{};
     try {
       ProcessResult result;
@@ -103,7 +104,8 @@ class NetworkScanner {
 
   static Map<String, String>? _selfMacCache; // populated once per scan
 
-  static Future<Map<String, String>> _getSelfMacs() async {
+  @visibleForTesting
+  static Future<Map<String, String>> getSelfMacs() async {
     if (_selfMacCache != null) return _selfMacCache!;
 
     final map = <String, String>{};
@@ -353,10 +355,10 @@ class NetworkScanner {
     }
 
     // Read fresh ARP table after all IPs have been pinged.
-    final arpTable  = await _readArpTable();
+    final arpTable  = await readArpTable();
     // Overlay self MACs — the device's own IPs are never in the neighbour
     // table, so we fetch them from the network interfaces directly.
-    final selfMacs  = await _getSelfMacs();
+    final selfMacs  = await getSelfMacs();
     _selfMacCache   = null; // reset cache for next scan
     for (final entry in selfMacs.entries) {
       arpTable[entry.key] = entry.value;

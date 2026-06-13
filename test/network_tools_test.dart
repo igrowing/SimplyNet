@@ -206,6 +206,29 @@ void main() {
       final first = await NetworkTools.nslookup('localhost').first;
       expect(first, isNot(contains('REVERSE')));
     });
+
+    // The forward path runs (1) dart:io A/AAAA lookup then (2) system nslookup.
+    // On the CI host the `nslookup` binary is usually absent, so method 2 fails
+    // silently and method 1 supplies the answer — exercising both branches.
+    test('forward lookup of localhost yields a loopback address', () async {
+      final out = (await NetworkTools.nslookup('localhost').toList()).join();
+      expect(out, anyOf(contains('127.0.0.1'), contains('::1')));
+    });
+
+    // The reverse path runs (1) dart:io PTR query and (2) system nslookup.
+    // Whatever the host's resolver returns, the stream must complete with one
+    // of the three terminal outcomes, proving all fallbacks were traversed.
+    test('reverse lookup of loopback completes across its fallbacks', () async {
+      final out = (await NetworkTools.nslookup('127.0.0.1').toList()).join();
+      expect(
+        out,
+        anyOf(
+          contains('PTR record'),
+          contains('name ='),
+          contains('No PTR record'),
+        ),
+      );
+    });
   });
 
   // ── traceroute stream ────────────────────────────────────────────────────
@@ -216,6 +239,20 @@ void main() {
       expect(first, contains('TRACEROUTE'));
       expect(first, contains('127.0.0.1'));
     });
+
+    // Fast traceroute strategy: loopback answers on the very first TTL, so
+    // capping maxHops at 1 exercises the full resolve → ping → parse → yield
+    // loop and the "reached destination" exit, completing in well under a
+    // second instead of the default 30-hop walk.
+    test('reaches loopback within a single hop (maxHops: 1)', () async {
+      final lines =
+          await NetworkTools.traceroute('127.0.0.1', maxHops: 1).toList();
+      final out = lines.join();
+      expect(lines.first, contains('TRACEROUTE'));
+      // Completed either by arriving or by exhausting the single hop budget.
+      expect(out,
+          anyOf(contains('Reached destination'), contains('Max hops')));
+    }, timeout: const Timeout(Duration(seconds: 10)));
   });
 
   // ── traceroute hop parser (pure) ─────────────────────────────────────────

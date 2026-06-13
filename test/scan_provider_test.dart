@@ -35,13 +35,6 @@ void main() {
       expect(p.sortAsc, isTrue);
     });
 
-    test('startScan with name resolving and logging', () {
-      final p = ScanProvider();
-      p.startScan();
-      expect(p.results.length, 0);
-      // expect(p._logBuffer.length, isFalse);
-    });
-
     test('toggleSort on same column flips direction', () {
       final p = ScanProvider();
       p.toggleSort(ScanSortColumn.ip);
@@ -188,4 +181,65 @@ void main() {
       expect(notified, 1);
     });
   });
+
+  group('ScanProvider.startScan over resolveNames/logging', () {
+    // 192.0.2.0/30 is RFC 5737 TEST-NET-1 (reserved, unroutable): exactly two
+    // host addresses (.1/.2) that never answer, so the scan completes with zero
+    // results without touching the real network. The "=== Scan started ==="
+    // banner is written synchronously by startScan, so logText is populated
+    // immediately regardless of the (empty) result set.
+    for (final resolveNames in [true, false]) {
+      for (final logging in [true, false]) {
+        test('resolveNames=$resolveNames logging=$logging: logs + finds nothing',
+            () async {
+          final p = ScanProvider();
+          p.setTarget('192.0.2.0/30');
+          p.startScan(resolveNames: resolveNames, logging: logging);
+
+          // Banner written synchronously before any async work.
+          expect(p.isScanning, isTrue);
+          expect(p.logText, isNotEmpty);
+          expect(p.logText, contains('Scan started'));
+
+          final finished = await _waitUntil(
+              () => !p.isScanning, const Duration(seconds: 15));
+          expect(finished, isTrue, reason: 'scan did not complete in time');
+
+          expect(p.results, isEmpty);
+          // Either the normal completion banner or the error banner is written,
+          // both of which prove the onDone/onError log path executed.
+          expect(p.logText,
+              anyOf(contains('Scan complete'), contains('Scan ERROR')));
+          p.dispose();
+        });
+      }
+    }
+  });
+
+  group('ScanProvider.dispose', () {
+    test('disposes a fresh provider without throwing', () {
+      final p = ScanProvider();
+      expect(p.dispose, returnsNormally);
+    });
+
+    test('cancels an in-flight scan subscription on dispose', () async {
+      final p = ScanProvider();
+      p.setTarget('192.0.2.0/30');
+      p.startScan(logging: false);
+      expect(p.isScanning, isTrue);
+      // dispose cancels _sub and disposes logVersion; must not throw even while
+      // the background probe futures are still resolving.
+      expect(p.dispose, returnsNormally);
+    });
+  });
+}
+
+/// Polls [cond] every 50ms until it is true or [timeout] elapses.
+Future<bool> _waitUntil(bool Function() cond, Duration timeout) async {
+  final deadline = DateTime.now().add(timeout);
+  while (DateTime.now().isBefore(deadline)) {
+    if (cond()) return true;
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+  }
+  return cond();
 }
