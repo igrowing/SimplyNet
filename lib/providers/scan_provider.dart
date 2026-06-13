@@ -64,24 +64,34 @@ class ScanProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  List<HostResult> _sortedResults() {
-    final list = List<HostResult>.from(_results);
+  List<HostResult> _sortedResults() => sortHosts(_results, _sortColumn, _sortAsc);
+
+  /// Pure sort used by [results]. Returns a new list of [hosts] ordered by
+  /// [column]; [ascending] reverses the order. Kept side-effect free so the
+  /// ordering logic can be exercised directly.
+  static List<HostResult> sortHosts(
+    List<HostResult> hosts,
+    ScanSortColumn column,
+    bool ascending,
+  ) {
+    final list = List<HostResult>.from(hosts);
     list.sort((firstHost, secondHost) {
       int comparison;
-      switch (_sortColumn) {
+      switch (column) {
         case ScanSortColumn.ip:
-          comparison = _ipCompare(firstHost.ip, secondHost.ip);
+          comparison = ipCompare(firstHost.ip, secondHost.ip);
         case ScanSortColumn.mac:
           comparison = firstHost.mac.compareTo(secondHost.mac);
         case ScanSortColumn.hostname:
           comparison = firstHost.hostname.compareTo(secondHost.hostname);
       }
-      return _sortAsc ? comparison : -comparison;
+      return ascending ? comparison : -comparison;
     });
     return list;
   }
 
-  int _ipCompare(String a, String b) {
+  /// Numeric comparison of two dotted-quad IPv4 strings.
+  static int ipCompare(String a, String b) {
     int toInt(String ip) {
       final ipOctets = ip.split('.').map(int.parse).toList();
       return (ipOctets[0] << 24) | (ipOctets[1] << 16) | (ipOctets[2] << 8) | ipOctets[3];

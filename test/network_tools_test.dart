@@ -210,4 +210,53 @@ void main() {
       expect(first, contains('127.0.0.1'));
     });
   });
+
+  // ── traceroute hop parser (pure) ─────────────────────────────────────────
+
+  group('NetworkTools.parseTracerouteHop', () {
+    test('parses an intermediate Time Exceeded hop', () {
+      const out = 'PING 8.8.8.8\n'
+          'From 192.168.1.1 icmp_seq=1 Time to live exceeded\n'
+          'From 192.168.1.1 icmp_seq=2 Time to live exceeded\n';
+      final hop = NetworkTools.parseTracerouteHop(out, '8.8.8.8');
+      expect(hop.hopIp, '192.168.1.1');
+      expect(hop.reached, isFalse);
+      // No "time=" present, so all three probe slots are padded with '*'.
+      expect(hop.times, ['*', '*', '*']);
+    });
+
+    test('parses the colon variant of the From line', () {
+      const out = 'From 10.0.0.1: icmp_seq=1 Time to live exceeded\n';
+      final hop = NetworkTools.parseTracerouteHop(out, '8.8.8.8');
+      expect(hop.hopIp, '10.0.0.1');
+    });
+
+    test('marks reached when the destination replies, capturing RTT', () {
+      const out =
+          '64 bytes from 8.8.8.8: icmp_seq=1 ttl=118 time=14.2 ms\n';
+      final hop = NetworkTools.parseTracerouteHop(out, '8.8.8.8');
+      expect(hop.hopIp, '8.8.8.8');
+      expect(hop.reached, isTrue);
+      expect(hop.times.first, '14.2ms');
+      // First slot is the RTT; remaining two are padded with '*'.
+      expect(hop.times.length, 3);
+      expect(hop.times.sublist(1), ['*', '*']);
+    });
+
+    test('an echo reply from a non-destination host is not "reached"', () {
+      const out =
+          '64 bytes from 1.2.3.4: icmp_seq=1 ttl=55 time=9.0 ms\n';
+      final hop = NetworkTools.parseTracerouteHop(out, '8.8.8.8');
+      expect(hop.hopIp, '1.2.3.4');
+      expect(hop.reached, isFalse);
+      expect(hop.times.first, '9.0ms');
+    });
+
+    test('no responses yields a null hop and three asterisks', () {
+      final hop = NetworkTools.parseTracerouteHop('no useful lines\n', '8.8.8.8');
+      expect(hop.hopIp, isNull);
+      expect(hop.times, ['*', '*', '*']);
+      expect(hop.reached, isFalse);
+    });
+  });
 }

@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 
 /// Wrappers for diagnostic network tools.
 /// Each returns a Stream<String> so callers can display output progressively.
@@ -159,13 +159,6 @@ class NetworkTools {
     // Regex to extract the replying IP from a Time Exceeded line.
     // Android ping prints:  "From 192.168.1.1 icmp_seq=1 Time to live exceeded"
     // Some versions print:  "From 192.168.1.1: icmp_seq=1 Time to live exceeded"
-    final fromRe  = RegExp(r'From ([\d.]+)[: ]');
-    // Regex to extract RTT from a normal echo reply line:
-    // "64 bytes from 8.8.8.8: icmp_seq=1 ttl=118 time=14.2 ms"
-    final timeRe  = RegExp(r'time=([\d.]+)\s*ms');
-    // Regex to extract the replying IP from an echo reply line:
-    final byteRe  = RegExp(r'bytes from ([\d.]+):');
-
     for (var ttl = 1; ttl <= maxHops; ttl++) {
       final sw = Stopwatch()..start();
 
@@ -181,30 +174,10 @@ class NetworkTools {
         ).timeout(const Duration(seconds: 9)); // 3 packets × 2s + buffer
 
         final out = '${result.stdout}${result.stderr}';
-
-        // Parse each line for hop IP and RTT
-        for (final line in out.split('\n')) {
-          // Arrived at destination
-          final byteMatch = byteRe.firstMatch(line);
-          if (byteMatch != null) {
-            hopIp   = byteMatch.group(1)!;
-            reached = (hopIp == destIp);
-            final t = timeRe.firstMatch(line);
-            if (t != null) hopTimes.add('${double.parse(t.group(1)!).toStringAsFixed(1)}ms');
-          }
-          // Time Exceeded from intermediate router
-          final fromMatch = fromRe.firstMatch(line);
-          if (fromMatch != null && hopIp == null) {
-            hopIp = fromMatch.group(1)!;
-            final t = timeRe.firstMatch(line);
-            if (t != null) hopTimes.add('${double.parse(t.group(1)!).toStringAsFixed(1)}ms');
-          }
-        }
-
-        // Count asterisks for non-responding probes
-        final stars = 3 - hopTimes.length;
-        for (var i = 0; i < stars; i++) hopTimes.add('*');
-
+        final hop = parseTracerouteHop(out, destIp);
+        hopIp = hop.hopIp;
+        hopTimes.addAll(hop.times);
+        reached = hop.reached;
       } catch (_) {
         hopTimes.addAll(['*', '*', '*']);
       }
@@ -237,6 +210,49 @@ class NetworkTools {
       }
     }
     yield '\nMax hops ($maxHops) reached.\n';
+  }
+
+  /// Parse a single hop from a `ping -c 3 -t <TTL>` [output] against [destIp].
+  /// Returns the replying hop IP (null if none), the per-probe RTT strings
+  /// padded to three entries with '*' for non-responses, and whether the
+  /// destination was reached. Pure — separated from the ping subprocess so the
+  /// line-parsing branches can be tested directly.
+  @visibleForTesting
+  static ({String? hopIp, List<String> times, bool reached}) parseTracerouteHop(
+      String output, String destIp) {
+    final fromRe = RegExp(r'From ([\d.]+)[: ]');
+    final timeRe = RegExp(r'time=([\d.]+)\s*ms');
+    final byteRe = RegExp(r'bytes from ([\d.]+):');
+
+    String? hopIp;
+    final hopTimes = <String>[];
+    bool reached = false;
+
+    for (final line in output.split('\n')) {
+      // Arrived at destination
+      final byteMatch = byteRe.firstMatch(line);
+      if (byteMatch != null) {
+        hopIp   = byteMatch.group(1)!;
+        reached = (hopIp == destIp);
+        final t = timeRe.firstMatch(line);
+        if (t != null) hopTimes.add('${double.parse(t.group(1)!).toStringAsFixed(1)}ms');
+      }
+      // Time Exceeded from intermediate router
+      final fromMatch = fromRe.firstMatch(line);
+      if (fromMatch != null && hopIp == null) {
+        hopIp = fromMatch.group(1)!;
+        final t = timeRe.firstMatch(line);
+        if (t != null) hopTimes.add('${double.parse(t.group(1)!).toStringAsFixed(1)}ms');
+      }
+    }
+
+    // Count asterisks for non-responding probes
+    final stars = 3 - hopTimes.length;
+    for (var i = 0; i < stars; i++) {
+      hopTimes.add('*');
+    }
+
+    return (hopIp: hopIp, times: hopTimes, reached: reached);
   }
 
   // ── Port Scan ──────────────────────────────────────────────────────────────

@@ -77,6 +77,16 @@ void main() {
       await p.load();
       expect(screenCalls.map((c) => c.method), contains('setScreenTimeout'));
     });
+
+    test('falls back to default settings when a pref has the wrong type', () async {
+      // A String stored under an int key makes prefs.getInt throw, exercising
+      // the catch block in load().
+      SharedPreferences.setMockInitialValues({'theme': 'not-an-int'});
+      final p = SettingsProvider();
+      await p.load();
+      expect(p.settings.theme, AppTheme.system);
+      expect(p.settings.fontSize, AppFontSize.medium);
+    });
   });
 
   group('SettingsProvider setters persist and notify', () {
