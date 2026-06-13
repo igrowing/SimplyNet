@@ -35,6 +35,13 @@ void main() {
       expect(p.sortAsc, isTrue);
     });
 
+    test('startScan with name resolving and logging', () {
+      final p = ScanProvider();
+      p.startScan();
+      expect(p.results.length, 0);
+      // expect(p._logBuffer.length, isFalse);
+    });
+
     test('toggleSort on same column flips direction', () {
       final p = ScanProvider();
       p.toggleSort(ScanSortColumn.ip);

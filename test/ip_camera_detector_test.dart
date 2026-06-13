@@ -4,6 +4,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:simply_net/services/ip_camera_detector.dart';
 
 void main() {
+
+   test('IpCameraDetector.wsDiscoveryScan', () {
+      // TODO
+      // expect(await IpCameraDetector.wsDiscoveryScan(const Duration(seconds: 1)), isList);
+    });
+
+
   // ── Method 2: Generic port + manufacturer matching ─────────────────────────
   group('genericPortMfr — manufacturer matching', () {
     final cameras = {

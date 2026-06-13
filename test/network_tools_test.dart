@@ -94,6 +94,13 @@ void main() {
       expect(lines.any((l) => l.contains('Done')), isTrue);
     });
 
+    test('Use UDP too', () async {
+      final lines = await NetworkTools.portScan(
+        '127.0.0.1', ports: [1, 2, 3], useUdp: true,
+      ).toList();
+      expect(lines.any((l) => l.contains('Done')), isTrue);
+    });
+
     test('emits "No open ports found" when none open', () async {
       // Ports 1-3 are unlikely to be open on the test host
       final lines = await NetworkTools.portScan(
