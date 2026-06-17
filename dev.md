@@ -98,6 +98,10 @@ Then verify all changes manually before submitting to stores!
 
 # Publish on Google play
 
+TBD
+
+# Build signed app bundle locally
+
 Adapted for Kotlin from: https://dev.to/teerasej/step-by-step-to-publish-your-flutter-project-as-andriod-app-bundle-1bpe
 
 ## 1. Create your Keystore
@@ -168,6 +172,8 @@ Match JDK with Gradle: On a standard Windows installation, Android Studio includ
 
 `flutter config --jdk-dir="C:\Program Files\Android\Android Studio\jbr"`
 
+Add `kotlin.incremental=false` at the bottom of `android/gradle.properties`.
+
 After you modified `build.gradle.kts` file, you should run:
 
 ```
@@ -177,6 +183,50 @@ flutter build appbundle
 ```
 
 If the build has been successful, you will see the AAB's file path on the Terminal's console.
+
+# Build signed app bundle in Github:
+
+## Step A: Convert your Keystore to Base64
+Open a terminal on your local PC, navigate to the folder where your upload-keystore.jks file is stored, and run this command to turn it into a text string:
+
+On Windows (PowerShell): 
+`[Convert]::ToBase64String([IO.File]::ReadAllBytes("upload-keystore.jks")) | Out-File -FilePath keystore_base64.txt`
+
+On Mac/Linux:
+`base64 -i upload-keystore.jks -o keystore_base64.txt`
+
+Open the generated keystore_base64.txt file and copy the massive block of text inside it.
+
+## Step B: Add Secrets to GitHub
+Go to your GitHub Repository -> Settings -> Secrets and variables -> Actions.
+
+Click `New repository secret` and add the following four secrets:
+
+* `ANDROID_KEYSTORE_BASE64`: Paste the entire content of keystore_base64.txt.
+* `ANDROID_KEYSTORE_PASSWORD`: The password for your keystore.
+* `ANDROID_KEY_ALIAS`: The alias name you chose (e.g., upload).
+* `ANDROID_KEY_PASSWORD`: The password for your key.
+
+## Step C: Update your GitHub Actions Workflow
+In your `.github/workflows/` YAML file, insert a step right before your flutter build appbundle command. This step takes the secrets, decodes the keystore file, and dynamically generates the key.properties file inside the runner.
+
+```
+      - name: Configure Android Keystore
+        run: |
+          # 1. Decode the keystore file from the secret back into a binary file
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/app/upload-keystore.jks
+          
+          # 2. Dynamically create the key.properties file
+          echo "storeFile=upload-keystore.jks" > android/key.properties
+          echo "storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> android/key.properties
+          echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}" >> android/key.properties
+          echo "keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}" >> android/key.properties
+
+      - name: Build Flutter AAB
+        run: flutter build appbundle --release
+```
+
+When the GitHub runner finishes its job, the virtual environment is completely destroyed, leaving no trace of your keys or passwords behind. You get a fully signed, production-ready `.aab` file ready for Google Play without risking your security.
 
 
 # TODO
