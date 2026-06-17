@@ -1,3 +1,12 @@
+import java.io.FileInputStream
+import java.util.Properties
+
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+}
+
 plugins {
     id("com.android.application")
     id("dev.flutter.flutter-gradle-plugin")
@@ -22,41 +31,62 @@ android {
         versionName   = flutter.versionName
     }
 
+    //signingConfigs {
+    //    create("release") {
+    //        val storeFile0 = System.getenv("KEYSTORE_PATH")
+    //        val storePass  = System.getenv("STORE_PASSWORD")
+    //        val keyAlias0  = System.getenv("KEY_ALIAS")
+    //        val keyPass    = System.getenv("KEY_PASSWORD")
+    //        if (!storeFile0.isNullOrBlank() && !storePass.isNullOrBlank()) {
+    //            storeFile     = file(storeFile0)
+    //            storePassword = storePass
+    //            keyAlias      = keyAlias0
+    //            keyPassword   = keyPass
+    //        }
+    //    }
+    //}
+
+    //buildTypes {
+    //    release {
+    //        val releaseCfg = signingConfigs.getByName("release")
+    //        signingConfig = if (releaseCfg.storeFile != null) releaseCfg
+    //                       else signingConfigs.getByName("debug")
+
+    //        // R8 code shrinking + resource shrinking.
+    //        // AGP 9+ requires isMinifyEnabled=true whenever shrinkResources=true.
+    //        // For Flutter apps the R8 rules are generated automatically; we add
+    //        // a consumer rules file for any custom keep-rules we need.
+    //        isMinifyEnabled   = true
+    //        isShrinkResources = true
+    //        proguardFiles(
+    //            getDefaultProguardFile("proguard-android-optimize.txt"),
+    //            "proguard-rules.pro"
+    //        )
+    //    }
+    //    debug {
+    //        isMinifyEnabled   = false
+    //        isShrinkResources = false
+    //    }
+    //}
+
     signingConfigs {
         create("release") {
-            val storeFile0 = System.getenv("KEYSTORE_PATH")
-            val storePass  = System.getenv("STORE_PASSWORD")
-            val keyAlias0  = System.getenv("KEY_ALIAS")
-            val keyPass    = System.getenv("KEY_PASSWORD")
-            if (!storeFile0.isNullOrBlank() && !storePass.isNullOrBlank()) {
-                storeFile     = file(storeFile0)
-                storePassword = storePass
-                keyAlias      = keyAlias0
-                keyPassword   = keyPass
-            }
+            val storeFileProp = keystoreProperties.getProperty("storeFile")
+            storeFile = if (storeFileProp != null) file(storeFileProp) else null
+            storePassword = keystoreProperties.getProperty("storePassword")
+            keyAlias = keystoreProperties.getProperty("keyAlias")
+            keyPassword = keystoreProperties.getProperty("keyPassword")
         }
     }
 
     buildTypes {
-        release {
-            val releaseCfg = signingConfigs.getByName("release")
-            signingConfig = if (releaseCfg.storeFile != null) releaseCfg
-                            else signingConfigs.getByName("debug")
-
-            // R8 code shrinking + resource shrinking.
-            // AGP 9+ requires isMinifyEnabled=true whenever shrinkResources=true.
-            // For Flutter apps the R8 rules are generated automatically; we add
-            // a consumer rules file for any custom keep-rules we need.
-            isMinifyEnabled   = true
+        getByName("release") {
+            // Tells Gradle to use the release signing config defined above
+            signingConfig = signingConfigs.getByName("release")
+            
+            isMinifyEnabled = true
             isShrinkResources = true
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
-        }
-        debug {
-            isMinifyEnabled   = false
-            isShrinkResources = false
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 }
