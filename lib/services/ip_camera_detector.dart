@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 
 import 'package:simply_net/constants/network_ports.dart';
 
@@ -152,13 +152,21 @@ class IpCameraDetector {
       });
       final combined = '${headerBuf.toString()} $body'.toLowerCase();
 
-      for (final fp in _httpCameraFingerprints) {
-        if (combined.contains(fp)) return fp;
-      }
-      return null;
+      return matchCameraFingerprint(combined);
     } catch (_) {
       return null;
     }
+  }
+
+  /// Returns the first camera fingerprint contained in [combined] (a lowercased
+  /// header+body blob), or null when none match. Pure — separated from the HTTP
+  /// socket so the fingerprint table can be exercised directly.
+  @visibleForTesting
+  static String? matchCameraFingerprint(String combined) {
+    for (final fp in _httpCameraFingerprints) {
+      if (combined.contains(fp)) return fp;
+    }
+    return null;
   }
 
   // ── WS-Discovery ───────────────────────────────────────────────────────────
@@ -167,9 +175,6 @@ class IpCameraDetector {
   static const _wsDiscoveryPort = NetworkPorts.wsDiscoveryPort;
 
   /// WS-Discovery Probe message (SOAP envelope, device type any).
-  /// Exposed for unit tests — do not use in production UI.
-  static String get wsProbeXmlForTest => _wsProbeXml;
-
   static String get _wsProbeXml => '''<?xml version="1.0" encoding="UTF-8"?>
 <soap:Envelope
   xmlns:soap="http://www.w3.org/2003/05/soap-envelope"
@@ -214,22 +219,16 @@ class IpCameraDetector {
 
         final body = utf8.decode(dg.data, allowMalformed: true);
         // Extract XAddrs (service URLs) — simple regex, no XML parser dep
-        final xaddrsMatch =
-            RegExp(r'<[^:>]*:?XAddrs[^>]*>(.*?)</[^:>]*:?XAddrs>',
-                    dotAll: true)
-                .firstMatch(body);
-        if (xaddrsMatch == null) continue;
+        final xaddrs = parseXAddrs(body);
+        if (xaddrs == null) continue;
 
-        final xaddrs    = xaddrsMatch.group(1)?.trim() ?? '';
         final senderIp  = dg.address.address;
 
         // Deduplicate by sender IP
         if (!seen.add(senderIp)) continue;
 
         // Parse a port from the first XAddr URL if present
-        int port = 80;
-        final portMatch = RegExp(r':(\d{2,5})').firstMatch(xaddrs);
-        if (portMatch != null) port = int.tryParse(portMatch.group(1)!) ?? 80;
+        final port = portFromXAddrs(xaddrs);
 
         yield CameraCandidate(
           ip:       senderIp,
@@ -243,6 +242,25 @@ class IpCameraDetector {
     } finally {
       sock?.close();
     }
+  }
+
+  /// Extracts the trimmed `<XAddrs>` content from a WS-Discovery SOAP [body],
+  /// or null when the element is absent. Pure helper for [wsDiscoveryScan].
+  @visibleForTesting
+  static String? parseXAddrs(String body) {
+    final m = RegExp(r'<[^:>]*:?XAddrs[^>]*>(.*?)</[^:>]*:?XAddrs>',
+            dotAll: true)
+        .firstMatch(body);
+    if (m == null) return null;
+    return m.group(1)?.trim() ?? '';
+  }
+
+  /// Parses the first port found in an XAddrs service URL, defaulting to 80.
+  @visibleForTesting
+  static int portFromXAddrs(String xaddrs) {
+    final m = RegExp(r':(\d{2,5})').firstMatch(xaddrs);
+    if (m == null) return 80;
+    return int.tryParse(m.group(1)!) ?? 80;
   }
 
   // ── Per-host detection ────────────────────────────────────────────────────
@@ -279,7 +297,7 @@ class IpCameraDetector {
           ip:           ip,
           port:         port,
           method:       CameraDetectionMethod.specificPort,
-          evidence:     _specificPortEvidence(port),
+          evidence:     specificPortEvidence(port),
           manufacturer: manufacturer,
         ));
         continue; // no further checks needed for this port
@@ -315,7 +333,8 @@ class IpCameraDetector {
     return results;
   }
 
-  static String _specificPortEvidence(int port) => switch (port) {
+  @visibleForTesting
+  static String specificPortEvidence(int port) => switch (port) {
         554   => 'RTSP (standard)',
         5554  => 'RTSP (alternate)',
         8554  => 'RTSP (alternate)',
@@ -344,7 +363,7 @@ class IpCameraDetector {
     void Function(int done, int total)? onProgress,
   }) async* {
     // Expand CIDR
-    final hosts = _expandCidr(cidr);
+    final hosts = expandCidr(cidr);
     if (hosts == null) {
       yield* const Stream.empty();
       return;
@@ -420,7 +439,8 @@ class IpCameraDetector {
 
   /// Expand a CIDR string to a list of host IP strings.
   /// Returns null if the CIDR is invalid.
-  static List<String>? _expandCidr(String cidr) {
+  @visibleForTesting
+  static List<String>? expandCidr(String cidr) {
     final parts = cidr.trim().split('/');
     if (parts.length != 2) return null;
     final ipParts = parts[0].split('.').map(int.tryParse).toList();

@@ -33,7 +33,25 @@ jobs:
         run: flutter pub get
 
       - name: Run unit tests
-        run: flutter test --reporter expanded
+        run: flutter test --coverage --reporter expanded
+
+      - name: Code coverage report
+        if: always()
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y lcov
+          # --ignore-errors keeps lcov 2.x from failing on Dart lcov quirks.
+          lcov --summary coverage/lcov.info --ignore-errors inconsistent,empty
+          genhtml coverage/lcov.info --output-directory coverage/html --quiet \
+            --ignore-errors inconsistent,category,corrupt
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/html
+          retention-days: 30
 
   # ───────────────────────────────────────────────────────────────────────────
   # 2. APK build — every non-main branch (pre-release, sideload / testing)
@@ -85,6 +103,22 @@ jobs:
         run: |
           sed -i "s/^version: .*/version: ${{ steps.version.outputs.version_name }}+${{ steps.version.outputs.build_number }}/" pubspec.yaml
 
+                # Decode the keystore from the base64 secret and write it to disk
+      - name: Decode keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 --decode > android/app/upload-keystore.jks
+            echo "storeFile=upload-keystore.jks" > android/key.properties
+            echo "storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> android/key.properties
+            echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}" >> android/key.properties
+            echo "keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}" >> android/key.properties
+            echo "✅ Keystore and key.properties successfully created in the runner"
+          else
+            echo "⚠️  KEYSTORE_BASE64 secret not set — build will use debug signing"
+          fi
+
       - name: Scan for v1 embedding references
         run: |
           if grep -rE \
@@ -96,6 +130,10 @@ jobs:
           fi
 
       - name: Build APK (split per ABI)
+        env:
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS:      ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD:   ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           flutter build apk --release --split-per-abi \
             --build-name="${{ steps.version.outputs.version_name }}" \
@@ -167,12 +205,15 @@ jobs:
       # Decode the keystore from the base64 secret and write it to disk
       - name: Decode keystore
         env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
           if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 --decode > /tmp/simplynet-release.jks
-            echo "KEYSTORE_PATH=/tmp/simplynet-release.jks" >> $GITHUB_ENV
-            echo "✓ Keystore decoded"
+            echo "$KEYSTORE_BASE64" | base64 --decode > android/app/upload-keystore.jks
+            echo "storeFile=upload-keystore.jks" > android/key.properties
+            echo "storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> android/key.properties
+            echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}" >> android/key.properties
+            echo "keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}" >> android/key.properties
+            echo "✅ Keystore and key.properties successfully created in the runner"
           else
             echo "⚠️  KEYSTORE_BASE64 secret not set — build will use debug signing"
           fi
@@ -189,9 +230,9 @@ jobs:
 
       - name: Build AAB
         env:
-          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
-          KEY_ALIAS:      ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD:   ${{ secrets.KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS:      ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD:   ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           flutter build appbundle --release \
             --build-name="${{ steps.version.outputs.version_name }}" \

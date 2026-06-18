@@ -1,7 +1,7 @@
 library iot_scanner;
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 
 import 'package:simply_net/constants/network_ports.dart';
 
@@ -255,7 +255,7 @@ class IotScanner {
 
     // Step 2 — OUI vendor lookup from ARP cache
     final mac    = await _getMacFromArp(ip);
-    final vendor = mac != null ? _vendorFromMac(mac) : 'Unknown';
+    final vendor = mac != null ? vendorFromMac(mac) : 'Unknown';
 
     // Step 3 — HTTP fingerprinting
     String protocol = vendor.isNotEmpty && vendor != 'Unknown'
@@ -363,43 +363,63 @@ class IotScanner {
 
       final body    = String.fromCharCodes(bodyBytes.take(1024).toList(),
           0, bodyBytes.length > 1024 ? 1024 : bodyBytes.length);
-      final haystack = '$server $xFirmware $body'.toLowerCase();
-
-      String protocol = '';
-      String model    = '';
-
-      for (final entry in _httpFingerprints.entries) {
-        if (haystack.contains(entry.key.toLowerCase())) {
-          protocol = entry.value;
-          break;
-        }
-      }
-
-      // Tasmota: extract module name from body
-      if (protocol == 'Tasmota') {
-        final m = RegExp(r'<title>(.+?)</title>').firstMatch(body);
-        if (m != null) model = m.group(1) ?? '';
-      }
-      // ESPHome: extract device name from body
-      if (protocol == 'ESPHome') {
-        final m = RegExp(r'"name":\s*"([^"]+)"').firstMatch(body);
-        if (m != null) model = m.group(1) ?? '';
-      }
-      // Home Assistant: check version header
-      if (protocol == 'Home Assistant') {
-        final ver = resp.headers.value('x-ha-version') ?? '';
-        if (ver.isNotEmpty) model = 'HA $ver';
-      }
-
-      final extras = <String, String>{};
-      if (server.isNotEmpty)    extras['server']     = server;
-      if (xFirmware.isNotEmpty) extras['firmware']   = xFirmware;
-
-      if (protocol.isEmpty) return null;
-      return (protocol, model, extras);
+      final haVersion = resp.headers.value('x-ha-version') ?? '';
+      return classifyHttp(
+        server: server,
+        xFirmware: xFirmware,
+        body: body,
+        haVersion: haVersion,
+      );
     } catch (_) {
       return null;
     }
+  }
+
+  /// Pure fingerprinting of an HTTP response. Given the `Server` header,
+  /// `X-Firmware` header, response [body] and (optional) Home-Assistant
+  /// version header, returns the detected `(protocol, model, extras)` or null
+  /// when no IoT firmware signature matches. Separated from the socket I/O so
+  /// the fingerprint matching and model extraction can be tested directly.
+  @visibleForTesting
+  static (String, String, Map<String, String>)? classifyHttp({
+    required String server,
+    required String xFirmware,
+    required String body,
+    String haVersion = '',
+  }) {
+    final haystack = '$server $xFirmware $body'.toLowerCase();
+
+    String protocol = '';
+    String model    = '';
+
+    for (final entry in _httpFingerprints.entries) {
+      if (haystack.contains(entry.key.toLowerCase())) {
+        protocol = entry.value;
+        break;
+      }
+    }
+
+    // Tasmota: extract module name from body
+    if (protocol == 'Tasmota') {
+      final m = RegExp(r'<title>(.+?)</title>').firstMatch(body);
+      if (m != null) model = m.group(1) ?? '';
+    }
+    // ESPHome: extract device name from body
+    if (protocol == 'ESPHome') {
+      final m = RegExp(r'"name":\s*"([^"]+)"').firstMatch(body);
+      if (m != null) model = m.group(1) ?? '';
+    }
+    // Home Assistant: check version header
+    if (protocol == 'Home Assistant') {
+      if (haVersion.isNotEmpty) model = 'HA $haVersion';
+    }
+
+    final extras = <String, String>{};
+    if (server.isNotEmpty)    extras['server']     = server;
+    if (xFirmware.isNotEmpty) extras['firmware']   = xFirmware;
+
+    if (protocol.isEmpty) return null;
+    return (protocol, model, extras);
   }
 
   // ---------- TP-Link Kasa XOR probe ------------------------------------------
@@ -410,13 +430,13 @@ class IotScanner {
     try {
       final sock = await Socket.connect(ip, 9999,
           timeout: const Duration(milliseconds: 800));
-      final payload = _kasaXorEncode('{"system":{"get_sysinfo":{}}}');
+      final payload = kasaXorEncode('{"system":{"get_sysinfo":{}}}');
       sock.add(payload);
       final data    = <int>[];
       await sock.timeout(const Duration(seconds: 2)).forEach(data.addAll);
       await sock.close();
       if (data.length < 4) return null;
-      final json = _kasaXorDecode(Uint8List.fromList(data.sublist(4)));
+      final json = kasaXorDecode(Uint8List.fromList(data.sublist(4)));
       final m    = RegExp(r'"model":"([^"]+)"').firstMatch(json);
       return m?.group(1);
     } catch (_) {
@@ -424,7 +444,8 @@ class IotScanner {
     }
   }
 
-  static Uint8List _kasaXorEncode(String plain) {
+  @visibleForTesting
+  static Uint8List kasaXorEncode(String plain) {
     final bytes = plain.codeUnits;
     final out   = Uint8List(4 + bytes.length);
     out[0] = 0; out[1] = 0;
@@ -437,7 +458,8 @@ class IotScanner {
     return out;
   }
 
-  static String _kasaXorDecode(Uint8List data) {
+  @visibleForTesting
+  static String kasaXorDecode(Uint8List data) {
     int key = 0xAB;
     final out = <int>[];
     for (final b in data) {
@@ -465,7 +487,8 @@ class IotScanner {
 
   // ---------- OUI vendor lookup ------------------------------------------------
 
-  static String _vendorFromMac(String mac) {
+  @visibleForTesting
+  static String vendorFromMac(String mac) {
     if (mac == 'N/A' || mac.length < 8) return 'Unknown';
     final prefix = mac.toUpperCase().substring(0, 8);
     return _ouiVendors[prefix] ?? '';

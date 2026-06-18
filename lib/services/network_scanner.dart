@@ -32,7 +32,8 @@ class NetworkScanner {
   static bool isValidCidr(String cidr) => parseCidr(cidr) != null;
 
   // ── ARP table ─────────────────────────────────────────────────────────────
-  static Future<Map<String, String>> _readArpTable() async {
+  @visibleForTesting
+  static Future<Map<String, String>> readArpTable() async {
     final map = <String, String>{};
     try {
       ProcessResult result;
@@ -104,7 +105,8 @@ class NetworkScanner {
 
   static Map<String, String>? _selfMacCache; // populated once per scan
 
-  static Future<Map<String, String>> _getSelfMacs() async {
+  @visibleForTesting
+  static Future<Map<String, String>> getSelfMacs() async {
     if (_selfMacCache != null) return _selfMacCache!;
 
     final map = <String, String>{};
@@ -135,7 +137,8 @@ class NetworkScanner {
     return map;
   }
 
-  static List<String> _expandCidr(String baseIp, int prefix) {
+  @visibleForTesting
+  static List<String> expandCidr(String baseIp, int prefix) {
     final octets  = baseIp.split('.').map(int.parse).toList();
     final base    = (octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3];
     final mask    = prefix == 0 ? 0 : (0xFFFFFFFF << (32 - prefix)) & 0xFFFFFFFF;
@@ -273,7 +276,8 @@ class NetworkScanner {
     return '';
   }
 
-  static String _detectDeviceType(String manufacturer) {
+  @visibleForTesting
+  static String detectDeviceType(String manufacturer) {
     if (manufacturer.isEmpty) return '';
     
     final lower = manufacturer.toLowerCase();
@@ -334,7 +338,7 @@ class NetworkScanner {
     final parsed = parseCidr(cidr);
     if (parsed == null) return;
     final (baseIp, prefix) = parsed;
-    final hosts    = _expandCidr(baseIp, prefix);
+    final hosts    = expandCidr(baseIp, prefix);
 
     // Peek all IPs in the LAN to collect MACs in ARP table, then resolve hostnames in parallel.
     final chunks = <Future<HostResult?>>[];
@@ -352,10 +356,10 @@ class NetworkScanner {
     }
 
     // Read fresh ARP table after all IPs have been pinged.
-    final arpTable  = await _readArpTable();
+    final arpTable  = await readArpTable();
     // Overlay self MACs — the device's own IPs are never in the neighbour
     // table, so we fetch them from the network interfaces directly.
-    final selfMacs  = await _getSelfMacs();
+    final selfMacs  = await getSelfMacs();
     _selfMacCache   = null; // reset cache for next scan
     for (final entry in selfMacs.entries) {
       arpTable[entry.key] = entry.value;
@@ -375,7 +379,7 @@ class NetworkScanner {
       final macType = deviceTypeFromMac(host.mac);
       host.deviceType = macType.isNotEmpty
           ? macType
-          : _detectDeviceType(host.manufacturer);
+          : detectDeviceType(host.manufacturer);
       yield host;
     }
   }

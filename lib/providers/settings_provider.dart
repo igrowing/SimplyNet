@@ -12,10 +12,6 @@ class SettingsProvider extends ChangeNotifier {
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     try {
-      final fontSizeIndex = prefs.getInt('fontSize') ?? AppFontSize.medium.index;
-      final fontSize = fontSizeIndex >= 0 && fontSizeIndex < AppFontSize.values.length
-          ? AppFontSize.values[fontSizeIndex]
-          : AppFontSize.medium;
       final screenTimeoutIndex = prefs.getInt('screenTimeout') ?? AppScreenTimeout.system.index;
       final screenTimeout = screenTimeoutIndex >= 0 && screenTimeoutIndex < AppScreenTimeout.values.length
           ? AppScreenTimeout.values[screenTimeoutIndex]
@@ -26,7 +22,6 @@ class SettingsProvider extends ChangeNotifier {
         resolveNames: prefs.getBool('resolveNames') ?? true,
         loggingEnabled: prefs.getBool('loggingEnabled') ?? true,
         showMac: prefs.getBool('showMac') ?? true,
-        fontSize: fontSize,
       );
     } catch (e) {
       _settings = const AppSettings();
@@ -80,13 +75,6 @@ class SettingsProvider extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('showMac', showMac);
-  }
-
-  Future<void> setFontSize(AppFontSize fontSize) async {
-    _settings = _settings.copyWith(fontSize: fontSize);
-    notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('fontSize', fontSize.index);
   }
 
   ThemeMode get themeMode => switch (_settings.theme) {
