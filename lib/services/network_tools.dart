@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 
 /// Wrappers for diagnostic network tools.
 /// Each returns a Stream<String> so callers can display output progressively.
@@ -159,13 +159,6 @@ class NetworkTools {
     // Regex to extract the replying IP from a Time Exceeded line.
     // Android ping prints:  "From 192.168.1.1 icmp_seq=1 Time to live exceeded"
     // Some versions print:  "From 192.168.1.1: icmp_seq=1 Time to live exceeded"
-    final fromRe  = RegExp(r'From ([\d.]+)[: ]');
-    // Regex to extract RTT from a normal echo reply line:
-    // "64 bytes from 8.8.8.8: icmp_seq=1 ttl=118 time=14.2 ms"
-    final timeRe  = RegExp(r'time=([\d.]+)\s*ms');
-    // Regex to extract the replying IP from an echo reply line:
-    final byteRe  = RegExp(r'bytes from ([\d.]+):');
-
     for (var ttl = 1; ttl <= maxHops; ttl++) {
       final sw = Stopwatch()..start();
 
@@ -181,30 +174,10 @@ class NetworkTools {
         ).timeout(const Duration(seconds: 9)); // 3 packets × 2s + buffer
 
         final out = '${result.stdout}${result.stderr}';
-
-        // Parse each line for hop IP and RTT
-        for (final line in out.split('\n')) {
-          // Arrived at destination
-          final byteMatch = byteRe.firstMatch(line);
-          if (byteMatch != null) {
-            hopIp   = byteMatch.group(1)!;
-            reached = (hopIp == destIp);
-            final t = timeRe.firstMatch(line);
-            if (t != null) hopTimes.add('${double.parse(t.group(1)!).toStringAsFixed(1)}ms');
-          }
-          // Time Exceeded from intermediate router
-          final fromMatch = fromRe.firstMatch(line);
-          if (fromMatch != null && hopIp == null) {
-            hopIp = fromMatch.group(1)!;
-            final t = timeRe.firstMatch(line);
-            if (t != null) hopTimes.add('${double.parse(t.group(1)!).toStringAsFixed(1)}ms');
-          }
-        }
-
-        // Count asterisks for non-responding probes
-        final stars = 3 - hopTimes.length;
-        for (var i = 0; i < stars; i++) hopTimes.add('*');
-
+        final hop = parseTracerouteHop(out, destIp);
+        hopIp = hop.hopIp;
+        hopTimes.addAll(hop.times);
+        reached = hop.reached;
       } catch (_) {
         hopTimes.addAll(['*', '*', '*']);
       }
@@ -237,6 +210,49 @@ class NetworkTools {
       }
     }
     yield '\nMax hops ($maxHops) reached.\n';
+  }
+
+  /// Parse a single hop from a `ping -c 3 -t <TTL>` [output] against [destIp].
+  /// Returns the replying hop IP (null if none), the per-probe RTT strings
+  /// padded to three entries with '*' for non-responses, and whether the
+  /// destination was reached. Pure — separated from the ping subprocess so the
+  /// line-parsing branches can be tested directly.
+  @visibleForTesting
+  static ({String? hopIp, List<String> times, bool reached}) parseTracerouteHop(
+      String output, String destIp) {
+    final fromRe = RegExp(r'From ([\d.]+)[: ]');
+    final timeRe = RegExp(r'time=([\d.]+)\s*ms');
+    final byteRe = RegExp(r'bytes from ([\d.]+):');
+
+    String? hopIp;
+    final hopTimes = <String>[];
+    bool reached = false;
+
+    for (final line in output.split('\n')) {
+      // Arrived at destination
+      final byteMatch = byteRe.firstMatch(line);
+      if (byteMatch != null) {
+        hopIp   = byteMatch.group(1)!;
+        reached = (hopIp == destIp);
+        final t = timeRe.firstMatch(line);
+        if (t != null) hopTimes.add('${double.parse(t.group(1)!).toStringAsFixed(1)}ms');
+      }
+      // Time Exceeded from intermediate router
+      final fromMatch = fromRe.firstMatch(line);
+      if (fromMatch != null && hopIp == null) {
+        hopIp = fromMatch.group(1)!;
+        final t = timeRe.firstMatch(line);
+        if (t != null) hopTimes.add('${double.parse(t.group(1)!).toStringAsFixed(1)}ms');
+      }
+    }
+
+    // Count asterisks for non-responding probes
+    final stars = 3 - hopTimes.length;
+    for (var i = 0; i < stars; i++) {
+      hopTimes.add('*');
+    }
+
+    return (hopIp: hopIp, times: hopTimes, reached: reached);
   }
 
   // ── Port Scan ──────────────────────────────────────────────────────────────
@@ -344,8 +360,6 @@ class NetworkTools {
     final controller = StreamController<String>();
     int done = 0;
     int pending = scanPorts.length * (useTcp && useUdp ? 2 : 1);
-    int tcpPending = useTcp ? scanPorts.length : 0;
-    int udpPending = useUdp ? scanPorts.length : 0;
     if (pending == 0) pending = 1; // safety
 
     final sem = _Semaphore(128);
@@ -430,89 +444,10 @@ class NetworkTools {
     yield* controller.stream;
   }
 
-  /// Look up service name for a port number.
-  /// Uses wellKnownPortNames dict; returns '' for unknown ports.
-  static String portName(int port) => wellKnownPortNames[port] ?? '';
-
-
   // ── IP Camera Scan ─────────────────────────────────────────────────────────
   // Moved to lib/services/ip_camera_detector.dart (IpCameraDetector.scanSubnet).
   // The multi-signal detection model (specific ports, manufacturer, HTTP
   // banner, WS-Discovery) lives there and replaces the old plain port-check.
-
-  // ── Speed Test ─────────────────────────────────────────────────────────────
-  /// Returns a single SpeedResult via the stream (one event then done).
-  static Stream<SpeedResult> speedTest() async* {
-    // Use Cloudflare's speed test endpoint for a reliable, CORS-friendly test.
-    const downloadUrl = 'https://speed.cloudflare.com/__down?bytes=10000000'; // 10 MB
-    const uploadUrl   = 'https://speed.cloudflare.com/__up';
-
-    double downloadMbps = 0;
-    double uploadMbps   = 0;
-    double pingMs       = 0;
-
-    // Ping
-    try {
-      final sw  = Stopwatch()..start();
-      final req = await HttpClient().getUrl(Uri.parse('https://speed.cloudflare.com/'));
-      final res = await req.close().timeout(const Duration(seconds: 5));
-      await res.drain<void>();
-      sw.stop();
-      pingMs = sw.elapsedMilliseconds.toDouble();
-    } catch (_) {}
-
-    // Download
-    try {
-      final sw     = Stopwatch()..start();
-      final req    = await HttpClient().getUrl(Uri.parse(downloadUrl));
-      final res    = await req.close().timeout(const Duration(seconds: 20));
-      int bytes    = 0;
-      await for (final chunk in res) {
-        bytes += chunk.length;
-      }
-      sw.stop();
-      final secs   = sw.elapsedMilliseconds / 1000.0;
-      downloadMbps = secs > 0 ? (bytes * 8) / secs / 1e6 : 0;
-    } catch (_) {}
-
-    // Upload (send 2 MB)
-    try {
-      final payload = List<int>.filled(2 * 1024 * 1024, 0);
-      final sw      = Stopwatch()..start();
-      final req     = await HttpClient().postUrl(Uri.parse(uploadUrl));
-      req.headers.contentType =
-          ContentType('application', 'octet-stream');
-      req.add(payload);
-      final res = await req.close().timeout(const Duration(seconds: 20));
-      await res.drain<void>();
-      sw.stop();
-      final secs = sw.elapsedMilliseconds / 1000.0;
-      uploadMbps = secs > 0 ? (payload.length * 8) / secs / 1e6 : 0;
-    } catch (_) {}
-
-    yield SpeedResult(
-      downloadMbps: downloadMbps,
-      uploadMbps:   uploadMbps,
-      pingMs:       pingMs,
-      timestamp:    DateTime.now(),
-    );
-  }
-}
-
-// ── Speed result model ────────────────────────────────────────────────────────
-
-class SpeedResult {
-  final double downloadMbps;
-  final double uploadMbps;
-  final double pingMs;
-  final DateTime timestamp;
-
-  const SpeedResult({
-    required this.downloadMbps,
-    required this.uploadMbps,
-    required this.pingMs,
-    required this.timestamp,
-  });
 }
 
 // ── Semaphore for concurrent port scanning ───────────────────────────────────
