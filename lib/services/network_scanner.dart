@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:simply_net/constants/network_ports.dart';
 import 'package:simply_net/models/host_result.dart';
 import 'package:simply_net/services/log_service.dart';
 import 'package:simply_net/services/oui_service.dart';
@@ -401,7 +402,7 @@ class NetworkScanner {
 
     if (!alive) {
       // Expanded port list covers web, SSH, SMB, Matter, MQTT, TP-Link, IoT HTTP
-      for (final port in [80, 443, 22, 445, 8080, 5540, 8123, 1883, 8883, 8081, 9999, 4040]) {
+      for (final port in NetworkPorts.livenessProbePorts) {
         try {
           final sock = await Socket.connect(ip, port, timeout: _tcpTimeout);
           sock.destroy();

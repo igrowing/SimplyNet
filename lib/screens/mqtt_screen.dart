@@ -6,6 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:simply_net/services/log_service.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
+import 'package:simply_net/providers/mqtt_provider.dart';
+import 'package:simply_net/constants/network_ports.dart';
 
 // ════════════════════════════════════════════════════════════════════════════
 //  Shared MQTT connection settings (broker, auth).
@@ -23,7 +25,7 @@ class MqttSettings {
 
   const MqttSettings({
     this.broker      = '',
-    this.port        = 1883,
+    this.port        = NetworkPorts.defaultMqttPort,
     this.username    = '',
     this.password    = '',
     this.keepPassword = false,
@@ -42,7 +44,7 @@ class MqttSettings {
     final keepPwd = p.getBool(_kKeepPwd) ?? false;
     return MqttSettings(
       broker:       p.getString(_kBroker)   ?? '',
-      port:         p.getInt(_kPort)        ?? 1883,
+      port:         p.getInt(_kPort)        ?? NetworkPorts.defaultMqttPort,
       username:     p.getString(_kUsername) ?? '',
       password:     keepPwd ? (p.getString(_kPassword) ?? '') : '',
       keepPassword: keepPwd,
@@ -128,7 +130,7 @@ class _MqttSettingsSheetState extends State<_MqttSettingsSheet> {
   Future<void> _save() async {
     final settings = MqttSettings(
       broker:      _brokerCtrl.text.trim(),
-      port:        int.tryParse(_portCtrl.text.trim()) ?? 1883,
+      port:        int.tryParse(_portCtrl.text.trim()) ?? NetworkPorts.defaultMqttPort,
       username:    _userCtrl.text.trim(),
       password:    _pwdCtrl.text,
       keepPassword: _keepPassword,
@@ -277,19 +279,21 @@ class _MqttStatusBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isIdle = !connected && !connecting;
     final color = connected
         ? Colors.green
-        : (connecting ? Colors.orange : Colors.red);
+        : (connecting ? Colors.orange : (isIdle ? Colors.blue : Colors.red));
+    final icon = connected
+        ? Icons.check_circle_outline
+        : (connecting
+            ? Icons.hourglass_top_outlined
+            : (isIdle ? Icons.info_outline : Icons.error_outline));
     return Container(
       color: color.withValues(alpha: 0.12),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       child: Row(children: [
         Icon(
-          connected
-              ? Icons.check_circle_outline
-              : (connecting
-                  ? Icons.hourglass_top_outlined
-                  : Icons.error_outline),
+          icon,
           size: 16, color: color,
         ),
         const SizedBox(width: 6),
@@ -328,13 +332,12 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
   // ── Own topic ──────────────────────────────────────────────────────────
   final _topicCtrl = TextEditingController();
 
-  // ── MQTT client ────────────────────────────────────────────────────────
-  MqttServerClient? _client;
-  StreamSubscription? _msgSub;
+  // ── MQTT service (persists connection across screen navigation) ────────
+  late final MqttSubService _mqttService;
 
   bool   _listening  = false;   // true while actively connected + subscribed
-  bool   _connecting = false;
-  String _statusMsg  = '';
+  bool   _connecting = false;   // false initially (idle state with info icon)
+  String _statusMsg  = 'Enter the topic and tap Listen';
 
   // ── UI state ───────────────────────────────────────────────────────────
   // Messages are stored newest-first (index 0 = most recent).
@@ -352,15 +355,16 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
   @override
   void initState() {
     super.initState();
+    _mqttService = MqttSubService();
     _loadPrefs();
   }
 
   @override
   void dispose() {
-    // If the user backs out while listening, end the session and log it.
+    // Only flush session log and restore screen timeout.
+    // DO NOT disconnect the MQTT client here — it should persist across navigation.
+    // The connection is only closed when user clicks Stop or app terminates.
     if (_listening) _flushSessionLog();
-    _cancelMsgSub();
-    _disconnectClient();
     if (_keepScreenOn) _ScreenKeepOn.restore(widget.appScreenTimeoutMode);
     _topicCtrl.dispose();
     _scroll.dispose();
@@ -373,11 +377,21 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
     final p   = await SharedPreferences.getInstance();
     final cfg = await MqttSettings.load();
     if (!mounted) return;
+    
+    // Check if service has an active connection from a previous screen visit
+    final hasActiveConnection = _mqttService.isConnected;
+    
     setState(() {
       _cfg            = cfg;
       _loaded         = true;
       _topicCtrl.text = p.getString(_kSubTopic)   ?? '';
       _prettyJson     = p.getBool(_kSubPrettyJson) ?? true;
+      // Sync UI state with service state
+      _listening      = hasActiveConnection;
+      _connecting     = false;
+      _statusMsg      = hasActiveConnection
+          ? 'Listening on "${_topicCtrl.text.trim()}"'
+          : 'Enter the topic and tap Listen';
     });
     // Open settings immediately if broker is not yet configured.
     // Do NOT auto-start listening — user controls that explicitly.
@@ -433,8 +447,7 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
   }
 
   Future<void> _stopListening() async {
-    _cancelMsgSub();
-    _disconnectClient();
+    _mqttService.disconnect();  // Only disconnect when explicitly stopping
     setState(() {
       _listening  = false;
       _connecting = false;
@@ -478,7 +491,7 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
       connMsg.authenticateAs(_cfg.username, _cfg.password);
     }
     client.connectionMessage = connMsg;
-    _client = client;
+    _mqttService.setClient(client);
 
     client.connect().catchError((e) {
       if (mounted) setState(() {
@@ -496,11 +509,12 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
       _connecting = false;
       _statusMsg  = 'Listening on "$topic"';
     });
-    _client!.subscribe(topic, MqttQos.atLeastOnce);
+    _mqttService.client!.subscribe(topic, MqttQos.atLeastOnce);
 
     // Cancel any stale subscription before attaching the new one.
-    _cancelMsgSub();
-    _msgSub = _client!.updates!.listen(_onMessage);
+    _mqttService.cancelMsgSub();
+    final sub = _mqttService.client!.updates!.listen(_onMessage);
+    _mqttService.setMsgSubscription(sub);
   }
 
   void _onDisconnected() {
@@ -529,15 +543,8 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
     }
   }
 
-  void _cancelMsgSub() {
-    _msgSub?.cancel();
-    _msgSub = null;
-  }
-
-  void _disconnectClient() {
-    _client?.disconnect();
-    _client = null;
-  }
+  // Note: _cancelMsgSub and _disconnectClient have been removed.
+  // Use _mqttService.cancelMsgSub() or _mqttService.disconnect() instead.
 
   // ── Session logging ───────────────────────────────────────────────────────
 
@@ -733,7 +740,7 @@ class _MqttPubScreenState extends State<MqttPubScreen> {
   // ── MQTT client ────────────────────────────────────────────────────────
   MqttServerClient? _client;
   bool   _connected  = false;
-  bool   _connecting = false;
+  bool   _connecting = true;
   String _statusMsg  = '';
 
   // ── UI state ───────────────────────────────────────────────────────────
@@ -780,6 +787,7 @@ class _MqttPubScreenState extends State<MqttPubScreen> {
   Future<void> _saveTopic(String v) async {
     final p = await SharedPreferences.getInstance();
     await p.setString(_kPubTopic, v.trim());
+    if (mounted) setState(() {});  // Rebuild to update button state
   }
 
   Future<void> _saveMessage(String v) async {
@@ -881,7 +889,7 @@ class _MqttPubScreenState extends State<MqttPubScreen> {
     if (!_connected || _client == null) return;
     final topic = _topicCtrl.text.trim();
     final msg   = _msgCtrl.text;
-    if (topic.isEmpty || msg.isEmpty) return;
+    if (topic.isEmpty) return;
 
     final builder = MqttClientPayloadBuilder()..addString(msg);
     _client!.publishMessage(
@@ -994,8 +1002,7 @@ class _MqttPubScreenState extends State<MqttPubScreen> {
                   // ── Publish button ─────────────────────────────────────
                   FilledButton.icon(
                     onPressed: (_connected &&
-                                _topicCtrl.text.trim().isNotEmpty &&
-                                _msgCtrl.text.isNotEmpty)
+                                _topicCtrl.text.trim().isNotEmpty)
                         ? _publish
                         : null,
                     icon:  const Icon(Icons.send_outlined),

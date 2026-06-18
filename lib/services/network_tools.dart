@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 
+import 'package:simply_net/constants/network_ports.dart';
+
 /// Wrappers for diagnostic network tools.
 /// Each returns a Stream<String> so callers can display output progressively.
 class NetworkTools {
@@ -258,70 +260,10 @@ class NetworkTools {
   // ── Port Scan ──────────────────────────────────────────────────────────────
 
   /// Well-known ports dictionary: port number → service name.
+  /// Defined centrally in [NetworkPorts]; aliased here so existing callers
+  /// (`NetworkTools.wellKnownPortNames`) keep working unchanged.
   /// Use .keys.toList() wherever a List<int> of port numbers is needed.
-  /// This replaces the old separate wellKnownPorts list + _portName dict.
-  static const wellKnownPortNames = <int, String>{
-    21:    'ftp',
-    22:    'ssh',
-    23:    'telnet',
-    25:    'smtp',
-    53:    'dns',
-    80:    'http',
-    81:    'http-alt',
-    82:    'http-alt',
-    83:    'http-alt',
-    84:    'http-alt',
-    85:    'http-alt',
-    110:   'pop3',
-    143:   'imap',
-    161:   'snmp',
-    443:   'https',
-    445:   'smb',
-    465:   'smtps',
-    587:   'submission',
-    631:   'ipp',
-    993:   'imaps',
-    995:   'pop3s',
-    1080:  'socks',
-    1194:  'openvpn',
-    1433:  'mssql',
-    1521:  'oracle',
-    1723:  'pptp',
-    1883:  'mqtt',
-    1935:  'rtmp',
-    2049:  'nfs',
-    3306:  'mysql',
-    3389:  'rdp',
-    4040:  'kasa',
-    5353:  'mdns',
-    5432:  'postgresql',
-    5540:  'matter',
-    5554:  'rtsp',
-    5900:  'vnc',
-    6379:  'redis',
-    6668:  'meross',
-    8080:  'http-alt',
-    8081:  'http-alt2',
-    8123:  'home-assistant',
-    8443:  'https-alt',
-    8554:  'rtsp-alt',
-    8883:  'mqtt-tls',
-    8888:  'zigbee2mqtt',
-    9000:  'openhab',
-    9001:  'openhab-alt',
-    9200:  'elasticsearch',
-    9443:  'openhab-tls',
-    9999:  'kasa-legacy',
-    10554: 'rtsp-alt2',
-    20202: 'matter-comm',
-    27017: 'mongodb',
-    34567: 'dvr-http',
-    34599: 'dvr-alt',
-    37777: 'dahua',
-    37778: 'dahua-alt',
-    49153: 'wemo',
-    55443: 'xiaomi-miio',
-  };
+  static const wellKnownPortNames = NetworkPorts.wellKnownPortNames;
 
   // Legacy aliases — keep existing callers compiling without changes.
   static List<int> get wellKnownPorts => wellKnownPortNames.keys.toList();
