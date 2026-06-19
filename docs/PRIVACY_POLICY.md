@@ -41,7 +41,7 @@ Required to perform network scans, ping, traceroute, DNS lookup, speed
 tests, and public IP detection. All of these operations are initiated
 explicitly by you. Results are displayed on screen only.
 
-### Foreground Service (FOREGROUND_SERVICE, FOREGROUND_SERVICE_DATA_SYNC, WAKE_LOCK)
+### Foreground Service (FOREGROUND_SERVICE, WAKE_LOCK)
 
 Used to keep long-running operations (network scan, ping) alive when the
 phone screen dims. A notification is shown while a scan is running, as

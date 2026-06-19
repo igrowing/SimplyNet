@@ -12,8 +12,6 @@
 
     <!-- Foreground service permissions (flutter_foreground_task) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
-    <!-- API 34+: declare the specific type of foreground service -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
     <!-- Keep CPU alive while service is running (held by flutter_foreground_task) -->
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <!-- POST_NOTIFICATIONS required on API 33+ to show the persistent notification -->
@@ -49,11 +47,11 @@
           android:foregroundServiceType="dataSync" matches the permission above.
           dataSync covers long-running network I/O (scan, ping, camera scan).
         -->
-        <service
+        <!--service
             android:name="com.pravera.flutter_foreground_task.service.ForegroundTaskService"
             android:foregroundServiceType="dataSync"
             android:exported="false"/>
-
+        -->
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
