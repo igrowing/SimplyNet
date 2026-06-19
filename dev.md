@@ -162,8 +162,6 @@ For personal accounts, Google disables the "Production" track out of the box. Yo
   * Your app will undergo one final, standard policy review. Within a few days, your app will be officially searchable and downloadable by anyone worldwide on the Google Play Store.
 
 
-
-
 # Build signed app bundle locally
 
 Adapted for Kotlin from: https://dev.to/teerasej/step-by-step-to-publish-your-flutter-project-as-andriod-app-bundle-1bpe
@@ -291,6 +289,7 @@ In your `.github/workflows/` YAML file, insert a step right before your flutter 
 ```
 
 When the GitHub runner finishes its job, the virtual environment is completely destroyed, leaving no trace of your keys or passwords behind. You get a fully signed, production-ready `.aab` file ready for Google Play without risking your security.
+
 
 
 
