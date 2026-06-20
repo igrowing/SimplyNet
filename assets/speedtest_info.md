@@ -13,6 +13,15 @@ test server and timing it. Three numbers are reported:
 The dropdown under the **Start Test** button selects which test backend is
 used.
 
+## Speed test service comparison
+
+| Feature | Cloudflare (Default) | Ookla |
+|---|---|---|
+| Measurement | TargetReal-world web browsing speed | Absolute theoretical line capacity
+| Privacy Status | 100% Anonymous. Zero tracking. | Collects IP, location, and device data. |
+| Technical Method | Single-stream progressive download | Multi-stream network saturation | 
+| Ideal For | Gauging daily internet performance | Verifying ISP advertised speeds |
+
 ### Via Cloudflare (default)
 
 Uses Cloudflare's public `speed.cloudflare.com` endpoints. No account or extra
