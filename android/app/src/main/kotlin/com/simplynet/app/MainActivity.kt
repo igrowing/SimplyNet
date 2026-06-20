@@ -114,8 +114,14 @@ class MainActivity : FlutterActivity() {
         val wifiManager = applicationContext
             .getSystemService(WIFI_SERVICE) as WifiManager
 
-        // On API 28+ startScan() is throttled; getScanResults() returns the
-        // most recent cached scan which is good enough for interference display.
+        // Best-effort: ask the OS for a fresh scan so both bands are refreshed.
+        // startScan() is throttled/deprecated on API 28+, but it is harmless and
+        // the caller merges several reads, so a band missing from one cached
+        // snapshot is still picked up on a later pass.
+        try {
+            @Suppress("DEPRECATION")
+            wifiManager.startScan()
+        } catch (_: Exception) {}
         val results = wifiManager.scanResults
         return results.map { ap ->
             mapOf(
@@ -174,7 +180,8 @@ class MainActivity : FlutterActivity() {
                         result["band"]           = earfcnToBand(id.earfcn)
                         result["earfcn"]         = id.earfcn.toString()
                         result["technology"]     = "LTE (4G)"
-                        result["tower_est_dist"] = estimateDist(sig.dbm)
+                        result["tower_est_dist"] =
+                            estimateDist(sig.dbm, earfcnToFreqMhz(id.earfcn))
                         break
                     }
                     is CellInfoNr -> {
@@ -191,7 +198,9 @@ class MainActivity : FlutterActivity() {
                             result["band"]       = "5G NR (${id.nrarfcn})"
                             result["earfcn"]     = id.nrarfcn.toString()
                             result["technology"]     = "5G NR"
-                            result["tower_est_dist"] = estimateDist(sig.dbm)
+                            // 5G mid-band is the common case; a representative
+                            // 3500 MHz keeps the estimate in a sane range.
+                            result["tower_est_dist"] = estimateDist(sig.dbm, 3500)
                             break
                         }
                     }
@@ -237,14 +246,51 @@ class MainActivity : FlutterActivity() {
         else                                 -> "Unknown ($type)"
     }
 
-    /** Very rough distance estimate from RSRP using free-space path loss. */
-    private fun estimateDist(rsrpDbm: Int): String {
-        // Rough heuristic: towers typically transmit at ~46 dBm EIRP on 1800 MHz.
-        // d(km) = 10^((46 - pathloss) / 20) where pathloss = 46 - rsrp (approx)
-        if (rsrpDbm <= -140 || rsrpDbm >= 0) return "N/A"
-        val pathloss = 46.0 - rsrpDbm
-        val distKm   = Math.pow(10.0, (pathloss - 20) / 20.0)
-        return "~${(distKm * 10).roundToInt() / 10.0} km (estimated)"
+    /**
+     * Very rough distance estimate from RSRP using the Okumura-Hata urban
+     * propagation model. Free-space path loss (the previous approach) hugely
+     * underestimates real cellular attenuation and produced absurd distances of
+     * millions of km. Hata is realistic for macro cells; the result is still
+     * only an order-of-magnitude indication.
+     *
+     * Assumes a macro base station (~30 m antenna), a 1.5 m mobile and a
+     * typical ~46 dBm EIRP, so path loss = EIRP - RSRP.
+     */
+    private fun estimateDist(rsrpDbm: Int, freqMhz: Int): String {
+        if (rsrpDbm <= -140 || rsrpDbm >= 0 || freqMhz <= 0) return "N/A"
+
+        val f  = freqMhz.toDouble().coerceIn(150.0, 3800.0)
+        val hb = 30.0   // base-station antenna height (m)
+        val hm = 1.5    // mobile height (m)
+        val pathLoss = 46.0 - rsrpDbm
+
+        val logF  = Math.log10(f)
+        val logHb = Math.log10(hb)
+        // Mobile-antenna correction for a small/medium city.
+        val aHm   = (1.1 * logF - 0.7) * hm - (1.56 * logF - 0.8)
+        val constTerm = 69.55 + 26.16 * logF - 13.82 * logHb - aHm
+        val slope     = 44.9 - 6.55 * logHb
+
+        val distKm = Math.pow(10.0, (pathLoss - constTerm) / slope)
+        if (distKm.isNaN() || distKm <= 0 || distKm > 100) return "N/A"
+        return if (distKm < 1.0)
+            "~${(distKm * 1000).roundToInt()} m (estimated)"
+        else
+            "~${(distKm * 10).roundToInt() / 10.0} km (estimated)"
+    }
+
+    /** Representative downlink centre frequency (MHz) for an LTE EARFCN band. */
+    private fun earfcnToFreqMhz(earfcn: Int): Int = when {
+        earfcn in 0..599      -> 2100
+        earfcn in 600..1199   -> 1900
+        earfcn in 1200..1949  -> 1800
+        earfcn in 1950..2399  -> 1700
+        earfcn in 2400..2649  -> 850
+        earfcn in 2750..3449  -> 2600
+        earfcn in 3450..3799  -> 900
+        earfcn in 6150..6449  -> 800
+        earfcn in 9210..9659  -> 700
+        else                  -> 1800
     }
 
     private fun earfcnToBand(earfcn: Int): String = when {

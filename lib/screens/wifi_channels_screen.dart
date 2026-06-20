@@ -31,29 +31,61 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
     super.dispose();
   }
 
+  // Number of consecutive reads merged per refresh. A single Android scan
+  // snapshot frequently contains only one band (2.4 OR 5 GHz), so reading once
+  // leaves a tab empty at random. Merging several snapshots by BSSID reliably
+  // captures both bands.
+  static const _scanPasses = 3;
+  static const _passGap    = Duration(milliseconds: 1200);
+
   Future<void> _scan() async {
     setState(() { _scanning = true; _error = ''; });
-    try {
-      final raw = await _channel.invokeMethod<List>('getScanResults');
-      if (raw != null) {
-        final nets = raw.cast<Map>().map((m) => _WifiNetwork(
-              ssid:    (m['ssid'] as String?) ?? '<hidden>',
-              bssid:   (m['bssid'] as String?) ?? '',
+
+    final merged = <String, _WifiNetwork>{};
+    String err = '';
+
+    for (var pass = 0; pass < _scanPasses; pass++) {
+      try {
+        final raw = await _channel.invokeMethod<List>('getScanResults');
+        if (raw != null) {
+          for (final m in raw.cast<Map>()) {
+            final freq = m['freq'] as int? ?? 0;
+            final band = _freqToBand(freq);
+            if (band == 'other') continue;
+            final bssid = (m['bssid'] as String?) ?? '';
+            final ssid  = (m['ssid'] as String?);
+            final net   = _WifiNetwork(
+              ssid:    (ssid != null && ssid.isNotEmpty) ? ssid : '<hidden>',
+              bssid:   bssid,
               rssi:    (m['rssi'] as int?) ?? -100,
-              channel: _freqToChannel(m['freq'] as int? ?? 0),
-              band:    _freqToBand(m['freq']    as int? ?? 0),
-            )).toList();
-        setState(() => _networks = nets);
-      } else {
-        setState(() { _error = 'No results.'; _networks = _demo(); });
+              channel: _freqToChannel(freq),
+              band:    band,
+            );
+            final key = bssid.isNotEmpty ? bssid : '${net.ssid}/${net.channel}';
+            merged[key] = net; // latest snapshot wins for this AP
+          }
+        }
+      } on PlatformException catch (e) {
+        err = 'Scan error: ${e.message}';
+      } catch (e) {
+        err = '$e';
       }
-    } on PlatformException catch (e) {
-      setState(() { _error = 'Scan error: ${e.message}'; _networks = _demo(); });
-    } catch (e) {
-      setState(() { _error = '$e'; _networks = _demo(); });
-    } finally {
-      setState(() => _scanning = false);
+      // Give the OS time to land a fresh scan before the next read.
+      if (pass < _scanPasses - 1) await Future.delayed(_passGap);
+      if (!mounted) return;
     }
+
+    if (!mounted) return;
+    setState(() {
+      if (merged.isEmpty) {
+        _error    = err.isEmpty ? 'No results.' : err;
+        _networks = _demo();
+      } else {
+        _error    = '';
+        _networks = merged.values.toList();
+      }
+      _scanning = false;
+    });
   }
 
   static int _freqToChannel(int f) {
