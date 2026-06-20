@@ -214,6 +214,66 @@ class NetworkTools {
     yield '\nMax hops ($maxHops) reached.\n';
   }
 
+  /// Structured variant of [traceroute] for the timeline UI. Emits one
+  /// [TracertHop] per TTL as it is probed (reverse-DNS resolved). Completes
+  /// after the destination is reached or [maxHops] is hit; throws
+  /// [TracerouteException] when the host cannot be resolved.
+  static Stream<TracertHop> tracerouteHops(String host,
+      {int maxHops = 30}) async* {
+    String destIp;
+    try {
+      final addrs = await InternetAddress.lookup(host)
+          .timeout(const Duration(seconds: 4));
+      destIp = addrs.first.address;
+    } catch (e) {
+      throw TracerouteException('DNS resolution failed: $e');
+    }
+
+    for (var ttl = 1; ttl <= maxHops; ttl++) {
+      String? hopIp;
+      var times = const <String>['*', '*', '*'];
+      var reached = false;
+      try {
+        final result = await Process.run(
+          'ping', ['-c', '3', '-t', ttl.toString(), '-W', '2', destIp],
+          runInShell: false,
+        ).timeout(const Duration(seconds: 9));
+        final hop =
+            parseTracerouteHop('${result.stdout}${result.stderr}', destIp);
+        hopIp   = hop.hopIp;
+        times   = hop.times;
+        reached = hop.reached;
+      } catch (_) {}
+
+      String? hostname;
+      if (hopIp != null) {
+        try {
+          final rev = await InternetAddress(hopIp)
+              .reverse()
+              .timeout(const Duration(seconds: 1));
+          if (rev.host != hopIp) hostname = rev.host;
+        } catch (_) {}
+      }
+
+      final rtts = <double>[];
+      for (final t in times) {
+        if (t == '*') continue;
+        final v = double.tryParse(t.replaceAll('ms', '').trim());
+        if (v != null) rtts.add(v);
+      }
+
+      reached = reached || hopIp == destIp;
+      yield TracertHop(
+        hop:      ttl,
+        ip:       hopIp,
+        hostname: hostname,
+        rttsMs:   rtts,
+        reached:  reached,
+      );
+      if (reached) return;
+    }
+  }
+
   /// Parse a single hop from a `ping -c 3 -t <TTL>` [output] against [destIp].
   /// Returns the replying hop IP (null if none), the per-probe RTT strings
   /// padded to three entries with '*' for non-responses, and whether the
@@ -413,5 +473,37 @@ class _Semaphore {
       if (_queue.isNotEmpty) _queue.removeAt(0).complete();
     }
   }
+}
+
+/// One hop in a structured traceroute, consumed by the timeline UI.
+class TracertHop {
+  final int hop;             // TTL / hop number (1-based)
+  final String? ip;          // replying router IP; null when nothing answered
+  final String? hostname;    // reverse-DNS name, null when unavailable
+  final List<double> rttsMs; // RTTs (ms) of the probes that replied
+  final bool reached;        // true when this hop is the destination
+
+  const TracertHop({
+    required this.hop,
+    this.ip,
+    this.hostname,
+    this.rttsMs = const [],
+    this.reached = false,
+  });
+
+  /// No router replied to any probe (the classic `* * *`).
+  bool get timedOut => ip == null;
+
+  /// Mean RTT across the probes that replied, or null when none did.
+  double? get avgMs =>
+      rttsMs.isEmpty ? null : rttsMs.reduce((a, b) => a + b) / rttsMs.length;
+}
+
+/// Thrown by [NetworkTools.tracerouteHops] when the host cannot be resolved.
+class TracerouteException implements Exception {
+  final String message;
+  const TracerouteException(this.message);
+  @override
+  String toString() => message;
 }
 
