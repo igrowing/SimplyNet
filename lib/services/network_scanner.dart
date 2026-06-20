@@ -373,31 +373,33 @@ class NetworkScanner {
             }
           })));
 
-      // Read fresh ARP table after all IPs have been pinged.
-      final arpTable = await readArpTable();
-      // Overlay self MACs — the device's own IPs are never in the neighbour
-      // table, so we fetch them from the network interfaces directly.
-      final selfMacs = await getSelfMacs();
-      _selfMacCache = null; // reset cache for next scan
-      for (final entry in selfMacs.entries) {
-        arpTable[entry.key] = entry.value;
+      // Give the kernel a moment to finalise neighbour entries before reading
+      // them. A fully concurrent sweep can finish faster than the neighbour
+      // table settles, so reading immediately would miss some MACs.
+      if (allResults.isNotEmpty) {
+        await Future.delayed(const Duration(milliseconds: 200));
       }
-      // Re-emit each host enriched with MAC, manufacturer and device type.
+
+      // Read the merged ARP/neighbour table (self MACs overlaid) and re-emit
+      // each host enriched with MAC, manufacturer and device type.
+      var arpTable = await _resolveMacs();
       for (final host in allResults) {
-        final mac = arpTable[host.ip];
-        if (mac != null && mac.isNotEmpty) {
-          host.mac = mac;
-          host.manufacturer = OuiService.lookup(mac);
-        } else {
-          host.mac = host.mac != '' ? host.mac : 'N/A';
-          host.manufacturer = host.manufacturer != '' ? host.manufacturer : '';
-        }
-        // MAC-based IoT classification takes priority over name matching.
-        final macType = deviceTypeFromMac(host.mac);
-        host.deviceType = macType.isNotEmpty
-            ? macType
-            : detectDeviceType(host.manufacturer);
+        _applyMac(host, arpTable);
         controller.add(host);
+      }
+
+      // Retry once for hosts whose MAC has not resolved yet — their neighbour
+      // entry may simply not have settled when the first read happened.
+      final unresolved =
+          allResults.where((h) => h.mac.isEmpty || h.mac == 'N/A').toList();
+      if (unresolved.isNotEmpty) {
+        await Future.delayed(const Duration(milliseconds: 400));
+        arpTable = await _resolveMacs();
+        for (final host in unresolved) {
+          final before = host.mac;
+          _applyMac(host, arpTable);
+          if (host.mac != before) controller.add(host);
+        }
       }
       await controller.close();
     }
@@ -408,6 +410,36 @@ class NetworkScanner {
     });
 
     return controller.stream;
+  }
+
+  /// Reads the neighbour (ARP) table and overlays the device's own interface
+  /// MACs, which never appear as remote neighbours. Resets [_selfMacCache] so a
+  /// subsequent call re-reads the interfaces.
+  static Future<Map<String, String>> _resolveMacs() async {
+    final arpTable = await readArpTable();
+    final selfMacs = await getSelfMacs();
+    _selfMacCache = null;
+    for (final entry in selfMacs.entries) {
+      arpTable[entry.key] = entry.value;
+    }
+    return arpTable;
+  }
+
+  /// Fills [host]'s MAC, manufacturer and device type from [arpTable]. When the
+  /// MAC is unknown the existing value is kept, falling back to 'N/A'.
+  static void _applyMac(HostResult host, Map<String, String> arpTable) {
+    final mac = arpTable[host.ip];
+    if (mac != null && mac.isNotEmpty) {
+      host.mac = mac;
+      host.manufacturer = OuiService.lookup(mac);
+    } else {
+      host.mac = host.mac != '' ? host.mac : 'N/A';
+      host.manufacturer = host.manufacturer != '' ? host.manufacturer : '';
+    }
+    // MAC-based IoT classification takes priority over name matching.
+    final macType = deviceTypeFromMac(host.mac);
+    host.deviceType =
+        macType.isNotEmpty ? macType : detectDeviceType(host.manufacturer);
   }
 
   static Future<HostResult?> _probeHost(

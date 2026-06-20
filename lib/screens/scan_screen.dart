@@ -18,11 +18,27 @@ class _ScanScreenState extends State<ScanScreen> {
   double _wMac  = 3;
   double _wHost = 4;
 
-  // Note: the scan is NOT started automatically on open. The provider already
-  // holds the last results (loaded from local storage at app start), so the
-  // screen just displays them. The user starts a fresh scan with the refresh
-  // button. A scan started here keeps running in the background even after the
-  // user leaves, because the provider outlives this screen.
+  // The provider holds the last results (loaded from local storage at app
+  // start), so the screen shows them without rescanning. Only when there is
+  // nothing cached do we kick off an automatic first scan. A scan started here
+  // keeps running in the background even after the user leaves, because the
+  // provider outlives this screen.
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeAutoScan());
+  }
+
+  Future<void> _maybeAutoScan() async {
+    final scan = context.read<ScanProvider>();
+    if (!scan.isValidTarget) return;
+    if (!await scan.shouldAutoScan() || !mounted) return;
+    final settings = context.read<SettingsProvider>().settings;
+    scan.startScan(
+      resolveNames: settings.resolveNames,
+      logging: settings.loggingEnabled,
+    );
+  }
 
   void _toggleScan() {
     final scan     = context.read<ScanProvider>();

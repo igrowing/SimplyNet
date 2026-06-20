@@ -36,6 +36,21 @@ void main() {
       await p.loadCache();
       expect(p.rawResults, isEmpty);
     });
+
+    test('shouldAutoScan is true once when cache is empty', () async {
+      final p = ScanProvider();
+      expect(await p.shouldAutoScan(), isTrue);
+      // One-shot: a second call never re-triggers an automatic scan.
+      expect(await p.shouldAutoScan(), isFalse);
+    });
+
+    test('shouldAutoScan is false when cached results exist', () async {
+      await ScanStorage.save(ScanStorage.kScanHosts, '192.168.1.0/24', [
+        HostResult(ip: '192.168.1.2').toJson(),
+      ]);
+      final p = ScanProvider();
+      expect(await p.shouldAutoScan(), isFalse);
+    });
   });
 
   group('ScanProvider target', () {

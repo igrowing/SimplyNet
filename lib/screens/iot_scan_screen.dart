@@ -6,6 +6,7 @@ import 'package:simply_net/providers/scan_provider.dart';
 import 'package:simply_net/providers/settings_provider.dart';
 import 'package:simply_net/screens/mqtt_screen.dart';
 import 'package:simply_net/services/iot_scanner.dart';
+import 'package:simply_net/services/network_scanner.dart';
 
 class IotScanScreen extends StatefulWidget {
   final String cidr;
@@ -17,9 +18,21 @@ class IotScanScreen extends StatefulWidget {
 
 class _IotScanScreenState extends State<IotScanScreen> {
   // The scan is owned by IotScanProvider, so it keeps running in the background
-  // when the user leaves this screen. We do NOT auto-scan on open — the
-  // provider already holds the last results (loaded from local storage); the
-  // user starts a fresh scan with the refresh button.
+  // when the user leaves this screen. The provider already holds the last
+  // results (loaded from local storage); we only auto-scan when nothing is
+  // cached, otherwise the user refreshes manually.
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeAutoScan());
+  }
+
+  Future<void> _maybeAutoScan() async {
+    if (!NetworkScanner.isValidCidr(widget.cidr)) return;
+    final iot = context.read<IotScanProvider>();
+    if (!await iot.shouldAutoScan() || !mounted) return;
+    _rescan();
+  }
 
   void _rescan() {
     final iot      = context.read<IotScanProvider>();

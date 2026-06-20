@@ -58,5 +58,29 @@ void main() {
       final p = IotScanProvider();
       expect(() => p.devices.clear(), throwsUnsupportedError);
     });
+
+    test('shouldAutoScan is true once when cache is empty', () async {
+      final p = IotScanProvider();
+      expect(await p.shouldAutoScan(), isTrue);
+      expect(await p.shouldAutoScan(), isFalse);
+    });
+
+    test('shouldAutoScan is false when cached devices exist', () async {
+      const device = IotDevice(
+        ip: '192.168.1.40',
+        mac: 'AA:00',
+        vendor: 'Espressif',
+        protocol: 'Tasmota',
+        model: '',
+        openPorts: [80],
+        confidence: IotConfidence.probable,
+        detectionMethod: 'HTTP',
+      );
+      await ScanStorage.save(ScanStorage.kIotDevices, '192.168.1.0/24', [
+        device.toJson(),
+      ]);
+      final p = IotScanProvider();
+      expect(await p.shouldAutoScan(), isFalse);
+    });
   });
 }

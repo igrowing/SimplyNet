@@ -56,5 +56,26 @@ void main() {
       final p = CameraScanProvider();
       expect(() => p.results.clear(), throwsUnsupportedError);
     });
+
+    test('shouldAutoScan is true once when cache is empty', () async {
+      final p = CameraScanProvider();
+      expect(await p.shouldAutoScan(), isTrue);
+      expect(await p.shouldAutoScan(), isFalse);
+    });
+
+    test('shouldAutoScan is false when cached cameras exist', () async {
+      const cam = CameraCandidate(
+        ip: '192.168.1.50',
+        port: 554,
+        method: CameraDetectionMethod.specificPort,
+        evidence: 'RTSP',
+        manufacturer: 'Hikvision',
+      );
+      await ScanStorage.save(ScanStorage.kCameras, '192.168.1.0/24', [
+        cam.toJson(),
+      ]);
+      final p = CameraScanProvider();
+      expect(await p.shouldAutoScan(), isFalse);
+    });
   });
 }

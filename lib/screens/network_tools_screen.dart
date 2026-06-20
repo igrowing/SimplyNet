@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 // import 'package:simply_net/models/host_result.dart';
 // import 'package:simply_net/services/network_scanner.dart';
 import 'package:simply_net/services/ip_camera_detector.dart';
+import 'package:simply_net/services/network_scanner.dart';
 import 'package:simply_net/services/network_tools.dart';
 import 'package:simply_net/providers/camera_scan_provider.dart';
 import 'package:simply_net/providers/scan_provider.dart';
@@ -703,23 +704,39 @@ class IpCameraScanScreen extends StatefulWidget {
 
 class _IpCameraScanState extends State<IpCameraScanScreen> {
   // The scan is owned by CameraScanProvider, so it keeps running in the
-  // background when the user leaves this screen. We do NOT auto-scan on open —
-  // the provider already holds the last results (loaded from local storage);
-  // the user starts a fresh scan with the refresh button.
+  // background when the user leaves this screen. The provider already holds the
+  // last results (loaded from local storage); we only auto-scan when nothing is
+  // cached, otherwise the user refreshes manually.
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeAutoScan());
+  }
+
+  Future<void> _maybeAutoScan() async {
+    if (!NetworkScanner.isValidCidr(widget.cidr)) return;
+    final cams = context.read<CameraScanProvider>();
+    if (!await cams.shouldAutoScan() || !mounted) return;
+    _startScan();
+  }
 
   void _toggle() {
     final cams = context.read<CameraScanProvider>();
     if (cams.scanning) {
       cams.stopScan();
     } else {
-      final scanProv = context.read<ScanProvider>();
-      final logging =
-          context.read<SettingsProvider>().settings.loggingEnabled;
-      final knownIps = scanProv.hasValidResults(widget.cidr)
-          ? scanProv.rawResults.map((h) => h.ip).toList()
-          : null;
-      cams.startScan(widget.cidr, knownIps: knownIps, logging: logging);
+      _startScan();
     }
+  }
+
+  void _startScan() {
+    final cams = context.read<CameraScanProvider>();
+    final scanProv = context.read<ScanProvider>();
+    final logging = context.read<SettingsProvider>().settings.loggingEnabled;
+    final knownIps = scanProv.hasValidResults(widget.cidr)
+        ? scanProv.rawResults.map((h) => h.ip).toList()
+        : null;
+    cams.startScan(widget.cidr, knownIps: knownIps, logging: logging);
   }
 
   // ── Label helpers ──────────────────────────────────────────────────────────

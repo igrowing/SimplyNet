@@ -28,8 +28,14 @@ class IotScanProvider extends ChangeNotifier {
   StreamSubscription<IotDevice>? _sub;
   Timer? _progressTimer;
 
+  Future<void>? _cacheLoad;
+  bool _autoScanned = false;
+
   /// Load the last persisted IoT results (if any) from local storage.
-  Future<void> loadCache() async {
+  /// Memoised so [shouldAutoScan] can await the same load.
+  Future<void> loadCache() => _cacheLoad ??= _loadCache();
+
+  Future<void> _loadCache() async {
     try {
       final snap = await ScanStorage.load(ScanStorage.kIotDevices);
       if (snap == null) return;
@@ -39,6 +45,17 @@ class IotScanProvider extends ChangeNotifier {
     } on FormatException {
       await ScanStorage.clear(ScanStorage.kIotDevices);
     }
+  }
+
+  /// Returns true (at most once) when, after the cached results have finished
+  /// loading, there is still nothing to show — signalling the screen to start
+  /// an automatic first scan. Subsequent calls return false so a network with
+  /// no IoT devices is not rescanned on every visit.
+  Future<bool> shouldAutoScan() async {
+    await loadCache();
+    if (_autoScanned || _scanning) return false;
+    _autoScanned = true;
+    return _devices.isEmpty;
   }
 
   /// Start an IoT scan of [cidr].
