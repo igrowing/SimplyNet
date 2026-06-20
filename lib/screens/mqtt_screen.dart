@@ -8,6 +8,8 @@ import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
 import 'package:simply_net/providers/mqtt_provider.dart';
 import 'package:simply_net/constants/network_ports.dart';
+import 'package:simply_net/services/lan_detector.dart';
+import 'package:simply_net/services/mqtt_broker_scanner.dart';
 
 // ════════════════════════════════════════════════════════════════════════════
 //  Shared MQTT connection settings (broker, auth).
@@ -109,6 +111,12 @@ class _MqttSettingsSheetState extends State<_MqttSettingsSheet> {
   late bool _keepPassword;
   bool _obscurePwd = true;
 
+  // Broker auto-discovery state.
+  bool _discovering = false;
+  String? _cidr;
+  Timer? _portDebounce;
+  int _discoverToken = 0;
+
   @override
   void initState() {
     super.initState();
@@ -118,13 +126,50 @@ class _MqttSettingsSheetState extends State<_MqttSettingsSheet> {
     _userCtrl     = TextEditingController(text: s.username);
     _pwdCtrl      = TextEditingController(text: s.password);
     _keepPassword = s.keepPassword;
+    // On first open with no broker set, auto-discover it by scanning the
+    // current subnet for whoever answers on the configured port.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_brokerCtrl.text.trim().isEmpty) _discoverBroker(force: false);
+    });
   }
 
   @override
   void dispose() {
+    _portDebounce?.cancel();
     _brokerCtrl.dispose(); _portCtrl.dispose();
     _userCtrl.dispose();   _pwdCtrl.dispose();
     super.dispose();
+  }
+
+  /// Discover the broker IP by socket-scanning the current subnet for the
+  /// configured port. [force] true (port changed) always overwrites the field;
+  /// [force] false (initial open) only fills an empty field. When no host
+  /// answers, the broker field is cleared for manual entry.
+  Future<void> _discoverBroker({required bool force}) async {
+    if (!force && _brokerCtrl.text.trim().isNotEmpty) return;
+    final port = int.tryParse(_portCtrl.text.trim());
+    if (port == null || port <= 0 || port > 65535) return;
+    final token = ++_discoverToken;
+    setState(() => _discovering = true);
+    try {
+      final cidr = _cidr ??= await detectLanCidr();
+      if (cidr == null) return;
+      final ip = await MqttBrokerScanner.findBroker(cidr, port);
+      if (!mounted || token != _discoverToken) return;
+      _brokerCtrl.text = ip ?? '';
+    } finally {
+      if (mounted && token == _discoverToken) {
+        setState(() => _discovering = false);
+      }
+    }
+  }
+
+  void _onPortChanged(String _) {
+    _portDebounce?.cancel();
+    _portDebounce = Timer(
+      const Duration(milliseconds: 600),
+      () => _discoverBroker(force: true),
+    );
   }
 
   Future<void> _save() async {
@@ -161,12 +206,25 @@ class _MqttSettingsSheetState extends State<_MqttSettingsSheet> {
             const SizedBox(height: 20),
             _field(controller: _brokerCtrl,
                 label: 'Broker IP / FQDN',
-                hint: 'e.g. 192.168.1.10 or broker.example.com',
-                keyboard: TextInputType.url),
+                hint: _discovering
+                    ? 'Searching subnet…'
+                    : 'e.g. 192.168.1.10 or broker.example.com',
+                keyboard: TextInputType.url,
+                suffix: _discovering
+                    ? const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    : null),
             const SizedBox(height: 12),
             _field(controller: _portCtrl,
                 label: 'Port', hint: '1883',
-                keyboard: TextInputType.number),
+                keyboard: TextInputType.number,
+                onChanged: _onPortChanged),
             const SizedBox(height: 12),
             _field(controller: _userCtrl,
                 label: 'Username (optional)',
@@ -223,16 +281,20 @@ class _MqttSettingsSheetState extends State<_MqttSettingsSheet> {
     required String label,
     String? hint,
     TextInputType keyboard = TextInputType.text,
+    ValueChanged<String>? onChanged,
+    Widget? suffix,
   }) =>
       TextField(
         controller:   controller,
         keyboardType: keyboard,
+        onChanged:    onChanged,
         decoration: InputDecoration(
           labelText: label,
           hintText:  hint,
           border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10)),
           isDense: true,
+          suffixIcon: suffix,
         ),
       );
 }

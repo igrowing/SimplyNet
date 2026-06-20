@@ -4,6 +4,7 @@ import 'package:simply_net/models/host_result.dart';
 import 'package:simply_net/services/foreground_service.dart';
 import 'package:simply_net/services/log_service.dart';
 import 'package:simply_net/services/network_scanner.dart';
+import 'package:simply_net/services/scan_storage.dart';
 
 enum ScanSortColumn { ip, mac, hostname }
 
@@ -20,7 +21,12 @@ class ScanProvider extends ChangeNotifier {
 
   // ── Scan state ────────────────────────────────────────────────────────────
   List<HostResult> _results = [];
-  List<HostResult> get results => _sortedResults();
+
+  /// While scanning, results are returned in arrival order so the table fills
+  /// live without rows jumping around. Once the scan finishes (or when showing
+  /// cached results) the active sort column/direction is applied.
+  List<HostResult> get results =>
+      _isScanning ? List.unmodifiable(_results) : _sortedResults();
 
   /// Unsorted raw results — used by IoT and camera screens to reuse
   /// the already-discovered host list without triggering a re-sort.
@@ -117,17 +123,28 @@ class ScanProvider extends ChangeNotifier {
     FgService.start(title: 'Network scan', body: 'Scanning $_target…');
 
     _sub = NetworkScanner.scan(_target, resolveNames: resolveNames).listen((host) {
-        _results.add(host);
-        _logBuffer.writeln('FOUND  ${host.ip}\t${host.mac}\t${host.hostname}\t${host.manufacturer}');
+        // De-duplicate by IP: the scanner emits each host first when it is
+        // discovered (MAC pending) and again once enriched with MAC/vendor.
+        final idx = _results.indexWhere((h) => h.ip == host.ip);
+        if (idx >= 0) {
+          _results[idx] = host;
+        } else {
+          _results.add(host);
+          _logBuffer.writeln('FOUND  ${host.ip}\t${host.mac}\t${host.hostname}\t${host.manufacturer}');
+        }
         notifyListeners();
       },
       onDone: () async {
         _isScanning = false;
+        // Sort by IP when the scan completes.
+        _sortColumn = ScanSortColumn.ip;
+        _sortAsc = true;
         _logBuffer.writeln('\nScan complete. ${_results.length} host(s) found.');
         _logBuffer.writeln('=== End: ${DateTime.now().toIso8601String()} ===');
         // Stop the foreground service; show "done" in the notification briefly.
         FgService.stop(doneBody: 'Scan complete — ${_results.length} host(s) found.');
         notifyListeners();
+        await _saveCache();
         if (logging) {
           try {
             await LogService.createLog(
@@ -165,11 +182,39 @@ class ScanProvider extends ChangeNotifier {
   void stopScan() {
     _sub?.cancel();
     _isScanning = false;
-    // Wipe results when user aborts: a partial host list should not be
-    // reused by IoT/camera screens — they would miss hosts.
-    _results = [];
+    // Keep whatever was found so far and sort it by IP — the partial list is
+    // still useful and gets persisted so the screen can reload it later.
+    _sortColumn = ScanSortColumn.ip;
+    _sortAsc = true;
     FgService.stop(doneBody: 'Scan stopped.');
     notifyListeners();
+    _saveCache();
+  }
+
+  // ── Local-storage cache ─────────────────────────────────────────────────
+  // Persist the last results so the Scan screen can reload them on open
+  // instead of starting a fresh scan automatically.
+
+  /// Load the last persisted scan results (if any) from local storage.
+  Future<void> loadCache() async {
+    try {
+      final snap = await ScanStorage.load(ScanStorage.kScanHosts);
+      if (snap == null) return;
+      _results = snap.items.map(HostResult.fromJson).toList();
+      notifyListeners();
+    } on FormatException {
+      // Corrupt cache — discard it and start empty.
+      await ScanStorage.clear(ScanStorage.kScanHosts);
+    }
+  }
+
+  Future<void> _saveCache() async {
+    if (_results.isEmpty) return;
+    await ScanStorage.save(
+      ScanStorage.kScanHosts,
+      _target,
+      _results.map((h) => h.toJson()).toList(),
+    );
   }
 
   @override

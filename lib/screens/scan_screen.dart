@@ -18,20 +18,11 @@ class _ScanScreenState extends State<ScanScreen> {
   double _wMac  = 3;
   double _wHost = 4;
 
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final scan     = context.read<ScanProvider>();
-      final settings = context.read<SettingsProvider>().settings;
-      if (!scan.isScanning && scan.isValidTarget) {
-        scan.startScan(
-          resolveNames: settings.resolveNames,
-          logging: settings.loggingEnabled,
-        );
-      }
-    });
-  }
+  // Note: the scan is NOT started automatically on open. The provider already
+  // holds the last results (loaded from local storage at app start), so the
+  // screen just displays them. The user starts a fresh scan with the refresh
+  // button. A scan started here keeps running in the background even after the
+  // user leaves, because the provider outlives this screen.
 
   void _toggleScan() {
     final scan     = context.read<ScanProvider>();
@@ -314,12 +305,14 @@ class _EmptyState extends StatelessWidget {
               color: Theme.of(context).colorScheme.outline),
           const SizedBox(height: 12),
           Text(
-            isValid ? 'No hosts found' : 'No network target set',
+            isValid ? 'No saved results' : 'No network target set',
             style: Theme.of(context).textTheme.titleMedium,
           ),
-          if (!isValid)
-            const Text('Set a target on the Home screen',
-                style: TextStyle(fontSize: 12)),
+          Text(
+            isValid
+                ? 'Tap the refresh button to scan'
+                : 'Set a target on the Home screen',
+            style: const TextStyle(fontSize: 12)),
         ],
       ),
     );

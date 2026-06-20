@@ -31,6 +31,15 @@ class NetworkScanner {
 
   static bool isValidCidr(String cidr) => parseCidr(cidr) != null;
 
+  /// Expands [cidr] into its probe-able host IPs (network and broadcast
+  /// addresses excluded). Returns an empty list for an invalid CIDR.
+  static List<String> hostsInCidr(String cidr) {
+    final parsed = parseCidr(cidr);
+    if (parsed == null) return const [];
+    final (baseIp, prefix) = parsed;
+    return expandCidr(baseIp, prefix);
+  }
+
   // ── ARP table ─────────────────────────────────────────────────────────────
   @visibleForTesting
   static Future<Map<String, String>> readArpTable() async {
@@ -334,54 +343,71 @@ class NetworkScanner {
 
   // ── Main scan ─────────────────────────────────────────────────────────────
 
-  static Stream<HostResult> scan(String cidr, {bool resolveNames = true}) async* {
-    final parsed = parseCidr(cidr);
-    if (parsed == null) return;
-    final (baseIp, prefix) = parsed;
-    final hosts    = expandCidr(baseIp, prefix);
+  /// Scans [cidr] and emits hosts as they are discovered.
+  ///
+  /// Each live host is emitted immediately (MAC still pending) so the UI can
+  /// fill its table during the sweep. Once every probe completes, the ARP
+  /// table is read once and each host is emitted a second time — now enriched
+  /// with MAC, manufacturer and device type. Listeners de-duplicate by IP, so
+  /// the enriched emission updates the row in place.
+  static Stream<HostResult> scan(String cidr, {bool resolveNames = true}) {
+    final controller = StreamController<HostResult>();
 
-    // Peek all IPs in the LAN to collect MACs in ARP table, then resolve hostnames in parallel.
-    final chunks = <Future<HostResult?>>[];
-    final allResults = <HostResult>[];
-    for (var i = 0; i < hosts.length; i++) {
-      chunks.add(_probeHost(hosts[i], resolveNames));
+    Future<void> run() async {
+      final parsed = parseCidr(cidr);
+      if (parsed == null) {
+        await controller.close();
+        return;
+      }
+      final (baseIp, prefix) = parsed;
+      final hosts = expandCidr(baseIp, prefix);
 
-      if (chunks.length >= _parallelism || i == hosts.length - 1) {
-        final results = await Future.wait(chunks);
-        for (final result in results) {
-          if (result != null) allResults.add(result);
+      // Probe all hosts concurrently; emit each live host the moment it answers.
+      final sem = _Semaphore(_parallelism);
+      final allResults = <HostResult>[];
+      await Future.wait(hosts.map((ip) => sem.run(() async {
+            final host = await _probeHost(ip, resolveNames);
+            if (host != null) {
+              allResults.add(host);
+              controller.add(host);
+            }
+          })));
+
+      // Read fresh ARP table after all IPs have been pinged.
+      final arpTable = await readArpTable();
+      // Overlay self MACs — the device's own IPs are never in the neighbour
+      // table, so we fetch them from the network interfaces directly.
+      final selfMacs = await getSelfMacs();
+      _selfMacCache = null; // reset cache for next scan
+      for (final entry in selfMacs.entries) {
+        arpTable[entry.key] = entry.value;
+      }
+      // Re-emit each host enriched with MAC, manufacturer and device type.
+      for (final host in allResults) {
+        final mac = arpTable[host.ip];
+        if (mac != null && mac.isNotEmpty) {
+          host.mac = mac;
+          host.manufacturer = OuiService.lookup(mac);
+        } else {
+          host.mac = host.mac != '' ? host.mac : 'N/A';
+          host.manufacturer = host.manufacturer != '' ? host.manufacturer : '';
         }
-        chunks.clear();
+        // MAC-based IoT classification takes priority over name matching.
+        final macType = deviceTypeFromMac(host.mac);
+        host.deviceType = macType.isNotEmpty
+            ? macType
+            : detectDeviceType(host.manufacturer);
+        controller.add(host);
       }
+      await controller.close();
     }
 
-    // Read fresh ARP table after all IPs have been pinged.
-    final arpTable  = await readArpTable();
-    // Overlay self MACs — the device's own IPs are never in the neighbour
-    // table, so we fetch them from the network interfaces directly.
-    final selfMacs  = await getSelfMacs();
-    _selfMacCache   = null; // reset cache for next scan
-    for (final entry in selfMacs.entries) {
-      arpTable[entry.key] = entry.value;
-    }
-    // Fill results with MAC addresses, manufacturer names, and device types
-    for (final host in allResults) {
-      final mac = arpTable[host.ip];
-      if (mac != null && mac.isNotEmpty) {
-        host.mac = mac;
-        host.manufacturer = OuiService.lookup(mac);
-      } else {
-        host.mac = host.mac != '' ? host.mac : 'N/A';
-        host.manufacturer = host.manufacturer != '' ? host.manufacturer : '';
-      }
-      // Detect device type from manufacturer
-      // MAC-based IoT classification takes priority over manufacturer name matching
-      final macType = deviceTypeFromMac(host.mac);
-      host.deviceType = macType.isNotEmpty
-          ? macType
-          : detectDeviceType(host.manufacturer);
-      yield host;
-    }
+    run().catchError((Object e, StackTrace st) {
+      controller.addError(e, st);
+      controller.close();
+    });
+
+    return controller.stream;
   }
 
   static Future<HostResult?> _probeHost(
@@ -426,5 +452,28 @@ class NetworkScanner {
       manufacturer: "", // tobe filled later from OUI lookup when MAC is known
       isUp: true,
     );
+  }
+}
+
+// ── Simple semaphore for concurrency limiting ─────────────────────────────────
+
+class _Semaphore {
+  int _count;
+  final _queue = <Completer<void>>[];
+  _Semaphore(this._count);
+
+  Future<T> run<T>(Future<T> Function() fn) async {
+    if (_count <= 0) {
+      final c = Completer<void>();
+      _queue.add(c);
+      await c.future;
+    }
+    _count--;
+    try {
+      return await fn();
+    } finally {
+      _count++;
+      if (_queue.isNotEmpty) _queue.removeAt(0).complete();
+    }
   }
 }

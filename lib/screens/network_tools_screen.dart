@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 // import 'package:simply_net/services/network_scanner.dart';
 import 'package:simply_net/services/ip_camera_detector.dart';
 import 'package:simply_net/services/network_tools.dart';
+import 'package:simply_net/providers/camera_scan_provider.dart';
 import 'package:simply_net/providers/scan_provider.dart';
 import 'package:simply_net/widgets/diag_widgets.dart';
 import 'package:provider/provider.dart';
@@ -701,102 +702,24 @@ class IpCameraScanScreen extends StatefulWidget {
 }
 
 class _IpCameraScanState extends State<IpCameraScanScreen> {
-  final List<CameraCandidate> _results = [];
-  bool _scanning = false;
-  int  _done     = 0;
-  int  _total    = 0;
-  StreamSubscription? _sub;
-
-  @override
-  void initState() {
-    super.initState();
-    _startScan();
-  }
-
-  @override
-  void dispose() {
-    _sub?.cancel();
-    super.dispose();
-  }
-
-  // ── Logging ───────────────────────────────────────────────────────────────
-
-  /// Write a log entry for the camera scan results collected so far.
-  /// [partial] is true when the user stopped the scan before it completed.
-  Future<void> _saveLog({bool partial = false}) async {
-    if (!context.mounted) return;
-    final settings = context.read<SettingsProvider>().settings;
-    if (!settings.loggingEnabled) return;
-    if (_results.isEmpty) return;
-    final label = partial ? 'stopped' : 'complete';
-    final buf = StringBuffer();
-    for (final cam in _results) {
-      buf.writeln('${cam.ip}  :${cam.port}  ${cam.method.name}  '
-          '${cam.manufacturer}  ${cam.evidence}');
-    }
-    await LogService.createLog(
-      function: 'ip_cameras',
-      content:  buf.toString(),
-      summary:  'IP camera scan ${widget.cidr}: '
-                '${_results.length} found ($label)',
-    );
-  }
-
-  // ── Scan control ──────────────────────────────────────────────────────────
+  // The scan is owned by CameraScanProvider, so it keeps running in the
+  // background when the user leaves this screen. We do NOT auto-scan on open —
+  // the provider already holds the last results (loaded from local storage);
+  // the user starts a fresh scan with the refresh button.
 
   void _toggle() {
-    if (_scanning) {
-      _sub?.cancel();
-      setState(() => _scanning = false);
-      // Log partial results — same as Ping stop behaviour.
-      _saveLog(partial: true);
+    final cams = context.read<CameraScanProvider>();
+    if (cams.scanning) {
+      cams.stopScan();
     } else {
-      // Rescan — wipe shared cache so we always do a fresh full sweep.
-      context.read<ScanProvider>().clearCache();
-      _startScan(forceFullScan: true);
+      final scanProv = context.read<ScanProvider>();
+      final logging =
+          context.read<SettingsProvider>().settings.loggingEnabled;
+      final knownIps = scanProv.hasValidResults(widget.cidr)
+          ? scanProv.rawResults.map((h) => h.ip).toList()
+          : null;
+      cams.startScan(widget.cidr, knownIps: knownIps, logging: logging);
     }
-  }
-
-  void _startScan({bool forceFullScan = false}) {
-    _sub?.cancel();
-    setState(() {
-      _results.clear();
-      _scanning = true;
-      _done     = 0;
-      _total    = 0;
-    });
-
-    final scanProv = context.read<ScanProvider>();
-
-    // Choose stream source: fast-path (known live hosts) vs full subnet sweep.
-    // Both paths produce the same Stream<CameraCandidate> interface — the only
-    // difference is the discovery strategy, so we unify the .listen() call.
-    final Stream<CameraCandidate> stream;
-    if (!forceFullScan && scanProv.hasValidResults(widget.cidr)) {
-      // ── Fast path: probe only already-discovered hosts ───────────────────
-      final ips = scanProv.rawResults.map((h) => h.ip).toList();
-      _total = ips.length;
-      stream = IpCameraDetector.scanHosts(
-        ips,
-        onProgress: (done, total) =>
-            setState(() { _done = done; _total = total; }),
-      );
-    } else {
-      // ── Full scan path ───────────────────────────────────────────────────
-      stream = IpCameraDetector.scanSubnet(
-        widget.cidr,
-        onProgress: (done, total) =>
-            setState(() { _done = done; _total = total; }),
-      );
-    }
-
-    _sub = stream.listen(
-      (candidate) => setState(() => _results.add(candidate)),
-      onDone: () async {
-        setState(() => _scanning = false);
-        await _saveLog();
-      },
-    );
   }
 
   // ── Label helpers ──────────────────────────────────────────────────────────
@@ -824,6 +747,11 @@ class _IpCameraScanState extends State<IpCameraScanScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cams     = context.watch<CameraScanProvider>();
+    final results  = cams.results;
+    final scanning = cams.scanning;
+    final done     = cams.done;
+    final total    = cams.total;
     return Scaffold(
       appBar: AppBar(
         title: const Text('IP Camera Scan',
@@ -832,36 +760,38 @@ class _IpCameraScanState extends State<IpCameraScanScreen> {
           IconButton(
             icon: AnimatedSwitcher(
               duration: const Duration(milliseconds: 200),
-              child: _scanning
+              child: scanning
                   ? const Icon(Icons.stop_rounded,
                       key: ValueKey('stop'), size: 26)
                   : const Icon(Icons.refresh_rounded,
                       key: ValueKey('refresh'), size: 24),
             ),
-            tooltip: _scanning ? 'Stop scan' : 'Re-scan',
+            tooltip: scanning ? 'Stop scan' : 'Re-scan',
             onPressed: _toggle,
           ),
         ],
       ),
       body: Column(
         children: [
-          if (_scanning && _total > 0)
+          if (scanning && total > 0)
             LinearProgressIndicator(
-                value: _total > 0 ? _done / _total : null),
+                value: total > 0 ? done / total : null),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             child: Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                _scanning
-                    ? 'Scanning… $_done/$_total hosts — ${_results.length} camera(s)'
-                    : '${_results.length} camera(s) found — ${widget.cidr}',
+                scanning
+                    ? 'Scanning… $done/$total hosts — ${results.length} camera(s)'
+                    : results.isEmpty
+                        ? 'No saved results — tap refresh to scan ${widget.cidr}'
+                        : '${results.length} camera(s) found — ${widget.cidr}',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
           ),
           // Legend
-          if (_results.isNotEmpty)
+          if (results.isNotEmpty)
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -879,14 +809,14 @@ class _IpCameraScanState extends State<IpCameraScanScreen> {
             ),
           const SizedBox(height: 4),
           Expanded(
-            child: _results.isEmpty && !_scanning
+            child: results.isEmpty && !scanning
                 ? const Center(child: Text('No cameras found.'))
                 : ListView.separated(
-                    itemCount: _results.length,
+                    itemCount: results.length,
                     separatorBuilder: (_, _) =>
                         const Divider(height: 1, thickness: 0.5),
                     itemBuilder: (ctx, i) {
-                      final c = _results[i];
+                      final c = results[i];
                       return ListTile(
                         leading: Icon(_methodIcon(c.method),
                             color: _methodColor(c.method)),

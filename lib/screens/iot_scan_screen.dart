@@ -1,12 +1,11 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:simply_net/providers/iot_scan_provider.dart';
 import 'package:simply_net/providers/scan_provider.dart';
 import 'package:simply_net/providers/settings_provider.dart';
-import 'package:simply_net/services/foreground_service.dart';
+import 'package:simply_net/screens/mqtt_screen.dart';
 import 'package:simply_net/services/iot_scanner.dart';
-import 'package:simply_net/services/log_service.dart';
 
 class IotScanScreen extends StatefulWidget {
   final String cidr;
@@ -17,115 +16,34 @@ class IotScanScreen extends StatefulWidget {
 }
 
 class _IotScanScreenState extends State<IotScanScreen> {
-  List<IotDevice> _devices = [];
-  bool   _scanning = false;
-  int    _done     = 0;
-  int    _total    = 0;
-  StreamSubscription<IotDevice>? _sub;
+  // The scan is owned by IotScanProvider, so it keeps running in the background
+  // when the user leaves this screen. We do NOT auto-scan on open — the
+  // provider already holds the last results (loaded from local storage); the
+  // user starts a fresh scan with the refresh button.
 
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _startScan());
-  }
-
-  @override
-  void dispose() {
-    _sub?.cancel();
-    FgService.stop();
-    super.dispose();
-  }
-
-  /// Called by the Rescan button — always does a fresh full scan,
-  /// discarding any cached host list from ScanProvider.
   void _rescan() {
-    context.read<ScanProvider>().clearCache();
-    _startScan(forceFullScan: true);
-  }
-
-  void _startScan({bool forceFullScan = false}) {
-    if (_scanning) return;
-    _sub?.cancel();
-    setState(() {
-      _devices  = [];
-      _scanning = true;
-      _done     = 0;
-    });
-
+    final iot      = context.read<IotScanProvider>();
     final scanProv = context.read<ScanProvider>();
-
-    if (!forceFullScan && scanProv.hasValidResults(widget.cidr)) {
-      // ── Fast path: reuse already-discovered IPs from ScanProvider ────────
-      // Skip the full subnet sweep and probe only the live hosts we already know.
-      final ips = scanProv.rawResults.map((h) => h.ip).toList();
-      _total = ips.length;
-      FgService.start(title: 'IoT Scan', body: 'Probing ${ips.length} known hosts…');
-
-      _sub = IotScanner.scanHosts(ips).listen(
-        (dev) => setState(() {
-          _devices.add(dev);
-          _done++;
-        }),
-        onDone: () async {
-          setState(() => _scanning = false);
-          FgService.stop(doneBody: 'IoT scan complete — ${_devices.length} device(s) found.');
-          await _writeLog();
-        },
-        onError: (_) => setState(() => _scanning = false),
-      );
-    } else {
-      // ── Full scan path: no cached results yet ────────────────────────────
-      final parts  = widget.cidr.split('/');
-      final prefix = int.tryParse(parts.length > 1 ? parts[1] : '24') ?? 24;
-      _total = (1 << (32 - prefix)) - 2;
-
-      FgService.start(title: 'IoT Scan', body: 'Scanning ${widget.cidr} for IoT devices…');
-
-      _sub = IotScanner.scanSubnet(widget.cidr).listen(
-        (dev) => setState(() => _devices.add(dev)),
-        onDone: () async {
-          setState(() => _scanning = false);
-          FgService.stop(doneBody: 'IoT scan complete — ${_devices.length} device(s) found.');
-          await _writeLog();
-        },
-        onError: (_) => setState(() => _scanning = false),
-      );
-
-      // Progress ticker (full scan gives no per-host progress)
-      Timer.periodic(const Duration(milliseconds: 400), (t) {
-        if (!_scanning) { t.cancel(); return; }
-        setState(() => _done = (_done + 8).clamp(0, _total));
-      });
-    }
+    final logging  = context.read<SettingsProvider>().settings.loggingEnabled;
+    // Reuse a fresh host list from a previous full Scan when available.
+    final knownIps = scanProv.hasValidResults(widget.cidr)
+        ? scanProv.rawResults.map((h) => h.ip).toList()
+        : null;
+    iot.startScan(widget.cidr, knownIps: knownIps, logging: logging);
   }
 
-  Future<void> _writeLog() async {
-    if (!context.mounted) return;
-    final settings = context.read<SettingsProvider>().settings;
-    if (!settings.loggingEnabled) return;
-    final buf = StringBuffer();
-    for (final dev in _devices) {
-      buf.writeln('${dev.ip}  ${dev.protocol}  ${dev.vendor}  '
-          '[${dev.detectionMethod}, ${dev.confidence.name}]');
-    }
-    await LogService.createLog(
-      function: 'iot_scan',
-      content:  buf.toString(),
-      summary:  'IoT scan ${widget.cidr}: ${_devices.length} device(s) found',
-    );
-  }
-
-  void _stopScan() {
-    _sub?.cancel();
-    setState(() => _scanning = false);
-    FgService.stop();
-    // Wipe the shared host cache so the next Rescan triggers a fresh
-    // full subnet discovery rather than reusing stale results.
-    context.read<ScanProvider>().clearCache();
+  Future<void> _openMqttSettings() async {
+    final current = await MqttSettings.load();
+    if (!mounted) return;
+    await showMqttSettingsDialog(context, current);
   }
 
   @override
   Widget build(BuildContext context) {
+    final iot      = context.watch<IotScanProvider>();
+    final devices  = iot.devices;
+    final scanning = iot.scanning;
+
     return Scaffold(
       appBar: AppBar(
         title: Column(
@@ -137,37 +55,42 @@ class _IotScanScreenState extends State<IotScanScreen> {
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.settings_input_antenna),
+            tooltip: 'MQTT settings',
+            onPressed: _openMqttSettings,
+          ),
+          IconButton(
             icon: AnimatedSwitcher(
               duration: const Duration(milliseconds: 200),
-              child: _scanning
+              child: scanning
                   ? const Icon(Icons.stop_rounded,   key: ValueKey('s'), size: 28)
                   : const Icon(Icons.refresh_rounded, key: ValueKey('r'), size: 26),
             ),
-            tooltip: _scanning ? 'Stop' : 'Re-scan',
-            onPressed: _scanning ? _stopScan : _rescan,
+            tooltip: scanning ? 'Stop' : 'Re-scan',
+            onPressed: scanning ? iot.stopScan : _rescan,
           ),
         ],
       ),
       body: Column(
         children: [
-          if (_scanning) LinearProgressIndicator(
-            value: _total > 0 ? _done / _total : null,
+          if (scanning) LinearProgressIndicator(
+            value: iot.total > 0 ? iot.done / iot.total : null,
           ),
-          if (_scanning)
+          if (scanning)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  'Scanning… ${_devices.length} IoT device(s) found',
+                  'Scanning… ${devices.length} IoT device(s) found',
                   style: const TextStyle(fontSize: 12),
                 ),
               ),
             ),
-          if (!_scanning && _devices.isEmpty)
+          if (!scanning && devices.isEmpty)
             const Expanded(
               child: Center(
-                child: Text('No IoT devices detected.\nTry re-scanning.',
+                child: Text('No saved results.\nTap refresh to scan.',
                     textAlign: TextAlign.center),
               ),
             )
@@ -175,9 +98,9 @@ class _IotScanScreenState extends State<IotScanScreen> {
             Expanded(
               child: ListView.separated(
                 padding: const EdgeInsets.all(10),
-                itemCount: _devices.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 6),
-                itemBuilder: (_, i) => _DeviceCard(device: _devices[i]),
+                itemCount: devices.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 6),
+                itemBuilder: (_, i) => _DeviceCard(device: devices[i]),
               ),
             ),
         ],

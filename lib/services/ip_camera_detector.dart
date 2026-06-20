@@ -47,6 +47,37 @@ class CameraCandidate {
   String toString() =>
       'CAMERA [$method] $ip:$port — $evidence'
       '${manufacturer.isNotEmpty ? " ($manufacturer)" : ""}';
+
+  Map<String, dynamic> toJson() => {
+        'ip': ip,
+        'port': port,
+        'method': method.name,
+        'evidence': evidence,
+        'manufacturer': manufacturer,
+      };
+
+  /// Rebuilds a [CameraCandidate] from its [toJson] map.
+  ///
+  /// Throws [FormatException] when the mandatory `ip` field is missing — a
+  /// corrupt cache entry must fail loudly rather than load a blank candidate.
+  factory CameraCandidate.fromJson(Map<String, dynamic> json) {
+    final ip = json['ip'];
+    if (ip is! String || ip.isEmpty) {
+      throw const FormatException('CameraCandidate.fromJson: missing "ip"');
+    }
+    final methodName =
+        json['method'] as String? ?? CameraDetectionMethod.specificPort.name;
+    return CameraCandidate(
+      ip: ip,
+      port: json['port'] as int? ?? 0,
+      method: CameraDetectionMethod.values.firstWhere(
+        (m) => m.name == methodName,
+        orElse: () => CameraDetectionMethod.specificPort,
+      ),
+      evidence: json['evidence'] as String? ?? '',
+      manufacturer: json['manufacturer'] as String? ?? '',
+    );
+  }
 }
 
 enum CameraDetectionMethod {

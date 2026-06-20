@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:simply_net/providers/camera_scan_provider.dart';
+import 'package:simply_net/providers/iot_scan_provider.dart';
 import 'package:simply_net/providers/log_provider.dart';
 import 'package:simply_net/providers/scan_provider.dart';
 import 'package:simply_net/providers/settings_provider.dart';
@@ -25,7 +27,10 @@ class SimplyNetApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => SettingsProvider()..load()),
-        ChangeNotifierProvider(create: (_) => ScanProvider()),
+        ChangeNotifierProvider(create: (_) => ScanProvider()..loadCache()),
+        ChangeNotifierProvider(create: (_) => IotScanProvider()..loadCache()),
+        ChangeNotifierProvider(
+            create: (_) => CameraScanProvider()..loadCache()),
         ChangeNotifierProxyProvider<ScanProvider, LogProvider>(
           create: (_) => LogProvider(),
           update: (_, scanProv, logProv) {
