@@ -12,6 +12,7 @@ Ever wondered what's actually connected to your WiFi? SimplyNet gives you comple
 - ✓ Port Scanning — Check which services are running on any host
 - ✓ Network Diagnostics — Ping, DNS lookup, and advanced tools built-in
 - ✓ OUI Database — See manufacturer info for every MAC address
+- ✓ Find and Test your IoT devices - Subscribe and Publish on MQTT broker
 
 ## WHY YOU'LL LOVE IT
 
@@ -22,7 +23,7 @@ Ever wondered what's actually connected to your WiFi? SimplyNet gives you comple
 - Developer friendly — Perfect for IT professionals and curious users alike
 - 100% free - No ads, not tracking, no bothers. Donations are welcome
 - Zero BS - only useful and really working tools included
-- Open source — Transparent, community-driven development
+- Open source — Transparent, community-driven development. [Check out the source code](https://github.com/igrowing/SimplyNet) anytime. Click the ⭐ "Star" 😊
 
 ## PERFECT FOR
 
@@ -34,9 +35,9 @@ Ever wondered what's actually connected to your WiFi? SimplyNet gives you comple
 
 ## PRIVACY FIRST
 
-- Everything runs locally on your device. Your data never leaves your phone.
-- No ads, no tracking, no telemetry.
-- Built by developers, for developers. [Check out the source code](https://github.com/igrowing/SimplyNet) anytime. Click the ⭐ "Star" 😊
+- Your Data Stays Yours: Your scan logs, history, and network profiles are saved strictly on local device storage.
+- No Tracking or Third-Party Analytics: This app contains zero telemetry, zero ads, and zero background tracking frameworks.
+- Strictly Functional Traffic: Network packets (like ICMP, DNS, or MQTT) only leave your phone when you actively trigger a tool. External utilities like speed tests and WHOIS queries connect directly to their respective public services with no intermediate tracking servers.
 
 **SimplyNet: Because you'd better to know your network better. Pun intended.**
 

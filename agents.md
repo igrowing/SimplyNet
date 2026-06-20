@@ -59,6 +59,11 @@ Before changing a single line of production code, verify the codebase is in a fu
 
 `dart run build_runner build --delete-conflicting-outputs`
 
+3. On changes in production code follow the rules:
+  * Add unit test on added functins and classes.
+  * On removal of obsolete, non-used, merged functions remove according unit tests.
+  * On changes in functions adapt related unit tests accordingly. 
+
 ### Step 3: Self-Correction & Automated Cleaning
 Before presenting your changes for human review, clean your workspace of transient tracking code:
 
