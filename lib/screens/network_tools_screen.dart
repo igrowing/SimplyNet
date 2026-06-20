@@ -10,6 +10,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:simply_net/services/ip_camera_detector.dart';
 import 'package:simply_net/services/network_scanner.dart';
 import 'package:simply_net/services/network_tools.dart';
+import 'package:simply_net/services/ookla_speed_test.dart';
+import 'package:simply_net/screens/markdown_info_screen.dart';
 import 'package:simply_net/providers/camera_scan_provider.dart';
 import 'package:simply_net/providers/scan_provider.dart';
 import 'package:simply_net/widgets/diag_widgets.dart';
@@ -236,6 +238,9 @@ class _SpeedRecord {
   );
 }
 
+/// Speed-test backend the user has selected.
+enum SpeedProvider { cloudflare, ookla }
+
 class SpeedTestScreen extends StatefulWidget {
   const SpeedTestScreen({super.key});
   @override
@@ -250,6 +255,12 @@ class _SpeedTestState extends State<SpeedTestScreen> {
   String _status = 'Ready';
   double _progress = 0;
 
+  // Selected provider + remembered Ookla consent (persisted).
+  SpeedProvider _provider = SpeedProvider.cloudflare;
+  bool _ooklaConsent = false;
+  static const String _providerKey     = 'speed_test_provider';
+  static const String _ooklaConsentKey = 'speed_test_ookla_consent';
+
   // Speed history (persisted to SharedPreferences)
   final List<_SpeedRecord> _history = [];
   static const String _storageKey = 'speed_test_history';
@@ -258,6 +269,87 @@ class _SpeedTestState extends State<SpeedTestScreen> {
   void initState() {
     super.initState();
     _loadHistory();
+    _loadPrefs();
+  }
+
+  Future<void> _loadPrefs() async {
+    try {
+      final prefs   = await SharedPreferences.getInstance();
+      final consent = prefs.getBool(_ooklaConsentKey) ?? false;
+      // Only restore Ookla if consent was previously granted.
+      final ookla   = prefs.getString(_providerKey) == 'ookla' && consent;
+      if (mounted) {
+        setState(() {
+          _ooklaConsent = consent;
+          _provider = ookla ? SpeedProvider.ookla : SpeedProvider.cloudflare;
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to load speed test prefs: $e');
+    }
+  }
+
+  Future<void> _persistProvider() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_providerKey,
+          _provider == SpeedProvider.ookla ? 'ookla' : 'cloudflare');
+    } catch (e) {
+      debugPrint('Failed to persist speed test provider: $e');
+    }
+  }
+
+  Future<void> _onProviderSelected(SpeedProvider p) async {
+    if (p == _provider) return;
+    if (p == SpeedProvider.cloudflare) {
+      setState(() => _provider = SpeedProvider.cloudflare);
+      await _persistProvider();
+      return;
+    }
+    // Switching to Ookla — ask for consent once, then remember it.
+    if (!_ooklaConsent) {
+      final accepted = await _showOoklaConsent();
+      if (accepted != true) return; // declined → keep Cloudflare
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool(_ooklaConsentKey, true);
+      } catch (e) {
+        debugPrint('Failed to persist Ookla consent: $e');
+      }
+      _ooklaConsent = true;
+    }
+    setState(() => _provider = SpeedProvider.ookla);
+    await _persistProvider();
+  }
+
+  Future<bool?> _showOoklaConsent() => showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Switch to Ookla?'),
+          content: const Text(
+              'Switching to Ookla requires connecting to third-party '
+              'servers. Ookla collects and shares your IP address, device '
+              'identifiers, and location data.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Decline'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Accept'),
+            ),
+          ],
+        ),
+      );
+
+  void _openInfo() {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => const MarkdownInfoScreen(
+        title: 'Speed Test Info',
+        assetPath: 'assets/speedtest_info.md',
+      ),
+    ));
   }
 
   Future<void> _loadHistory() async {
@@ -321,55 +413,31 @@ class _SpeedTestState extends State<SpeedTestScreen> {
       _upload = null;
       _ping = null;
       _progress = 0;
-      _status = 'Measuring ping…';
+      _status = _provider == SpeedProvider.ookla
+          ? 'Finding server…'
+          : 'Measuring ping…';
     });
 
     try {
-      // Ping
-      final pingSw = Stopwatch()..start();
-      await http.get(Uri.parse('https://speed.cloudflare.com/__down?bytes=1'));
-      pingSw.stop();
-      final pingMs = pingSw.elapsedMilliseconds.toDouble();
-      setState(() { _ping = pingMs; _progress = 0.15; _status = 'Testing download…'; });
-
-      // Download (25 MB)
-      const dlBytes = 25 * 1024 * 1024;
-      final dlSw = Stopwatch()..start();
-      final dlReq = await http.get(
-          Uri.parse('https://speed.cloudflare.com/__down?bytes=$dlBytes'));
-      dlSw.stop();
-      final dlMbps =
-          (dlReq.bodyBytes.length * 8) / dlSw.elapsed.inMilliseconds / 1000;
-      setState(() { _download = dlMbps; _progress = 0.6; _status = 'Testing upload…'; });
-
-      // Upload (10 MB)
-      const ulBytes = 10 * 1024 * 1024;
-      final payload = List.generate(ulBytes, (byteIndex) => byteIndex & 0xFF);
-      final ulSw = Stopwatch()..start();
-      await http.post(
-        Uri.parse('https://speed.cloudflare.com/__up'),
-        body: payload,
-        headers: {'Content-Type': 'application/octet-stream'},
-      );
-      ulSw.stop();
-      final ulMbps = (ulBytes * 8) / ulSw.elapsed.inMilliseconds / 1000;
+      final r = _provider == SpeedProvider.ookla
+          ? await _measureOokla()
+          : await _measureCloudflare();
 
       final record = _SpeedRecord(
         timestamp: DateTime.now(),
-        downloadMbps: dlMbps,
-        uploadMbps: ulMbps,
-        pingMs: pingMs,
+        downloadMbps: r.dl,
+        uploadMbps: r.ul,
+        pingMs: r.ping,
       );
 
       setState(() {
-        _upload = ulMbps;
+        _upload = r.ul;
         _progress = 1.0;
         _status = 'Done';
         _testing = false;
         _history.insert(0, record); // newest first
       });
-      
-      // Save history to persistent storage
+
       await _saveHistory();
     } catch (e) {
       setState(() {
@@ -377,6 +445,86 @@ class _SpeedTestState extends State<SpeedTestScreen> {
         _testing = false;
       });
     }
+  }
+
+  Future<({double dl, double ul, double ping})> _measureCloudflare() async {
+    // Ping
+    final pingSw = Stopwatch()..start();
+    await http.get(Uri.parse('https://speed.cloudflare.com/__down?bytes=1'));
+    pingSw.stop();
+    final pingMs = pingSw.elapsedMilliseconds.toDouble();
+    setState(() {
+      _ping = pingMs;
+      _progress = 0.15;
+      _status = 'Testing download…';
+    });
+
+    // Download (25 MB)
+    const dlBytes = 25 * 1024 * 1024;
+    final dlSw = Stopwatch()..start();
+    final dlReq = await http.get(
+        Uri.parse('https://speed.cloudflare.com/__down?bytes=$dlBytes'));
+    dlSw.stop();
+    final dlMbps =
+        (dlReq.bodyBytes.length * 8) / dlSw.elapsed.inMilliseconds / 1000;
+    setState(() {
+      _download = dlMbps;
+      _progress = 0.6;
+      _status = 'Testing upload…';
+    });
+
+    // Upload (10 MB)
+    const ulBytes = 10 * 1024 * 1024;
+    final payload = List.generate(ulBytes, (byteIndex) => byteIndex & 0xFF);
+    final ulSw = Stopwatch()..start();
+    await http.post(
+      Uri.parse('https://speed.cloudflare.com/__up'),
+      body: payload,
+      headers: {'Content-Type': 'application/octet-stream'},
+    );
+    ulSw.stop();
+    final ulMbps = (ulBytes * 8) / ulSw.elapsed.inMilliseconds / 1000;
+    return (dl: dlMbps, ul: ulMbps, ping: pingMs);
+  }
+
+  Future<({double dl, double ul, double ping})> _measureOokla() async {
+    final servers = await OoklaSpeedTest.fetchServers();
+    if (servers.isEmpty) throw Exception('No Ookla servers available');
+    final best = await OoklaSpeedTest.bestServer(servers);
+    final server = best.server;
+    setState(() {
+      _ping = best.pingMs;
+      _progress = 0.15;
+      _status = 'Testing download…';
+    });
+
+    // Download (25 MB)
+    const dlBytes = 25 * 1024 * 1024;
+    final dlSw = Stopwatch()..start();
+    final dlReq = await http
+        .get(server.downloadUri(dlBytes))
+        .timeout(const Duration(seconds: 40));
+    dlSw.stop();
+    final dlMbps =
+        (dlReq.bodyBytes.length * 8) / dlSw.elapsed.inMilliseconds / 1000;
+    setState(() {
+      _download = dlMbps;
+      _progress = 0.6;
+      _status = 'Testing upload…';
+    });
+
+    // Upload (10 MB)
+    const ulBytes = 10 * 1024 * 1024;
+    final payload = List.generate(ulBytes, (byteIndex) => byteIndex & 0xFF);
+    final ulSw = Stopwatch()..start();
+    await http.post(
+      server.uploadUri(),
+      body: payload,
+      headers: {'Content-Type': 'application/octet-stream'},
+    ).timeout(const Duration(seconds: 40));
+    ulSw.stop();
+    final ulMbps = (ulBytes * 8) / ulSw.elapsed.inMilliseconds / 1000;
+    return (dl: dlMbps, ul: ulMbps, ping: best.pingMs);
   }
 
   @override
@@ -420,28 +568,56 @@ class _SpeedTestState extends State<SpeedTestScreen> {
           Center(
             child: FilledButton.icon(
               onPressed: _testing ? null : _runTest,
+              style: FilledButton.styleFrom(
+                backgroundColor: _provider == SpeedProvider.ookla
+                    ? Colors.amber
+                    : Colors.blue,
+                foregroundColor: _provider == SpeedProvider.ookla
+                    ? Colors.black
+                    : Colors.white,
+              ),
               icon: _testing
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 18, height: 18,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
+                          strokeWidth: 2,
+                          color: _provider == SpeedProvider.ookla
+                              ? Colors.black
+                              : Colors.white))
                   : const Icon(Icons.play_arrow),
               label: Text(_testing ? 'Testing…' : 'Start Test'),
             ),
           ),
-          if (!_testing && _status == 'Done')
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Center(
-                child: Text('Via Cloudflare',
-                    style: TextStyle(
-                        fontSize: 11,
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurface
-                            .withValues(alpha: 0.45))),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              DropdownButton<SpeedProvider>(
+                value: _provider,
+                onChanged: _testing
+                    ? null
+                    : (p) {
+                        if (p != null) _onProviderSelected(p);
+                      },
+                items: const [
+                  DropdownMenuItem(
+                    value: SpeedProvider.cloudflare,
+                    child: Text('Via Cloudflare'),
+                  ),
+                  DropdownMenuItem(
+                    value: SpeedProvider.ookla,
+                    child: Text('Via Ookla'),
+                  ),
+                ],
               ),
-            ),
+              const SizedBox(width: 4),
+              IconButton(
+                icon: const Icon(Icons.info_outline),
+                tooltip: 'About the speed test',
+                onPressed: _openInfo,
+              ),
+            ],
+          ),
 
           const SizedBox(height: 32),
           const Divider(),
