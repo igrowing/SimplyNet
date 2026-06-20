@@ -34,6 +34,7 @@ Agents must use modern Flutter API patterns. Do not copy legacy (2022 or older) 
 * **Linting:** Code must pass standard strict lint rules (`package:very_good_analysis`). 
 * **Formatting:** Lines must not exceed **80 characters** to preserve structural integrity inside token contexts. Run `dart format .` automatically on any modified files.
 * **Code Generation:** Code-generated companion files (`*.g.dart`, `*.freezed.dart`) must never be manually modified. If modifications require schema updates, run the build runner shell command.
+* **Versions**: automatically increase minor version of the app on every commit. Change major or middle version number only when explicitly requested by the developer.
 
 ---
 
