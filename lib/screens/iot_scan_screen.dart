@@ -68,11 +68,6 @@ class _IotScanScreenState extends State<IotScanScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.settings_input_antenna),
-            tooltip: 'MQTT settings',
-            onPressed: _openMqttSettings,
-          ),
-          IconButton(
             icon: AnimatedSwitcher(
               duration: const Duration(milliseconds: 200),
               child: scanning
