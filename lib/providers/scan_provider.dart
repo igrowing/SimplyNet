@@ -207,6 +207,7 @@ class ScanProvider extends ChangeNotifier {
       final snap = await ScanStorage.load(ScanStorage.kScanHosts);
       if (snap == null) return;
       _results = snap.items.map(HostResult.fromJson).toList();
+      _target = snap.cidr;
       notifyListeners();
     } on FormatException {
       // Corrupt cache — discard it and start empty.
