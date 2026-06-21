@@ -4,7 +4,8 @@ import 'package:simply_net/services/ookla_speed_test.dart';
 void main() {
   group('OoklaSpeedTest.parseServers', () {
     test('parses a well-formed server list', () {
-      const body = '['
+      const body =
+          '['
           '{"host":"a.example.com:8080","sponsor":"Acme",'
           '"name":"Berlin","country":"Germany"},'
           '{"host":"b.example.com:8080","sponsor":"Globex",'
@@ -18,7 +19,8 @@ void main() {
     });
 
     test('skips entries without a host', () {
-      const body = '['
+      const body =
+          '['
           '{"sponsor":"NoHost","name":"Nowhere"},'
           '{"host":"good.example.com:8080","name":"Rome","country":"Italy"}'
           ']';
@@ -32,6 +34,13 @@ void main() {
       expect(OoklaSpeedTest.parseServers('not json'), isEmpty);
       expect(OoklaSpeedTest.parseServers('{"host":"x"}'), isEmpty);
       expect(OoklaSpeedTest.parseServers('[]'), isEmpty);
+    });
+
+    test('sends a non-Dart browser User-Agent (API 403s the Dart UA)', () {
+      final ua = OoklaSpeedTest.headers['User-Agent'];
+      expect(ua, isNotNull);
+      expect(ua, isNot(contains('Dart')));
+      expect(ua, contains('Mozilla'));
     });
 
     test('builds https download and upload URIs with size + nonce', () {

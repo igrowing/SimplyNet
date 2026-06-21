@@ -5,9 +5,9 @@ import 'package:http/http.dart' as http;
 
 /// One server from Ookla's speedtest.net fleet.
 class OoklaServer {
-  final String host;    // "name.example.com:8080" (may include a port)
+  final String host; // "name.example.com:8080" (may include a port)
   final String sponsor; // operator name
-  final String name;    // city
+  final String name; // city
   final String country;
 
   const OoklaServer({
@@ -36,6 +36,14 @@ class OoklaSpeedTest {
   static const serversUrl =
       'https://www.speedtest.net/api/js/servers?engine=js&limit=10';
 
+  /// speedtest.net's API returns 403 to the default Dart user-agent, so all
+  /// requests pose as a regular browser.
+  static const Map<String, String> headers = {
+    'User-Agent':
+        'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, '
+        'like Gecko) Chrome/124.0 Mobile Safari/537.36',
+  };
+
   /// Parse the speedtest.net server-list JSON into [OoklaServer]s. Pure so it
   /// can be unit-tested without network access. Tolerates malformed entries.
   static List<OoklaServer> parseServers(String body) {
@@ -51,12 +59,14 @@ class OoklaSpeedTest {
       if (e is! Map) continue;
       final host = (e['host'] as String?)?.trim();
       if (host == null || host.isEmpty) continue;
-      out.add(OoklaServer(
-        host:    host,
-        sponsor: (e['sponsor'] as String?)?.trim() ?? '',
-        name:    (e['name'] as String?)?.trim() ?? '',
-        country: (e['country'] as String?)?.trim() ?? '',
-      ));
+      out.add(
+        OoklaServer(
+          host: host,
+          sponsor: (e['sponsor'] as String?)?.trim() ?? '',
+          name: (e['name'] as String?)?.trim() ?? '',
+          country: (e['country'] as String?)?.trim() ?? '',
+        ),
+      );
     }
     return out;
   }
@@ -64,7 +74,7 @@ class OoklaSpeedTest {
   /// Fetch the nearest candidate servers from speedtest.net.
   static Future<List<OoklaServer>> fetchServers() async {
     final resp = await http
-        .get(Uri.parse(serversUrl))
+        .get(Uri.parse(serversUrl), headers: headers)
         .timeout(const Duration(seconds: 8));
     if (resp.statusCode != 200) {
       throw Exception('Ookla server list returned HTTP ${resp.statusCode}');
@@ -75,12 +85,13 @@ class OoklaSpeedTest {
   /// Probe [servers] in order and return the first that answers, with its
   /// round-trip latency in milliseconds. Throws when none are reachable.
   static Future<({OoklaServer server, double pingMs})> bestServer(
-      List<OoklaServer> servers) async {
+    List<OoklaServer> servers,
+  ) async {
     for (final s in servers) {
       try {
         final sw = Stopwatch()..start();
         final r = await http
-            .get(s.downloadUri(1))
+            .get(s.downloadUri(1), headers: headers)
             .timeout(const Duration(seconds: 4));
         sw.stop();
         if (r.statusCode == 200) {

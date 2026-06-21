@@ -14,8 +14,8 @@ class ScanScreen extends StatefulWidget {
 
 class _ScanScreenState extends State<ScanScreen> {
   // Per-column widths (flex units) — user can drag to resize
-  double _wIp   = 3;
-  double _wMac  = 3;
+  double _wIp = 3;
+  double _wMac = 3;
   double _wHost = 4;
 
   // The provider holds the last results (loaded from local storage at app
@@ -41,7 +41,7 @@ class _ScanScreenState extends State<ScanScreen> {
   }
 
   void _toggleScan() {
-    final scan     = context.read<ScanProvider>();
+    final scan = context.read<ScanProvider>();
     final settings = context.read<SettingsProvider>().settings;
     if (scan.isScanning) {
       scan.stopScan();
@@ -53,9 +53,29 @@ class _ScanScreenState extends State<ScanScreen> {
     }
   }
 
+  void _showInfo() {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('About this scan'),
+        content: const Text(
+          "Devices blocking ICMP (pings) will not appear here. Run the "
+          "'IoT Devices' or 'IP Cameras' scan to locate them via their open "
+          "ports and services.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final scan     = context.watch<ScanProvider>();
+    final scan = context.watch<ScanProvider>();
     final settings = context.watch<SettingsProvider>().settings;
 
     return Scaffold(
@@ -69,15 +89,26 @@ class _ScanScreenState extends State<ScanScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            tooltip: 'About this scan',
+            onPressed: _showInfo,
+          ),
           // Single toggle button: round-arrow (idle) ↔ square-stop (running)
           IconButton(
             icon: AnimatedSwitcher(
               duration: const Duration(milliseconds: 200),
               child: scan.isScanning
-                  ? const Icon(Icons.stop_rounded,
-                      key: ValueKey('stop'), size: 28)
-                  : const Icon(Icons.refresh_rounded,
-                      key: ValueKey('refresh'), size: 26),
+                  ? const Icon(
+                      Icons.stop_rounded,
+                      key: ValueKey('stop'),
+                      size: 28,
+                    )
+                  : const Icon(
+                      Icons.refresh_rounded,
+                      key: ValueKey('refresh'),
+                      size: 26,
+                    ),
             ),
             tooltip: scan.isScanning ? 'Stop scan' : 'Re-scan',
             onPressed: scan.isValidTarget ? _toggleScan : null,
@@ -104,9 +135,14 @@ class _ScanScreenState extends State<ScanScreen> {
           _ResizableHeader(
             scan: scan,
             showMac: settings.showMac,
-            wIp: _wIp, wMac: _wMac, wHost: _wHost,
-            onResize: (ip, mac, host) =>
-                setState(() { _wIp = ip; _wMac = mac; _wHost = host; }),
+            wIp: _wIp,
+            wMac: _wMac,
+            wHost: _wHost,
+            onResize: (ip, mac, host) => setState(() {
+              _wIp = ip;
+              _wMac = mac;
+              _wHost = host;
+            }),
           ),
 
           Expanded(
@@ -121,11 +157,14 @@ class _ScanScreenState extends State<ScanScreen> {
                       return _ScanRow(
                         host: host,
                         settings: settings,
-                        wIp: _wIp, wMac: _wMac, wHost: _wHost,
+                        wIp: _wIp,
+                        wMac: _wMac,
+                        wHost: _wHost,
                         onTap: () => Navigator.push(
                           ctx,
                           MaterialPageRoute(
-                              builder: (_) => HostScreen(host: host)),
+                            builder: (_) => HostScreen(host: host),
+                          ),
                         ),
                       );
                     },
@@ -158,11 +197,7 @@ class _ResizableHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final bg = Theme.of(context).colorScheme.surfaceContainerHighest;
 
-    Widget headerCell(
-      String label,
-      ScanSortColumn col,
-      double flex,
-    ) {
+    Widget headerCell(String label, ScanSortColumn col, double flex) {
       final active = scan.sortColumn == col;
       return Expanded(
         flex: flex.round().clamp(1, 20),
@@ -173,14 +208,16 @@ class _ResizableHeader extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(label,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w600, fontSize: 12)),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                ),
                 if (active)
                   Icon(
-                    scan.sortAsc
-                        ? Icons.arrow_upward
-                        : Icons.arrow_downward,
+                    scan.sortAsc ? Icons.arrow_upward : Icons.arrow_downward,
                     size: 12,
                   ),
               ],
@@ -201,7 +238,7 @@ class _ResizableHeader extends StatelessWidget {
         onHorizontalDragUpdate: (d) {
           const unit = 0.01;
           final delta = d.delta.dx * unit;
-          final newLeft  = (leftFlex  + delta).clamp(0.5, 10.0);
+          final newLeft = (leftFlex + delta).clamp(0.5, 10.0);
           final newRight = (rightFlex - delta).clamp(0.5, 10.0);
           onDrag(newLeft, newRight);
         },
@@ -212,9 +249,21 @@ class _ResizableHeader extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.chevron_left, size: 10, color: Theme.of(context).dividerColor),
-                Container(width: 1.5, height: 8, color: Theme.of(context).dividerColor),
-                Icon(Icons.chevron_right, size: 10, color: Theme.of(context).dividerColor),
+                Icon(
+                  Icons.chevron_left,
+                  size: 10,
+                  color: Theme.of(context).dividerColor,
+                ),
+                Container(
+                  width: 1.5,
+                  height: 8,
+                  color: Theme.of(context).dividerColor,
+                ),
+                Icon(
+                  Icons.chevron_right,
+                  size: 10,
+                  color: Theme.of(context).dividerColor,
+                ),
               ],
             ),
           ),
@@ -228,14 +277,11 @@ class _ResizableHeader extends StatelessWidget {
         children: [
           headerCell('IP', ScanSortColumn.ip, wIp),
           if (showMac) ...[
-            divider(wIp, wMac,
-                (l, r) => onResize(l, r, wHost)),
+            divider(wIp, wMac, (l, r) => onResize(l, r, wHost)),
             headerCell('MAC', ScanSortColumn.mac, wMac),
-            divider(wMac, wHost,
-                (l, r) => onResize(wIp, l, r)),
+            divider(wMac, wHost, (l, r) => onResize(wIp, l, r)),
           ] else
-            divider(wIp, wHost,
-                (l, r) => onResize(l, wMac, r)),
+            divider(wIp, wHost, (l, r) => onResize(l, wMac, r)),
           headerCell('Hostname', ScanSortColumn.hostname, wHost),
         ],
       ),
@@ -272,17 +318,27 @@ class _ScanRow extends StatelessWidget {
               flex: wIp.round().clamp(1, 20),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                child: Text(host.ip,
-                    style: const TextStyle(fontFamily: 'monospace', fontSize: 13)),
+                child: Text(
+                  host.ip,
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+                ),
               ),
             ),
             if (settings.showMac)
               Expanded(
                 flex: wMac.round().clamp(1, 20),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                  child: Text(host.mac,
-                      style: const TextStyle(fontFamily: 'monospace', fontSize: 11)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 8,
+                  ),
+                  child: Text(
+                    host.mac,
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 11,
+                    ),
+                  ),
                 ),
               ),
             Expanded(
@@ -316,9 +372,11 @@ class _EmptyState extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.search_off_rounded,
-              size: 56,
-              color: Theme.of(context).colorScheme.outline),
+          Icon(
+            Icons.search_off_rounded,
+            size: 56,
+            color: Theme.of(context).colorScheme.outline,
+          ),
           const SizedBox(height: 12),
           Text(
             isValid ? 'No saved results' : 'No network target set',
@@ -328,7 +386,8 @@ class _EmptyState extends StatelessWidget {
             isValid
                 ? 'Tap the refresh button to scan'
                 : 'Set a target on the Home screen',
-            style: const TextStyle(fontSize: 12)),
+            style: const TextStyle(fontSize: 12),
+          ),
         ],
       ),
     );

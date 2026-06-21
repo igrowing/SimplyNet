@@ -8,16 +8,18 @@ import 'package:simply_net/services/oui_service.dart';
 import 'package:mac_address_plus/mac_address_plus.dart';
 
 class NetworkScanner {
-  static const _pingTimeout  = Duration(milliseconds: 2000);
-  static const _tcpTimeout   = Duration(milliseconds: 900);
-  static const _parallelism  = 64;
+  static const _pingTimeout = Duration(milliseconds: 1200);
+  static const _tcpTimeout = Duration(milliseconds: 700);
+  // Higher fan-out: liveness checks are almost entirely I/O wait, so a larger
+  // window keeps far more probes in flight and finishes the sweep much sooner.
+  static const _parallelism = 128;
 
   // ── CIDR helpers ──────────────────────────────────────────────────────────
 
   static (String, int)? parseCidr(String cidr) {
     final parts = cidr.trim().split('/');
     if (parts.length != 2) return null;
-    final ip     = parts[0].trim();
+    final ip = parts[0].trim();
     final prefix = int.tryParse(parts[1].trim());
     if (prefix == null || prefix < 0 || prefix > 32) return null;
     final octets = ip.split('.');
@@ -46,13 +48,16 @@ class NetworkScanner {
     final map = <String, String>{};
     try {
       ProcessResult result;
-      
+
       if (Platform.isIOS) {
         // iOS: use BSD-style arp command
         // Format: "hostname (192.168.1.1) at aa:bb:cc:dd:ee:ff on en0"
         result = await Process.run('arp', ['-a']);
         if (result.exitCode == 0) {
-          final re = RegExp(r'\((\d+\.\d+\.\d+\.\d+)\)\s+at\s+([0-9a-f:]{17})', caseSensitive: false);
+          final re = RegExp(
+            r'\((\d+\.\d+\.\d+\.\d+)\)\s+at\s+([0-9a-f:]{17})',
+            caseSensitive: false,
+          );
           final out = (result.stdout ?? '').toString().split('\n');
           for (final line in out) {
             final m = re.firstMatch(line.trim());
@@ -66,32 +71,29 @@ class NetworkScanner {
         } else {
           await LogService.createLog(
             function: 'network_scanner._readArpTable',
-            content: 'Failed to run arp -a on iOS: exit code ${result.exitCode}',
+            content:
+                'Failed to run arp -a on iOS: exit code ${result.exitCode}',
             summary: 'ARP table read failed on iOS',
           );
         }
       } else {
-        // Android and other platforms: use ip neigh show
-        result = await Process.run('ip', ['neigh', 'show']);
-        if (result.exitCode == 0) {
-          final re = RegExp(r'^(\S+).*?lladdr\s+([0-9a-f:]{17})', caseSensitive: false);
-          final out = (result.stdout ?? '').toString().split('\n');
-          for (final line in out) {
-            final m = re.firstMatch(line.trim());
-            if (m != null) {
-              final ip = m.group(1)!;
-              final mac = m.group(2)!.toUpperCase();
-              if (mac != '00:00:00:00:00:00') map[ip] = mac;
-            }
-          }
-          return map;
-        } else {
+        // Android and other platforms: merge two sources because different
+        // Android versions expose the neighbour table through only one of them.
+        //   1. `ip neigh show` (netlink RTM_GETNEIGH)
+        //   2. /proc/net/arp   (legacy kernel file)
+        await _mergeIpNeigh(map);
+        _mergeProcNetArp(map);
+        if (map.isEmpty) {
           await LogService.createLog(
             function: 'network_scanner._readArpTable',
-            content: 'Failed to run ip neigh show: exit code ${result.exitCode}',
-            summary: 'ARP table read failed',
+            content:
+                'Neighbour table empty from both `ip neigh show` and '
+                '/proc/net/arp. Android 10+ restricts apps from reading the '
+                'ARP/neighbour table, so remote MAC resolution is unavailable.',
+            summary: 'ARP table read returned no entries',
           );
         }
+        return map;
       }
     } catch (error) {
       await LogService.createLog(
@@ -101,6 +103,47 @@ class NetworkScanner {
       );
     }
     return map;
+  }
+
+  static final _macRe = RegExp(
+    r'^([0-9a-f]{2}:){5}[0-9a-f]{2}$',
+    caseSensitive: false,
+  );
+
+  /// Parse `ip neigh show` (netlink neighbour table) into [map].
+  static Future<void> _mergeIpNeigh(Map<String, String> map) async {
+    try {
+      final result = await Process.run('ip', ['neigh', 'show']);
+      if (result.exitCode != 0) return;
+      final re = RegExp(
+        r'^(\S+).*?lladdr\s+([0-9a-f:]{17})',
+        caseSensitive: false,
+      );
+      for (final line in (result.stdout ?? '').toString().split('\n')) {
+        final m = re.firstMatch(line.trim());
+        if (m != null) {
+          final mac = m.group(2)!.toUpperCase();
+          if (mac != '00:00:00:00:00:00') map[m.group(1)!] = mac;
+        }
+      }
+    } catch (_) {}
+  }
+
+  /// Parse /proc/net/arp (legacy kernel file) into [map]. Returns silently on
+  /// platforms where the file is absent or unreadable (e.g. Android 10+).
+  static void _mergeProcNetArp(Map<String, String> map) {
+    try {
+      final file = File('/proc/net/arp');
+      if (!file.existsSync()) return;
+      final lines = file.readAsLinesSync();
+      for (final line in lines.skip(1)) {
+        final parts = line.trim().split(RegExp(r'\s+'));
+        if (parts.length < 4) continue;
+        final ip = parts[0];
+        final mac = parts[3].toUpperCase();
+        if (_macRe.hasMatch(mac) && mac != '00:00:00:00:00:00') map[ip] = mac;
+      }
+    } catch (_) {}
   }
 
   // ── Self MAC resolution ──────────────────────────────────────────────────
@@ -138,8 +181,8 @@ class NetworkScanner {
     } catch (e) {
       await LogService.createLog(
         function: 'network_scanner._getSelfMacs',
-        content:  'Exception: $e',
-        summary:  'Self MAC resolution failed',
+        content: 'Exception: $e',
+        summary: 'Self MAC resolution failed',
       );
     }
     _selfMacCache = map;
@@ -148,14 +191,17 @@ class NetworkScanner {
 
   @visibleForTesting
   static List<String> expandCidr(String baseIp, int prefix) {
-    final octets  = baseIp.split('.').map(int.parse).toList();
-    final base    = (octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3];
-    final mask    = prefix == 0 ? 0 : (0xFFFFFFFF << (32 - prefix)) & 0xFFFFFFFF;
-    final net       = base & mask;
+    final octets = baseIp.split('.').map(int.parse).toList();
+    final base =
+        (octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3];
+    final mask = prefix == 0 ? 0 : (0xFFFFFFFF << (32 - prefix)) & 0xFFFFFFFF;
+    final net = base & mask;
     final broadcast = net | (~mask & 0xFFFFFFFF);
     final hosts = <String>[];
     for (var i = net + 1; i < broadcast; i++) {
-      hosts.add('${(i >> 24) & 0xFF}.${(i >> 16) & 0xFF}.${(i >> 8) & 0xFF}.${i & 0xFF}');
+      hosts.add(
+        '${(i >> 24) & 0xFF}.${(i >> 16) & 0xFF}.${(i >> 8) & 0xFF}.${i & 0xFF}',
+      );
     }
     return hosts;
   }
@@ -171,21 +217,23 @@ class NetworkScanner {
   static Future<String> resolveHostname(String ip) async {
     // 1. Reverse DNS (PTR)
     try {
-      final ia      = InternetAddress(ip);
+      final ia = InternetAddress(ip);
       final results = await ia.reverse().timeout(const Duration(seconds: 2));
-      final name    = results.host;
+      final name = results.host;
       if (name.isNotEmpty && name != ip) return name;
     } catch (_) {}
 
     // 2. avahi-resolve (available on many Android/Linux devices via Avahi daemon)
     if (!kIsWeb) {
       try {
-        final avahiResult = await Process.run(
-          'avahi-resolve', ['-a', ip],
-          runInShell: true,
-        ).timeout(const Duration(seconds: 2));
+        final avahiResult = await Process.run('avahi-resolve', [
+          '-a',
+          ip,
+        ], runInShell: true).timeout(const Duration(seconds: 2));
         if (avahiResult.exitCode == 0) {
-          final parts = (avahiResult.stdout as String).trim().split(RegExp(r'\s+'));
+          final parts = (avahiResult.stdout as String).trim().split(
+            RegExp(r'\s+'),
+          );
           if (parts.length >= 2 && parts[1].isNotEmpty) return parts[1];
         }
       } catch (_) {}
@@ -194,15 +242,18 @@ class NetworkScanner {
     // 3. nslookup fallback
     if (!kIsWeb) {
       try {
-        final nslookupResult = await Process.run(
-          'nslookup', [ip],
-          runInShell: true,
-        ).timeout(const Duration(seconds: 2));
+        final nslookupResult = await Process.run('nslookup', [
+          ip,
+        ], runInShell: true).timeout(const Duration(seconds: 2));
         if (nslookupResult.exitCode == 0) {
           for (final line in (nslookupResult.stdout as String).split('\n')) {
             // "name = somehost.local." line
             if (line.contains('name =')) {
-              final name = line.split('=').last.trim().replaceAll(RegExp(r'\.$'), '');
+              final name = line
+                  .split('=')
+                  .last
+                  .trim()
+                  .replaceAll(RegExp(r'\.$'), '');
               if (name.isNotEmpty && name != ip) return name;
             }
           }
@@ -236,10 +287,10 @@ class NetworkScanner {
     'xiaomi', 'wyze labs',
     'smartthings',
     'amazon technologies',
-    'google,',   // "Google, Inc." — trailing comma avoids matching "Google LLC" (Android phones)
+    'google,', // "Google, Inc." — trailing comma avoids matching "Google LLC" (Android phones)
     'raspberry pi',
     'arduino', 'particle industries',
-    'tp-link',   // Kasa smart devices
+    'tp-link', // Kasa smart devices
     'realtek(iot',
   ];
 
@@ -251,35 +302,55 @@ class NetworkScanner {
     // Check against the IoT prefixes used by IotScanner
     // (inline check avoids importing iot_scanner to prevent circular deps)
     const iotPrefixes = <String>{
-      '10:06:1C','18:FE:34','24:0A:C4','2C:3A:E8','30:AE:A4','3C:71:BF',
-      '48:3F:DA','48:E7:29','4C:11:AE','58:BF:25','5C:CF:7F','60:01:94',
-      '68:C6:3A','7C:9E:BD','80:64:6F','80:7D:3A','84:0D:8E','84:CC:A8',
-      '8C:AA:B5','A0:20:A6','A4:CF:12','A8:03:2A','AC:67:B2','B4:E6:2D',
-      'BC:DD:C2','C4:4F:33','CC:50:E3','D4:8A:FC','D8:A0:1D','DC:4F:22',
-      'E0:98:06','E4:65:B8','EC:FA:BC','F4:CF:A2','FC:F5:C4', // Espressif
-      'D0:F6:18','E6:9E:7E','F4:CE:36',                       // Nordic
-      '00:0D:6F','78:A5:04',                                  // Silicon Labs
-      '00:12:4B',                                             // TI
-      '00:80:E1','10:E7:7A','18:E8:EC','40:82:7B','50:0F:59', // STMicro
-      '1C:90:FF','CC:02:D1','CC:8C:BF','E4:AE:E4','FC:3C:D7','FC:67:1F', // Tuya
-      'C8:47:8C','70:87:9E','80:6D:DE','D8:5D:4C','E0:5A:1B', // Beken/Tuya
-      'C4:5B:BE',                                             // Shelly
-      '60:55:F9','BC:FF:4D',                                  // Sonoff/ITEAD
-      '50:C7:BF','98:DA:C4','B0:95:75','C0:06:C3','D8:0D:17', // TP-Link
-      '28:6C:07','34:CE:00','50:64:2B','64:09:80','78:11:DC',
-      '98:FA:E3','AC:29:3A','F4:F5:DB',                       // Xiaomi
-      '48:E1:E9','C4:E7:AE',                                  // Meross
-      'B4:75:0E','D8:EC:5E','E8:9F:80','EC:1A:59',            // Belkin/WeMo
-      '00:17:88','C4:29:96','EC:B5:FA','FC:26:8C',            // Philips Hue/Signify
-      '68:EC:8A','AC:23:3F',                                  // IKEA
-      '28:CD:C1','88:A2:9E','98:FE:54','DC:A6:32','D8:3A:DD','E4:5F:01', // RPi
-      '08:91:A3','28:73:F6','68:37:E9','84:28:59','E0:CB:1D','FC:D7:49', // Amazon
-      '08:B4:B1','24:29:34','54:60:09','60:70:6C','60:B7:6E','C8:2A:DD', // Google
-      '24:FD:5B',                                             // SmartThings
-      '2C:AA:8E','7C:78:B2','80:48:2C','D0:3F:27','F0:C8:8B', // Wyze
-      'A8:61:0A','94:94:4A',                                  // Arduino/Particle
-      'AC:9A:22','B4:3D:6B',                                  // NXP
-      '00:E0:4C',                                             // Realtek(IoT-bridge)
+      '10:06:1C', '18:FE:34', '24:0A:C4', '2C:3A:E8', '30:AE:A4', '3C:71:BF',
+      '48:3F:DA', '48:E7:29', '4C:11:AE', '58:BF:25', '5C:CF:7F', '60:01:94',
+      '68:C6:3A', '7C:9E:BD', '80:64:6F', '80:7D:3A', '84:0D:8E', '84:CC:A8',
+      '8C:AA:B5', 'A0:20:A6', 'A4:CF:12', 'A8:03:2A', 'AC:67:B2', 'B4:E6:2D',
+      'BC:DD:C2', 'C4:4F:33', 'CC:50:E3', 'D4:8A:FC', 'D8:A0:1D', 'DC:4F:22',
+      'E0:98:06', 'E4:65:B8', 'EC:FA:BC', 'F4:CF:A2', 'FC:F5:C4', // Espressif
+      'D0:F6:18', 'E6:9E:7E', 'F4:CE:36', // Nordic
+      '00:0D:6F', '78:A5:04', // Silicon Labs
+      '00:12:4B', // TI
+      '00:80:E1', '10:E7:7A', '18:E8:EC', '40:82:7B', '50:0F:59', // STMicro
+      '1C:90:FF',
+      'CC:02:D1',
+      'CC:8C:BF',
+      'E4:AE:E4',
+      'FC:3C:D7',
+      'FC:67:1F', // Tuya
+      'C8:47:8C', '70:87:9E', '80:6D:DE', 'D8:5D:4C', 'E0:5A:1B', // Beken/Tuya
+      'C4:5B:BE', // Shelly
+      '60:55:F9', 'BC:FF:4D', // Sonoff/ITEAD
+      '50:C7:BF', '98:DA:C4', 'B0:95:75', 'C0:06:C3', 'D8:0D:17', // TP-Link
+      '28:6C:07', '34:CE:00', '50:64:2B', '64:09:80', '78:11:DC',
+      '98:FA:E3', 'AC:29:3A', 'F4:F5:DB', // Xiaomi
+      '48:E1:E9', 'C4:E7:AE', // Meross
+      'B4:75:0E', 'D8:EC:5E', 'E8:9F:80', 'EC:1A:59', // Belkin/WeMo
+      '00:17:88', 'C4:29:96', 'EC:B5:FA', 'FC:26:8C', // Philips Hue/Signify
+      '68:EC:8A', 'AC:23:3F', // IKEA
+      '28:CD:C1',
+      '88:A2:9E',
+      '98:FE:54',
+      'DC:A6:32',
+      'D8:3A:DD',
+      'E4:5F:01', // RPi
+      '08:91:A3',
+      '28:73:F6',
+      '68:37:E9',
+      '84:28:59',
+      'E0:CB:1D',
+      'FC:D7:49', // Amazon
+      '08:B4:B1',
+      '24:29:34',
+      '54:60:09',
+      '60:70:6C',
+      '60:B7:6E',
+      'C8:2A:DD', // Google
+      '24:FD:5B', // SmartThings
+      '2C:AA:8E', '7C:78:B2', '80:48:2C', 'D0:3F:27', 'F0:C8:8B', // Wyze
+      'A8:61:0A', '94:94:4A', // Arduino/Particle
+      'AC:9A:22', 'B4:3D:6B', // NXP
+      '00:E0:4C', // Realtek(IoT-bridge)
     };
     if (iotPrefixes.contains(prefix)) return 'IoT Device';
     return '';
@@ -288,7 +359,7 @@ class NetworkScanner {
   @visibleForTesting
   static String detectDeviceType(String manufacturer) {
     if (manufacturer.isEmpty) return '';
-    
+
     final lower = manufacturer.toLowerCase();
 
     // IoT / embedded chip vendors — checked first because e.g. "Espressif" or
@@ -296,48 +367,71 @@ class NetworkScanner {
     for (final kw in _iotVendorKeywords) {
       if (lower.contains(kw)) return 'IoT Device';
     }
-    
+
     // Smart TV / Media devices
-    if (lower.contains('samsung') || lower.contains('lg') || lower.contains('vizio') || 
-        lower.contains('sony') || lower.contains('roku') || lower.contains('apple tv')) {
+    if (lower.contains('samsung') ||
+        lower.contains('lg') ||
+        lower.contains('vizio') ||
+        lower.contains('sony') ||
+        lower.contains('roku') ||
+        lower.contains('apple tv')) {
       return 'Smart TV';
     }
-    
+
     // Smart Home hubs / platforms
-    if (lower.contains('echo') || lower.contains('nest') || lower.contains('ring ') ||
+    if (lower.contains('echo') ||
+        lower.contains('nest') ||
+        lower.contains('ring ') ||
         lower.contains('arlo ')) {
       return 'Smart Home';
     }
-    
+
     // Printers
-    if (lower.contains('printer') || lower.contains('xerox') || lower.contains('canon') ||
-        lower.contains('hp inc') || lower.contains('epson') || lower.contains('ricoh')) {
+    if (lower.contains('printer') ||
+        lower.contains('xerox') ||
+        lower.contains('canon') ||
+        lower.contains('hp inc') ||
+        lower.contains('epson') ||
+        lower.contains('ricoh')) {
       return 'Printer';
     }
-    
+
     // IP Cameras
-    if (lower.contains('camera') || lower.contains('hikvision') || lower.contains('axis') ||
-        lower.contains('dahua') || lower.contains('uniview')) {
+    if (lower.contains('camera') ||
+        lower.contains('hikvision') ||
+        lower.contains('axis') ||
+        lower.contains('dahua') ||
+        lower.contains('uniview')) {
       return 'IP Camera';
     }
-    
+
     // Networking equipment
-    if (lower.contains('cisco') || lower.contains('router') || lower.contains('netgear') ||
-        lower.contains('d-link') || lower.contains('asus') || lower.contains('ubiquiti') ||
-        lower.contains('arista') || lower.contains('juniper') || lower.contains('fortinet')) {
+    if (lower.contains('cisco') ||
+        lower.contains('router') ||
+        lower.contains('netgear') ||
+        lower.contains('d-link') ||
+        lower.contains('asus') ||
+        lower.contains('ubiquiti') ||
+        lower.contains('arista') ||
+        lower.contains('juniper') ||
+        lower.contains('fortinet')) {
       return 'Network Device';
     }
-    
+
     // Mobile / Apple
     if (lower.contains('apple')) return 'Apple Device';
-    if (lower.contains('samsung') && lower.contains('mobile')) return 'Android Device';
-    
+    if (lower.contains('samsung') && lower.contains('mobile'))
+      return 'Android Device';
+
     // Workstations / Computers
-    if (lower.contains('intel') || lower.contains('realtek') || lower.contains('broadcom') ||
-        lower.contains('atheros') || lower.contains('qualcomm')) {
+    if (lower.contains('intel') ||
+        lower.contains('realtek') ||
+        lower.contains('broadcom') ||
+        lower.contains('atheros') ||
+        lower.contains('qualcomm')) {
       return 'Computer';
     }
-    
+
     return '';
   }
 
@@ -365,13 +459,17 @@ class NetworkScanner {
       // Probe all hosts concurrently; emit each live host the moment it answers.
       final sem = _Semaphore(_parallelism);
       final allResults = <HostResult>[];
-      await Future.wait(hosts.map((ip) => sem.run(() async {
+      await Future.wait(
+        hosts.map(
+          (ip) => sem.run(() async {
             final host = await _probeHost(ip, resolveNames);
             if (host != null) {
               allResults.add(host);
               controller.add(host);
             }
-          })));
+          }),
+        ),
+      );
 
       // Give the kernel a moment to finalise neighbour entries before reading
       // them. A fully concurrent sweep can finish faster than the neighbour
@@ -390,8 +488,9 @@ class NetworkScanner {
 
       // Retry once for hosts whose MAC has not resolved yet — their neighbour
       // entry may simply not have settled when the first read happened.
-      final unresolved =
-          allResults.where((h) => h.mac.isEmpty || h.mac == 'N/A').toList();
+      final unresolved = allResults
+          .where((h) => h.mac.isEmpty || h.mac == 'N/A')
+          .toList();
       if (unresolved.isNotEmpty) {
         await Future.delayed(const Duration(milliseconds: 400));
         arpTable = await _resolveMacs();
@@ -438,38 +537,13 @@ class NetworkScanner {
     }
     // MAC-based IoT classification takes priority over name matching.
     final macType = deviceTypeFromMac(host.mac);
-    host.deviceType =
-        macType.isNotEmpty ? macType : detectDeviceType(host.manufacturer);
+    host.deviceType = macType.isNotEmpty
+        ? macType
+        : detectDeviceType(host.manufacturer);
   }
 
-  static Future<HostResult?> _probeHost(
-    String ip,
-    bool resolveNames,
-  ) async {
-    bool alive = false;
-
-    if (!kIsWeb) {
-      try {
-        final result = await Process.run(
-          'ping', ['-c', '1', '-W', '2', ip],
-          runInShell: true,
-        ).timeout(_pingTimeout);
-        alive = result.exitCode == 0;
-      } catch (_) {}
-    }
-
-    if (!alive) {
-      // Expanded port list covers web, SSH, SMB, Matter, MQTT, TP-Link, IoT HTTP
-      for (final port in NetworkPorts.livenessProbePorts) {
-        try {
-          final sock = await Socket.connect(ip, port, timeout: _tcpTimeout);
-          sock.destroy();
-          alive = true;
-          break;
-        } catch (_) {}
-      }
-    }
-
+  static Future<HostResult?> _probeHost(String ip, bool resolveNames) async {
+    final alive = await _isAlive(ip);
     if (!alive) return null;
 
     String hostname = '';
@@ -479,11 +553,59 @@ class NetworkScanner {
 
     return HostResult(
       ip: ip,
-      mac: "",  // to be filled later from ARP table
+      mac: "", // to be filled later from ARP table
       hostname: hostname,
       manufacturer: "", // tobe filled later from OUI lookup when MAC is known
       isUp: true,
     );
+  }
+
+  /// Liveness check that races an ICMP ping and several common TCP ports
+  /// **in parallel**, returning the instant any probe answers. The old code
+  /// pinged, then tried each TCP port one-by-one, so a dead host cost
+  /// `ping + ports x timeout` (~13 s). Racing them caps a dead host at a single
+  /// timeout (~1.2 s), which is the bulk of the speed-up versus other scanners.
+  static Future<bool> _isAlive(String ip) async {
+    final done = Completer<bool>();
+    final futures = <Future<void>>[];
+
+    void win() {
+      if (!done.isCompleted) done.complete(true);
+    }
+
+    if (!kIsWeb) {
+      futures.add(() async {
+        try {
+          final result = await Process.run('ping', [
+            '-c',
+            '1',
+            '-W',
+            '1',
+            ip,
+          ], runInShell: true).timeout(_pingTimeout);
+          if (result.exitCode == 0) win();
+        } catch (_) {}
+      }());
+    }
+
+    for (final port in NetworkPorts.livenessProbePorts) {
+      futures.add(() async {
+        try {
+          final sock = await Socket.connect(ip, port, timeout: _tcpTimeout);
+          sock.destroy();
+          win();
+        } catch (_) {}
+      }());
+    }
+
+    // Resolve false only once every probe has finished without a positive.
+    unawaited(
+      Future.wait(futures).then((_) {
+        if (!done.isCompleted) done.complete(false);
+      }),
+    );
+
+    return done.future;
   }
 }
 

@@ -2,13 +2,20 @@ package com.simplytools.simplynet
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.telephony.*
 import android.view.WindowManager
 import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import com.pravera.flutter_foreground_task.FlutterForegroundTaskPlugin
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -51,7 +58,7 @@ class MainActivity : FlutterActivity() {
                 when (call.method) {
                     "getScanResults" -> {
                         try {
-                            result.success(getWifiScanResults())
+                            startWifiScan(result)
                         } catch (e: Exception) {
                             result.error("WIFI_ERROR", e.message, null)
                         }
@@ -109,19 +116,57 @@ class MainActivity : FlutterActivity() {
         } catch (_: Exception) { null }
     }
 
+    private var wifiReceiver: BroadcastReceiver? = null
+
+    /**
+     * Trigger a fresh Wi-Fi scan and reply only once it has completed. Reading
+     * `scanResults` immediately after `startScan()` returns a stale/partial
+     * cache that on modern Android (13/14) often holds only the connected
+     * band, so the 5 GHz tab comes up empty. Waiting for the
+     * SCAN_RESULTS_AVAILABLE broadcast guarantees a complete dual-band snapshot.
+     * Falls back to the cached results when the scan is throttled or no
+     * broadcast arrives in time.
+     */
     @SuppressLint("MissingPermission")
-    private fun getWifiScanResults(): List<Map<String, Any>> {
+    private fun startWifiScan(result: MethodChannel.Result) {
         val wifiManager = applicationContext
             .getSystemService(WIFI_SERVICE) as WifiManager
+        val handler = Handler(Looper.getMainLooper())
+        var replied = false
 
-        // Best-effort: ask the OS for a fresh scan so both bands are refreshed.
-        // startScan() is throttled/deprecated on API 28+, but it is harmless and
-        // the caller merges several reads, so a band missing from one cached
-        // snapshot is still picked up on a later pass.
-        try {
+        fun reply() {
+            if (replied) return
+            replied = true
+            wifiReceiver?.let {
+                try { applicationContext.unregisterReceiver(it) } catch (_: Exception) {}
+            }
+            wifiReceiver = null
+            result.success(readScanResults(wifiManager))
+        }
+
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(c: Context?, i: Intent?) = reply()
+        }
+        wifiReceiver = receiver
+        ContextCompat.registerReceiver(
+            applicationContext,
+            receiver,
+            IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+
+        val started = try {
             @Suppress("DEPRECATION")
             wifiManager.startScan()
-        } catch (_: Exception) {}
+        } catch (_: Exception) { false }
+
+        // A full dual-band scan can take a few seconds; if throttled there will
+        // be no broadcast, so fall back to the current cache quickly.
+        handler.postDelayed({ reply() }, if (started) 8000 else 1500)
+    }
+
+    private fun readScanResults(wifiManager: WifiManager): List<Map<String, Any>> {
+        @Suppress("DEPRECATION")
         val results = wifiManager.scanResults
         return results.map { ap ->
             mapOf(
