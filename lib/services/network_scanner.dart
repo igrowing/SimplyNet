@@ -1,18 +1,18 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:simply_net/constants/network_ports.dart';
+// import 'package:simply_net/constants/network_ports.dart';
 import 'package:simply_net/models/host_result.dart';
 import 'package:simply_net/services/log_service.dart';
 import 'package:simply_net/services/oui_service.dart';
 import 'package:mac_address_plus/mac_address_plus.dart';
 
 class NetworkScanner {
-  static const _pingTimeout = Duration(milliseconds: 1200);
+  static const _pingTimeout = Duration(milliseconds: 2200);
   static const _tcpTimeout = Duration(milliseconds: 700);
   // Higher fan-out: liveness checks are almost entirely I/O wait, so a larger
   // window keeps far more probes in flight and finishes the sweep much sooner.
-  static const _parallelism = 128;
+  static const _parallelism = 32;
 
   // ── CIDR helpers ──────────────────────────────────────────────────────────
 
@@ -588,15 +588,15 @@ class NetworkScanner {
       }());
     }
 
-    for (final port in NetworkPorts.livenessProbePorts) {
-      futures.add(() async {
-        try {
-          final sock = await Socket.connect(ip, port, timeout: _tcpTimeout);
-          sock.destroy();
-          win();
-        } catch (_) {}
-      }());
-    }
+    // for (final port in NetworkPorts.livenessProbePorts) {
+    //   futures.add(() async {
+    //     try {
+    //       final sock = await Socket.connect(ip, port, timeout: _tcpTimeout);
+    //       sock.destroy();
+    //       win();
+    //     } catch (_) {}
+    //   }());
+    // }
 
     // Resolve false only once every probe has finished without a positive.
     unawaited(
