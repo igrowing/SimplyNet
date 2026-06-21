@@ -134,6 +134,22 @@ class MainActivity : FlutterActivity() {
         val handler = Handler(Looper.getMainLooper())
         var replied = false
 
+        // Snapshot whatever the system already knows BEFORE triggering a new
+        // scan. The system's periodic scans cover both bands, whereas an
+        // app-triggered scan on Android 14 is often optimised to a single band
+        // (e.g. only the connected 5 GHz radio), which made the 2.4 GHz tab go
+        // empty. Merging the pre-scan cache with the fresh results guarantees
+        // neither band is ever dropped.
+        val merged = LinkedHashMap<String, Map<String, Any>>()
+        fun collect() {
+            for (ap in readScanResults(wifiManager)) {
+                val key = (ap["bssid"] as? String).orEmpty()
+                    .ifEmpty { "${ap["ssid"]}/${ap["freq"]}" }
+                merged[key] = ap
+            }
+        }
+        collect()
+
         fun reply() {
             if (replied) return
             replied = true
@@ -141,7 +157,8 @@ class MainActivity : FlutterActivity() {
                 try { applicationContext.unregisterReceiver(it) } catch (_: Exception) {}
             }
             wifiReceiver = null
-            result.success(readScanResults(wifiManager))
+            collect()
+            result.success(merged.values.toList())
         }
 
         val receiver = object : BroadcastReceiver() {

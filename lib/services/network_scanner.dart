@@ -1,7 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-// import 'package:simply_net/constants/network_ports.dart';
 import 'package:simply_net/models/host_result.dart';
 import 'package:simply_net/services/log_service.dart';
 import 'package:simply_net/services/oui_service.dart';
@@ -9,9 +9,8 @@ import 'package:mac_address_plus/mac_address_plus.dart';
 
 class NetworkScanner {
   static const _pingTimeout = Duration(milliseconds: 2200);
-  static const _tcpTimeout = Duration(milliseconds: 700);
-  // Higher fan-out: liveness checks are almost entirely I/O wait, so a larger
-  // window keeps far more probes in flight and finishes the sweep much sooner.
+  // Kept modest so the phone stays responsive during a sweep; liveness is
+  // ICMP-only (a TCP fallback made the UI feel stuck on slow networks).
   static const _parallelism = 32;
 
   // ── CIDR helpers ──────────────────────────────────────────────────────────
@@ -82,7 +81,7 @@ class NetworkScanner {
         //   1. `ip neigh show` (netlink RTM_GETNEIGH)
         //   2. /proc/net/arp   (legacy kernel file)
         await _mergeIpNeigh(map);
-        _mergeProcNetArp(map);
+        await _mergeProcNetArp(map);
         if (map.isEmpty) {
           await LogService.createLog(
             function: 'network_scanner._readArpTable',
@@ -110,40 +109,56 @@ class NetworkScanner {
     caseSensitive: false,
   );
 
-  /// Parse `ip neigh show` (netlink neighbour table) into [map].
-  static Future<void> _mergeIpNeigh(Map<String, String> map) async {
-    try {
-      final result = await Process.run('ip', ['neigh', 'show']);
-      if (result.exitCode != 0) return;
-      final re = RegExp(
-        r'^(\S+).*?lladdr\s+([0-9a-f:]{17})',
-        caseSensitive: false,
-      );
-      for (final line in (result.stdout ?? '').toString().split('\n')) {
-        final m = re.firstMatch(line.trim());
-        if (m != null) {
-          final mac = m.group(2)!.toUpperCase();
-          if (mac != '00:00:00:00:00:00') map[m.group(1)!] = mac;
-        }
-      }
-    } catch (_) {}
+  /// Run [exe] with [args], trying a few absolute fallbacks because an app's
+  /// `PATH` on Android often omits /system/bin, so a bare `ip`/`cat` fails to
+  /// spawn. Returns stdout, or '' when every candidate fails.
+  static Future<String> _run(String exe, List<String> args) async {
+    for (final path in [exe, '/system/bin/$exe', '/system/xbin/$exe']) {
+      try {
+        final r = await Process.run(path, args);
+        if (r.exitCode == 0) return (r.stdout ?? '').toString();
+      } catch (_) {}
+    }
+    return '';
   }
 
-  /// Parse /proc/net/arp (legacy kernel file) into [map]. Returns silently on
-  /// platforms where the file is absent or unreadable (e.g. Android 10+).
-  static void _mergeProcNetArp(Map<String, String> map) {
-    try {
-      final file = File('/proc/net/arp');
-      if (!file.existsSync()) return;
-      final lines = file.readAsLinesSync();
-      for (final line in lines.skip(1)) {
-        final parts = line.trim().split(RegExp(r'\s+'));
-        if (parts.length < 4) continue;
-        final ip = parts[0];
-        final mac = parts[3].toUpperCase();
-        if (_macRe.hasMatch(mac) && mac != '00:00:00:00:00:00') map[ip] = mac;
+  /// Parse `ip neigh show` (netlink neighbour table) into [map].
+  static Future<void> _mergeIpNeigh(Map<String, String> map) async {
+    final out = await _run('ip', ['neigh', 'show']);
+    final re = RegExp(
+      r'^(\S+).*?lladdr\s+([0-9a-f:]{17})',
+      caseSensitive: false,
+    );
+    for (final line in out.split('\n')) {
+      final m = re.firstMatch(line.trim());
+      if (m != null) {
+        final mac = m.group(2)!.toUpperCase();
+        if (mac != '00:00:00:00:00:00') map[m.group(1)!] = mac;
       }
-    } catch (_) {}
+    }
+  }
+
+  /// Parse /proc/net/arp into [map]. Reads it via `cat` first: Java network
+  /// scanners that work on Android 14 read this file with a BufferedReader that
+  /// loops to EOF, whereas /proc files report size 0 — so `cat` (which also
+  /// reads to EOF) is the most faithful equivalent. Falls back to the Dart
+  /// File API. Returns silently when the kernel exposes no entries (Android 10+
+  /// restricts the neighbour table for unprivileged apps).
+  static Future<void> _mergeProcNetArp(Map<String, String> map) async {
+    var text = await _run('cat', ['/proc/net/arp']);
+    if (text.isEmpty) {
+      try {
+        final file = File('/proc/net/arp');
+        if (file.existsSync()) text = file.readAsStringSync();
+      } catch (_) {}
+    }
+    for (final line in const LineSplitter().convert(text).skip(1)) {
+      final parts = line.trim().split(RegExp(r'\s+'));
+      if (parts.length < 4) continue;
+      final ip = parts[0];
+      final mac = parts[3].toUpperCase();
+      if (_macRe.hasMatch(mac) && mac != '00:00:00:00:00:00') map[ip] = mac;
+    }
   }
 
   // ── Self MAC resolution ──────────────────────────────────────────────────
@@ -560,11 +575,9 @@ class NetworkScanner {
     );
   }
 
-  /// Liveness check that races an ICMP ping and several common TCP ports
-  /// **in parallel**, returning the instant any probe answers. The old code
-  /// pinged, then tried each TCP port one-by-one, so a dead host cost
-  /// `ping + ports x timeout` (~13 s). Racing them caps a dead host at a single
-  /// timeout (~1.2 s), which is the bulk of the speed-up versus other scanners.
+  /// ICMP liveness check. A single `ping -c 1` per host, run with bounded
+  /// concurrency. TCP port probing was dropped because the extra fan-out made
+  /// the phone feel stuck without improving discovery on a normal LAN.
   static Future<bool> _isAlive(String ip) async {
     final done = Completer<bool>();
     final futures = <Future<void>>[];
@@ -580,23 +593,13 @@ class NetworkScanner {
             '-c',
             '1',
             '-W',
-            '1',
+            '2',
             ip,
           ], runInShell: true).timeout(_pingTimeout);
           if (result.exitCode == 0) win();
         } catch (_) {}
       }());
     }
-
-    // for (final port in NetworkPorts.livenessProbePorts) {
-    //   futures.add(() async {
-    //     try {
-    //       final sock = await Socket.connect(ip, port, timeout: _tcpTimeout);
-    //       sock.destroy();
-    //       win();
-    //     } catch (_) {}
-    //   }());
-    // }
 
     // Resolve false only once every probe has finished without a positive.
     unawaited(

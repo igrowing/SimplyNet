@@ -231,19 +231,37 @@ class NetworkTools {
 
     for (var ttl = 1; ttl <= maxHops; ttl++) {
       String? hopIp;
-      var times = const <String>['*', '*', '*'];
       var reached = false;
-      try {
-        final result = await Process.run(
-          'ping', ['-c', '3', '-t', ttl.toString(), '-W', '2', destIp],
-          runInShell: false,
-        ).timeout(const Duration(seconds: 9));
-        final hop =
-            parseTracerouteHop('${result.stdout}${result.stderr}', destIp);
-        hopIp   = hop.hopIp;
-        times   = hop.times;
-        reached = hop.reached;
-      } catch (_) {}
+      final rtts = <double>[];
+
+      // Send the three probes one-by-one and time each with a Stopwatch.
+      // The kernel's "Time to live exceeded" reply for intermediate routers
+      // carries no `time=` field, so the only way to show their latency is to
+      // measure the round trip ourselves. For the destination we still prefer
+      // the precise `time=` value from the echo reply when present.
+      for (var probe = 0; probe < 3; probe++) {
+        final sw = Stopwatch()..start();
+        try {
+          final result = await Process.run(
+            'ping', ['-c', '1', '-t', ttl.toString(), '-W', '2', destIp],
+            runInShell: false,
+          ).timeout(const Duration(seconds: 4));
+          sw.stop();
+          final hop =
+              parseTracerouteHop('${result.stdout}${result.stderr}', destIp);
+          if (hop.hopIp == null) continue; // no reply to this probe
+          hopIp ??= hop.hopIp;
+          reached = reached || hop.reached;
+
+          final parsed = hop.times
+              .where((t) => t != '*')
+              .map((t) => double.tryParse(t.replaceAll('ms', '').trim()))
+              .firstWhere((v) => v != null, orElse: () => null);
+          rtts.add(parsed ?? sw.elapsedMicroseconds / 1000.0);
+        } catch (_) {
+          sw.stop();
+        }
+      }
 
       String? hostname;
       if (hopIp != null) {
@@ -253,13 +271,6 @@ class NetworkTools {
               .timeout(const Duration(seconds: 1));
           if (rev.host != hopIp) hostname = rev.host;
         } catch (_) {}
-      }
-
-      final rtts = <double>[];
-      for (final t in times) {
-        if (t == '*') continue;
-        final v = double.tryParse(t.replaceAll('ms', '').trim());
-        if (v != null) rtts.add(v);
       }
 
       reached = reached || hopIp == destIp;
@@ -274,7 +285,7 @@ class NetworkTools {
     }
   }
 
-  /// Parse a single hop from a `ping -c 3 -t <TTL>` [output] against [destIp].
+  /// Parse a single hop from a `ping -c 1 -t <TTL>` [output] against [destIp].
   /// Returns the replying hop IP (null if none), the per-probe RTT strings
   /// padded to three entries with '*' for non-responses, and whether the
   /// destination was reached. Pure — separated from the ping subprocess so the
