@@ -1723,7 +1723,7 @@ class _TracerouteScreenState extends State<TracerouteScreen> {
       return const _TraceNode('Destination', Icons.cloud, Colors.blue);
     }
     if (h.hop == 1) {
-      return const _TraceNode('Your Device', Icons.smartphone, Colors.teal);
+      return const _TraceNode('Your router', Icons.router, Colors.teal);
     }
     return const _TraceNode('Network Hop', Icons.location_city, Colors.indigo);
   }
