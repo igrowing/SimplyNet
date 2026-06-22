@@ -35,8 +35,38 @@ void main() {
     });
 
     test('Smart TV / media vendors', () {
-      for (final m in ['Samsung', 'LG Electronics', 'Vizio', 'Sony', 'Roku', 'Apple TV']) {
+      for (final m in ['LG Electronics', 'Vizio', 'Sony', 'Roku', 'Apple TV', 'TCL', 'Hisense']) {
         expect(NetworkScanner.detectDeviceType(m), 'Smart TV', reason: m);
+      }
+    });
+
+    test('Storage / NAS vendors', () {
+      for (final m in ['QNAP Systems', 'Synology', 'ASUSTOR Inc.', 'Drobo', 'TerraMaster', 'Western Digital']) {
+        expect(NetworkScanner.detectDeviceType(m), 'Storage', reason: m);
+      }
+    });
+
+    test('Router / gateway vendors', () {
+      for (final m in ['AVM GmbH', 'FRITZ!Box', 'eero inc.', 'MikroTik', 'Mercku']) {
+        expect(NetworkScanner.detectDeviceType(m), 'Router', reason: m);
+      }
+    });
+
+    test('Mobile phone vendors', () {
+      for (final m in ['Samsung Electronics', 'Redmi', 'Huawei Technologies', 'OnePlus', 'Guangdong OPPO', 'vivo Mobile', 'realme Chongqing', 'Motorola Mobility']) {
+        expect(NetworkScanner.detectDeviceType(m), 'Mobile', reason: m);
+      }
+    });
+
+    test('VoIP phone vendors', () {
+      for (final m in ['Yealink', 'Grandstream Networks', 'Polycom', 'snom technology', 'Fanvil']) {
+        expect(NetworkScanner.detectDeviceType(m), 'VoIP Phone', reason: m);
+      }
+    });
+
+    test('Game console vendors', () {
+      for (final m in ['Nintendo Co.,Ltd', 'Sony Interactive Entertainment Inc.']) {
+        expect(NetworkScanner.detectDeviceType(m), 'Game Console', reason: m);
       }
     });
 
@@ -53,7 +83,7 @@ void main() {
     });
 
     test('IP cameras', () {
-      for (final m in ['Generic Camera', 'Hikvision', 'Axis', 'Dahua', 'Uniview']) {
+      for (final m in ['Generic Camera', 'Hikvision', 'Axis Communications', 'Dahua', 'Uniview', 'Reolink', 'Hui Zhou Gaoshengda', 'Amcrest', 'Lorex', 'Foscam', 'EZVIZ', 'VIVOTEK']) {
         expect(NetworkScanner.detectDeviceType(m), 'IP Camera', reason: m);
       }
     });
@@ -74,10 +104,10 @@ void main() {
       }
     });
 
-    test('Apple and Android', () {
+    test('Apple and Samsung', () {
       expect(NetworkScanner.detectDeviceType('Apple Inc.'), 'Apple Device');
-      expect(NetworkScanner.detectDeviceType('Samsung Mobile'), 'Smart TV',
-          reason: 'samsung is matched as Smart TV before the mobile rule');
+      expect(NetworkScanner.detectDeviceType('Samsung Mobile'), 'Mobile',
+          reason: 'samsung now classifies as Mobile (phones share the TV OUI)');
     });
 
     test('Computers / NIC chip vendors', () {

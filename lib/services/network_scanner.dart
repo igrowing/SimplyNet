@@ -283,15 +283,16 @@ class NetworkScanner {
   // Infers device type from manufacturer name (OUI lookup).
   // Can be extended with port-based detection (e.g., 554 = IP Camera).
 
-  // ── IoT OUI prefixes (subset of IotScanner._ouiVendors) ────────────────────
-  // Used to classify devices as 'IoT Device' when the general OUI lookup
-  // returns a vendor name that belongs to a known IoT hardware maker.
-  // Keep in sync with IotScanner._ouiVendors in lib/services/iot_scanner.dart.
+  // ── IoT / embedded chip & brand vendors ───────────────────────────────────
+  // Checked first because chip makers ("Espressif") or platforms ("Tuya") must
+  // win over the broader rules below. Matched against the vendor name resolved
+  // from the MAC via assets/oui.json (the single OUI source), so no MAC-prefix
+  // list is duplicated here.
   static const _iotVendorKeywords = <String>[
     // Chip vendors — virtually always IoT
     'espressif', 'nordic semiconductor', 'silicon labs', 'texas instruments',
     'stmicroelectronics', 'stmicro', 'nxp semiconductor', 'microchip technol',
-    'beken', 'renesas',
+    'beken', 'renesas', 'ember', 'minew',
     // Platform/firmware
     'tuya', 'shelly', 'allterco', 'itead', 'sonoff',
     'meross', 'ewelink',
@@ -309,67 +310,66 @@ class NetworkScanner {
     'realtek(iot',
   ];
 
-  /// Returns 'IoT Device' when [mac] belongs to a known IoT OUI prefix.
-  /// Falls back to empty string if the MAC is unknown or N/A.
-  static String deviceTypeFromMac(String mac) {
-    if (mac == 'N/A' || mac.length < 8) return '';
-    final prefix = mac.toUpperCase().substring(0, 8);
-    // Check against the IoT prefixes used by IotScanner
-    // (inline check avoids importing iot_scanner to prevent circular deps)
-    const iotPrefixes = <String>{
-      '10:06:1C', '18:FE:34', '24:0A:C4', '2C:3A:E8', '30:AE:A4', '3C:71:BF',
-      '48:3F:DA', '48:E7:29', '4C:11:AE', '58:BF:25', '5C:CF:7F', '60:01:94',
-      '68:C6:3A', '7C:9E:BD', '80:64:6F', '80:7D:3A', '84:0D:8E', '84:CC:A8',
-      '8C:AA:B5', 'A0:20:A6', 'A4:CF:12', 'A8:03:2A', 'AC:67:B2', 'B4:E6:2D',
-      'BC:DD:C2', 'C4:4F:33', 'CC:50:E3', 'D4:8A:FC', 'D8:A0:1D', 'DC:4F:22',
-      'E0:98:06', 'E4:65:B8', 'EC:FA:BC', 'F4:CF:A2', 'FC:F5:C4', // Espressif
-      'D0:F6:18', 'E6:9E:7E', 'F4:CE:36', // Nordic
-      '00:0D:6F', '78:A5:04', // Silicon Labs
-      '00:12:4B', // TI
-      '00:80:E1', '10:E7:7A', '18:E8:EC', '40:82:7B', '50:0F:59', // STMicro
-      '1C:90:FF',
-      'CC:02:D1',
-      'CC:8C:BF',
-      'E4:AE:E4',
-      'FC:3C:D7',
-      'FC:67:1F', // Tuya
-      'C8:47:8C', '70:87:9E', '80:6D:DE', 'D8:5D:4C', 'E0:5A:1B', // Beken/Tuya
-      'C4:5B:BE', // Shelly
-      '60:55:F9', 'BC:FF:4D', // Sonoff/ITEAD
-      '50:C7:BF', '98:DA:C4', 'B0:95:75', 'C0:06:C3', 'D8:0D:17', // TP-Link
-      '28:6C:07', '34:CE:00', '50:64:2B', '64:09:80', '78:11:DC',
-      '98:FA:E3', 'AC:29:3A', 'F4:F5:DB', // Xiaomi
-      '48:E1:E9', 'C4:E7:AE', // Meross
-      'B4:75:0E', 'D8:EC:5E', 'E8:9F:80', 'EC:1A:59', // Belkin/WeMo
-      '00:17:88', 'C4:29:96', 'EC:B5:FA', 'FC:26:8C', // Philips Hue/Signify
-      '68:EC:8A', 'AC:23:3F', // IKEA
-      '28:CD:C1',
-      '88:A2:9E',
-      '98:FE:54',
-      'DC:A6:32',
-      'D8:3A:DD',
-      'E4:5F:01', // RPi
-      '08:91:A3',
-      '28:73:F6',
-      '68:37:E9',
-      '84:28:59',
-      'E0:CB:1D',
-      'FC:D7:49', // Amazon
-      '08:B4:B1',
-      '24:29:34',
-      '54:60:09',
-      '60:70:6C',
-      '60:B7:6E',
-      'C8:2A:DD', // Google
-      '24:FD:5B', // SmartThings
-      '2C:AA:8E', '7C:78:B2', '80:48:2C', 'D0:3F:27', 'F0:C8:8B', // Wyze
-      'A8:61:0A', '94:94:4A', // Arduino/Particle
-      'AC:9A:22', 'B4:3D:6B', // NXP
-      '00:E0:4C', // Realtek(IoT-bridge)
-    };
-    if (iotPrefixes.contains(prefix)) return 'IoT Device';
-    return '';
-  }
+  // Ordered (keyword, type) table for non-IoT vendors. The first keyword found
+  // in the lower-cased manufacturer name wins, so more specific entries are
+  // placed before more generic ones (e.g. "sony interactive" before "sony",
+  // and brand cameras before the generic "camera" / Smart-Home rules).
+  static const _typeKeywords = <(String, String)>[
+    // Specific IP-camera makers.
+    ('hikvision', 'IP Camera'), ('dahua', 'IP Camera'),
+    ('hui zhou', 'IP Camera'), ('reolink', 'IP Camera'),
+    ('amcrest', 'IP Camera'), ('lorex', 'IP Camera'),
+    ('foscam', 'IP Camera'), ('ezviz', 'IP Camera'),
+    ('vivotek', 'IP Camera'), ('uniview', 'IP Camera'),
+    ('axis communications', 'IP Camera'),
+    // Network-attached storage / NAS.
+    ('qnap', 'Storage'), ('synology', 'Storage'), ('asustor', 'Storage'),
+    ('drobo', 'Storage'), ('terramaster', 'Storage'),
+    ('western digital', 'Storage'),
+    // Home routers / gateways / mesh (enterprise gear → "Network Device").
+    ('avm', 'Router'), ('fritz', 'Router'), ('eero', 'Router'),
+    ('mikrotik', 'Router'), ('mercku', 'Router'),
+    // VoIP desk phones.
+    ('yealink', 'VoIP Phone'), ('grandstream', 'VoIP Phone'),
+    ('polycom', 'VoIP Phone'), ('snom', 'VoIP Phone'),
+    ('fanvil', 'VoIP Phone'),
+    // Game consoles (before "sony" → Smart TV so PlayStation is a console).
+    ('nintendo', 'Game Console'), ('sony interactive', 'Game Console'),
+    // Mobile phones.
+    ('samsung', 'Mobile'), ('redmi', 'Mobile'), ('huawei', 'Mobile'),
+    ('oneplus', 'Mobile'), ('oppo', 'Mobile'), ('vivo mobile', 'Mobile'),
+    ('realme', 'Mobile'), ('motorola', 'Mobile'),
+    // Smart TVs / media players.
+    ('lg electron', 'Smart TV'), ('vizio', 'Smart TV'), ('sony', 'Smart TV'),
+    ('roku', 'Smart TV'), ('apple tv', 'Smart TV'), ('tcl', 'Smart TV'),
+    ('hisense', 'Smart TV'),
+    // Smart-home hubs (before the generic "camera" keyword below).
+    ('echo', 'Smart Home'), ('nest', 'Smart Home'), ('ring ', 'Smart Home'),
+    ('arlo ', 'Smart Home'),
+    // Printers.
+    ('printer', 'Printer'), ('xerox', 'Printer'), ('canon', 'Printer'),
+    ('hp inc', 'Printer'), ('epson', 'Printer'), ('ricoh', 'Printer'),
+    ('brother', 'Printer'),
+    // Generic camera keyword (after Smart Home so "Arlo Camera" stays a hub).
+    ('camera', 'IP Camera'), ('axis', 'IP Camera'),
+    // Enterprise / general networking equipment.
+    ('cisco', 'Network Device'), ('router', 'Network Device'),
+    ('netgear', 'Network Device'), ('d-link', 'Network Device'),
+    ('asus', 'Network Device'), ('ubiquiti', 'Network Device'),
+    ('arista', 'Network Device'), ('juniper', 'Network Device'),
+    ('fortinet', 'Network Device'), ('aruba', 'Network Device'),
+    ('zyxel', 'Network Device'),
+    // Apple (after "apple tv" above).
+    ('apple', 'Apple Device'),
+    // NIC chip vendors → general-purpose computers.
+    ('intel', 'Computer'), ('realtek', 'Computer'), ('broadcom', 'Computer'),
+    ('atheros', 'Computer'), ('qualcomm', 'Computer'),
+  ];
+
+  /// Returns the device type for [mac] by resolving its vendor through
+  /// assets/oui.json (the single OUI source) and classifying that name.
+  static String deviceTypeFromMac(String mac) =>
+      detectDeviceType(OuiService.lookup(mac));
 
   @visibleForTesting
   static String detectDeviceType(String manufacturer) {
@@ -377,76 +377,14 @@ class NetworkScanner {
 
     final lower = manufacturer.toLowerCase();
 
-    // IoT / embedded chip vendors — checked first because e.g. "Espressif" or
-    // "Tuya Smart" would otherwise fall through to no match.
+    // IoT / embedded chip vendors are checked first.
     for (final kw in _iotVendorKeywords) {
       if (lower.contains(kw)) return 'IoT Device';
     }
-
-    // Smart TV / Media devices
-    if (lower.contains('samsung') ||
-        lower.contains('lg') ||
-        lower.contains('vizio') ||
-        lower.contains('sony') ||
-        lower.contains('roku') ||
-        lower.contains('apple tv')) {
-      return 'Smart TV';
+    // Then the ordered, most-specific-first keyword table.
+    for (final (kw, type) in _typeKeywords) {
+      if (lower.contains(kw)) return type;
     }
-
-    // Smart Home hubs / platforms
-    if (lower.contains('echo') ||
-        lower.contains('nest') ||
-        lower.contains('ring ') ||
-        lower.contains('arlo ')) {
-      return 'Smart Home';
-    }
-
-    // Printers
-    if (lower.contains('printer') ||
-        lower.contains('xerox') ||
-        lower.contains('canon') ||
-        lower.contains('hp inc') ||
-        lower.contains('epson') ||
-        lower.contains('ricoh')) {
-      return 'Printer';
-    }
-
-    // IP Cameras
-    if (lower.contains('camera') ||
-        lower.contains('hikvision') ||
-        lower.contains('axis') ||
-        lower.contains('dahua') ||
-        lower.contains('uniview')) {
-      return 'IP Camera';
-    }
-
-    // Networking equipment
-    if (lower.contains('cisco') ||
-        lower.contains('router') ||
-        lower.contains('netgear') ||
-        lower.contains('d-link') ||
-        lower.contains('asus') ||
-        lower.contains('ubiquiti') ||
-        lower.contains('arista') ||
-        lower.contains('juniper') ||
-        lower.contains('fortinet')) {
-      return 'Network Device';
-    }
-
-    // Mobile / Apple
-    if (lower.contains('apple')) return 'Apple Device';
-    if (lower.contains('samsung') && lower.contains('mobile'))
-      return 'Android Device';
-
-    // Workstations / Computers
-    if (lower.contains('intel') ||
-        lower.contains('realtek') ||
-        lower.contains('broadcom') ||
-        lower.contains('atheros') ||
-        lower.contains('qualcomm')) {
-      return 'Computer';
-    }
-
     return '';
   }
 
@@ -550,11 +488,9 @@ class NetworkScanner {
       host.mac = host.mac != '' ? host.mac : 'N/A';
       host.manufacturer = host.manufacturer != '' ? host.manufacturer : '';
     }
-    // MAC-based IoT classification takes priority over name matching.
-    final macType = deviceTypeFromMac(host.mac);
-    host.deviceType = macType.isNotEmpty
-        ? macType
-        : detectDeviceType(host.manufacturer);
+    // Manufacturer is resolved from the MAC via oui.json, so name-based
+    // classification already covers the former MAC-prefix logic.
+    host.deviceType = detectDeviceType(host.manufacturer);
   }
 
   static Future<HostResult?> _probeHost(String ip, bool resolveNames) async {
