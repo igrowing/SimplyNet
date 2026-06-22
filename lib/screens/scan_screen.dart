@@ -61,7 +61,9 @@ class _ScanScreenState extends State<ScanScreen> {
         content: const Text(
           "Devices blocking ICMP (pings) will not appear here. Run the "
           "'IoT Devices' or 'IP Cameras' scan to locate them via their open "
-          "ports and services.",
+          "ports and services.\n\n"
+          "In Android 11+ devices, MAC addresses cannot be retrieved due to "
+          "Google's privacy restrictions, so they are not displayed.",
         ),
         actions: [
           TextButton(
