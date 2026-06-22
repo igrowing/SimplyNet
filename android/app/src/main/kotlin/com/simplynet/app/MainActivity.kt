@@ -118,14 +118,27 @@ class MainActivity : FlutterActivity() {
 
     private var wifiReceiver: BroadcastReceiver? = null
 
+    // Access points accumulate here ACROSS scans (keyed by BSSID) with the
+    // wall-clock time each was last seen. An app-triggered startScan() on
+    // Android 14 is often optimised to a single band, and it overwrites the
+    // system's dual-band scanResults cache — so on a refresh the pre-scan
+    // snapshot no longer holds the other band and that tab goes empty. Keeping
+    // a persistent, time-stamped union means a band briefly missing from one
+    // scan is retained from the previous one; entries vanish only after they
+    // have not been seen for AP_CACHE_TTL_MS.
+    private val apCache = LinkedHashMap<String, Map<String, Any>>()
+    private val apSeen = HashMap<String, Long>()
+    private val AP_CACHE_TTL_MS = 60_000L
+
     /**
      * Trigger a fresh Wi-Fi scan and reply only once it has completed. Reading
      * `scanResults` immediately after `startScan()` returns a stale/partial
      * cache that on modern Android (13/14) often holds only the connected
-     * band, so the 5 GHz tab comes up empty. Waiting for the
-     * SCAN_RESULTS_AVAILABLE broadcast guarantees a complete dual-band snapshot.
-     * Falls back to the cached results when the scan is throttled or no
-     * broadcast arrives in time.
+     * band, so a tab comes up empty. Waiting for the SCAN_RESULTS_AVAILABLE
+     * broadcast guarantees a complete dual-band snapshot. Falls back to the
+     * cached results when the scan is throttled or no broadcast arrives in
+     * time. Results merge into the persistent [apCache] so neither band is
+     * dropped between refreshes.
      */
     @SuppressLint("MissingPermission")
     private fun startWifiScan(result: MethodChannel.Result) {
@@ -134,18 +147,13 @@ class MainActivity : FlutterActivity() {
         val handler = Handler(Looper.getMainLooper())
         var replied = false
 
-        // Snapshot whatever the system already knows BEFORE triggering a new
-        // scan. The system's periodic scans cover both bands, whereas an
-        // app-triggered scan on Android 14 is often optimised to a single band
-        // (e.g. only the connected 5 GHz radio), which made the 2.4 GHz tab go
-        // empty. Merging the pre-scan cache with the fresh results guarantees
-        // neither band is ever dropped.
-        val merged = LinkedHashMap<String, Map<String, Any>>()
         fun collect() {
+            val now = System.currentTimeMillis()
             for (ap in readScanResults(wifiManager)) {
                 val key = (ap["bssid"] as? String).orEmpty()
                     .ifEmpty { "${ap["ssid"]}/${ap["freq"]}" }
-                merged[key] = ap
+                apCache[key] = ap
+                apSeen[key] = now
             }
         }
         collect()
@@ -158,7 +166,12 @@ class MainActivity : FlutterActivity() {
             }
             wifiReceiver = null
             collect()
-            result.success(merged.values.toList())
+            // Drop access points not seen for a while so networks that are
+            // genuinely gone eventually disappear from the list.
+            val cutoff = System.currentTimeMillis() - AP_CACHE_TTL_MS
+            val stale = apSeen.filterValues { it < cutoff }.keys.toList()
+            for (k in stale) { apCache.remove(k); apSeen.remove(k) }
+            result.success(apCache.values.toList())
         }
 
         val receiver = object : BroadcastReceiver() {

@@ -2,10 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:simply_net/models/app_settings.dart';
+import 'package:simply_net/services/network_capability_manager.dart';
 
 class SettingsProvider extends ChangeNotifier {
   AppSettings _settings = const AppSettings();
   AppSettings get settings => _settings;
+
+  // True on Android 11+ where the OS blocks remote MAC resolution, so the
+  // "Show MAC Address" setting is forced off and locked.
+  bool _macResolutionBlocked = false;
+  bool get macResolutionBlocked => _macResolutionBlocked;
 
   static const _platform = MethodChannel('com.simplytools.simplynet/screen');
 
@@ -25,6 +31,14 @@ class SettingsProvider extends ChangeNotifier {
       );
     } catch (e) {
       _settings = const AppSettings();
+    }
+    // On Android 11+ remote MAC resolution is blocked by the OS, so the
+    // setting is forced off and locked (the user can never enable it).
+    _macResolutionBlocked =
+        await NetworkCapabilityManager.isMacResolutionBlocked();
+    if (_macResolutionBlocked && _settings.showMac) {
+      _settings = _settings.copyWith(showMac: false);
+      await prefs.setBool('showMac', false);
     }
     await _applyScreenTimeout(_settings.screenTimeout);
     notifyListeners();
@@ -71,6 +85,7 @@ class SettingsProvider extends ChangeNotifier {
   }
 
   Future<void> setShowMac(bool showMac) async {
+    if (_macResolutionBlocked) return; // locked off on Android 11+
     _settings = _settings.copyWith(showMac: showMac);
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();

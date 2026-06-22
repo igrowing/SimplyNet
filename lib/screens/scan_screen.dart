@@ -345,11 +345,11 @@ class _ScanRow extends StatelessWidget {
               flex: wHost.round().clamp(1, 20),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                child: SelectableText(
+                child: Text(
                   host.hostname.isEmpty ? host.manufacturer : host.hostname,
                   style: const TextStyle(fontSize: 12),
                   maxLines: 1,
-                  // overflow: TextOverflow.ellipsis,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ),

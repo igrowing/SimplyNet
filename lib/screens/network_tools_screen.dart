@@ -1998,10 +1998,32 @@ class _TracerouteScreenState extends State<TracerouteScreen> {
                 ],
               ),
             ),
-            const SizedBox(width: 10),
+            if (h.ip != null) ...[
+              const SizedBox(width: 4),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                iconSize: 18,
+                color: subtle,
+                tooltip: 'Copy IP',
+                icon: const Icon(Icons.copy),
+                onPressed: () => _copyIp(context, h.ip!),
+              ),
+            ],
+            const SizedBox(width: 6),
             _latency(h),
           ],
         ),
+      ),
+    );
+  }
+
+  Future<void> _copyIp(BuildContext context, String ip) async {
+    await Clipboard.setData(ClipboardData(text: ip));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Copied $ip'),
+        duration: const Duration(seconds: 2),
       ),
     );
   }
