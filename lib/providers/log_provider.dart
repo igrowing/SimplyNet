@@ -23,5 +23,11 @@ class LogProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> deleteAll() async {
+    await LogService.deleteAll();
+    _logs = [];
+    notifyListeners();
+  }
+
   Future<String> readLog(String filePath) => LogService.readLog(filePath);
 }

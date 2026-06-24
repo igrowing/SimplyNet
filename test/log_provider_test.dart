@@ -53,6 +53,19 @@ void main() {
       expect(p.logs.map((e) => e.id), isNot(contains(entry.id)));
     });
 
+    test('deleteAll clears the in-memory list and notifies', () async {
+      await LogService.createLog(function: 'ping', content: 'a');
+      await LogService.createLog(function: 'scan', content: 'b');
+      final p = LogProvider();
+      await p.loadLogs();
+      expect(p.logs, isNotEmpty);
+      var notified = 0;
+      p.addListener(() => notified++);
+      await p.deleteAll();
+      expect(p.logs, isEmpty);
+      expect(notified, 1);
+    });
+
     test('readLog delegates to LogService', () async {
       final entry =
           await LogService.createLog(function: 'traceroute', content: 'hop');

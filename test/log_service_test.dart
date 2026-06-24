@@ -77,5 +77,14 @@ void main() {
       final index = await LogService.loadIndex();
       expect(index.map((e) => e.id), isNot(contains(entry.id)));
     });
+
+    test('deleteAll removes every file and clears the index', () async {
+      final a = await LogService.createLog(function: 'ping', content: 'a');
+      final b = await LogService.createLog(function: 'scan', content: 'b');
+      await LogService.deleteAll();
+      expect(File(a.filePath).existsSync(), isFalse);
+      expect(File(b.filePath).existsSync(), isFalse);
+      expect(await LogService.loadIndex(), isEmpty);
+    });
   });
 }
