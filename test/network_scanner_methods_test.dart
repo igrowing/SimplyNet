@@ -53,6 +53,18 @@ void main() {
     }, timeout: const Timeout(Duration(seconds: 15)));
   });
 
+  group('NetworkScanner.hostsInCidr', () {
+    test('returns empty for an invalid CIDR', () {
+      expect(NetworkScanner.hostsInCidr('not-a-cidr'), isEmpty);
+    });
+
+    test('excludes network and broadcast addresses', () {
+      // /30 has 4 addresses: .0 network, .1/.2 hosts, .3 broadcast.
+      expect(NetworkScanner.hostsInCidr('192.0.2.0/30'),
+          ['192.0.2.1', '192.0.2.2']);
+    });
+  });
+
   group('NetworkScanner.scan', () {
     test('yields nothing for an invalid CIDR', () async {
       final hosts = await NetworkScanner.scan('not-a-cidr').toList();

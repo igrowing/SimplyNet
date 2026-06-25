@@ -80,4 +80,13 @@ class LogService {
     index.removeWhere((e) => e.id == entry.id);
     await _saveIndex(index);
   }
+
+  static Future<void> deleteAll() async {
+    final index = await loadIndex();
+    for (final entry in index) {
+      final file = File(entry.filePath);
+      if (file.existsSync()) file.deleteSync();
+    }
+    await _saveIndex([]);
+  }
 }

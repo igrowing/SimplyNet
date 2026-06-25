@@ -49,6 +49,48 @@ class IotDevice {
   @override
   String toString() =>
       '$ip  $protocol  $vendor  [$detectionMethod, ${confidence.name}]';
+
+  Map<String, dynamic> toJson() => {
+        'ip': ip,
+        'mac': mac,
+        'vendor': vendor,
+        'protocol': protocol,
+        'model': model,
+        'openPorts': openPorts,
+        'confidence': confidence.name,
+        'detectionMethod': detectionMethod,
+        'extra': extra,
+      };
+
+  /// Rebuilds an [IotDevice] from its [toJson] map.
+  ///
+  /// Throws [FormatException] when the mandatory `ip` field is missing —
+  /// a corrupt cache entry must fail loudly rather than load a blank device.
+  factory IotDevice.fromJson(Map<String, dynamic> json) {
+    final ip = json['ip'];
+    if (ip is! String || ip.isEmpty) {
+      throw const FormatException('IotDevice.fromJson: missing "ip"');
+    }
+    final confName =
+        json['confidence'] as String? ?? IotConfidence.possible.name;
+    return IotDevice(
+      ip: ip,
+      mac: json['mac'] as String? ?? 'N/A',
+      vendor: json['vendor'] as String? ?? '',
+      protocol: json['protocol'] as String? ?? '',
+      model: json['model'] as String? ?? '',
+      openPorts: (json['openPorts'] as List<dynamic>? ?? const [])
+          .map((e) => e as int)
+          .toList(),
+      confidence: IotConfidence.values.firstWhere(
+        (c) => c.name == confName,
+        orElse: () => IotConfidence.possible,
+      ),
+      detectionMethod: json['detectionMethod'] as String? ?? '',
+      extra: (json['extra'] as Map<String, dynamic>? ?? const {})
+          .map((k, v) => MapEntry(k, v.toString())),
+    );
+  }
 }
 
 // ── Scanner ───────────────────────────────────────────────────────────────────

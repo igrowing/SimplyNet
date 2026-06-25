@@ -1,8 +1,58 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:simply_net/models/host_result.dart';
 import 'package:simply_net/providers/scan_provider.dart';
+import 'package:simply_net/services/scan_storage.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  group('ScanProvider cache', () {
+    setUp(() => SharedPreferences.setMockInitialValues({}));
+
+    test('loadCache is a no-op when nothing is stored', () async {
+      final p = ScanProvider();
+      await p.loadCache();
+      expect(p.rawResults, isEmpty);
+    });
+
+    test('loadCache restores hosts and applies the IP sort', () async {
+      await ScanStorage.save(ScanStorage.kScanHosts, '192.168.1.0/24', [
+        HostResult(ip: '192.168.1.10').toJson(),
+        HostResult(ip: '192.168.1.2').toJson(),
+      ]);
+      final p = ScanProvider();
+      await p.loadCache();
+      expect(p.rawResults, hasLength(2));
+      // results getter sorts by IP when not scanning.
+      expect(p.results.map((h) => h.ip), ['192.168.1.2', '192.168.1.10']);
+    });
+
+    test('loadCache discards a corrupt cache without throwing', () async {
+      SharedPreferences.setMockInitialValues({
+        ScanStorage.kScanHosts: 'not-json',
+      });
+      final p = ScanProvider();
+      await p.loadCache();
+      expect(p.rawResults, isEmpty);
+    });
+
+    test('shouldAutoScan is true once when cache is empty', () async {
+      final p = ScanProvider();
+      expect(await p.shouldAutoScan(), isTrue);
+      // One-shot: a second call never re-triggers an automatic scan.
+      expect(await p.shouldAutoScan(), isFalse);
+    });
+
+    test('shouldAutoScan is false when cached results exist', () async {
+      await ScanStorage.save(ScanStorage.kScanHosts, '192.168.1.0/24', [
+        HostResult(ip: '192.168.1.2').toJson(),
+      ]);
+      final p = ScanProvider();
+      expect(await p.shouldAutoScan(), isFalse);
+    });
+  });
+
   group('ScanProvider target', () {
     test('default target is empty and invalid', () {
       final p = ScanProvider();

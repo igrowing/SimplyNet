@@ -28,6 +28,14 @@ class _LogsScreenState extends State<LogsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Logs', style: TextStyle(fontWeight: FontWeight.bold)),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete_sweep_outlined),
+            tooltip: 'Delete all logs',
+            onPressed:
+                prov.logs.isEmpty ? null : () => _confirmDeleteAll(context, prov),
+          ),
+        ],
       ),
       body: prov.logs.isEmpty
           ? const _EmptyLogs()
@@ -46,6 +54,29 @@ class _LogsScreenState extends State<LogsScreen> {
                 onDelete: () => _confirmDelete(ctx, prov, prov.logs[i]),
               ),
             ),
+    );
+  }
+
+  void _confirmDeleteAll(BuildContext ctx, LogProvider prov) {
+    showDialog(
+      context: ctx,
+      builder: (_) => AlertDialog(
+        title: const Text('Delete all logs?'),
+        content: const Text('This cannot be undone.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel')),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              prov.deleteAll();
+            },
+            child: Text('Delete all',
+                style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
+          ),
+        ],
+      ),
     );
   }
 

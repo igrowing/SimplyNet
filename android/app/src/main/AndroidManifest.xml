@@ -6,7 +6,12 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
+    <!-- Required by WifiManager.startScan() to trigger a fresh dual-band scan -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE"/>
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE"/>
+    <!-- API 33+: lets us read Wi-Fi scan results; we never derive location -->
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
+        android:usesPermissionFlags="neverForLocation" />
     <!-- Cellular info (READ_PHONE_STATE needed for TelephonyManager on API 29+) -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE"/>
 

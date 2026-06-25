@@ -2,13 +2,20 @@ package com.simplytools.simplynet
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.telephony.*
 import android.view.WindowManager
 import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import com.pravera.flutter_foreground_task.FlutterForegroundTaskPlugin
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -51,7 +58,7 @@ class MainActivity : FlutterActivity() {
                 when (call.method) {
                     "getScanResults" -> {
                         try {
-                            result.success(getWifiScanResults())
+                            startWifiScan(result)
                         } catch (e: Exception) {
                             result.error("WIFI_ERROR", e.message, null)
                         }
@@ -109,13 +116,87 @@ class MainActivity : FlutterActivity() {
         } catch (_: Exception) { null }
     }
 
+    private var wifiReceiver: BroadcastReceiver? = null
+
+    // Access points accumulate here ACROSS scans (keyed by BSSID) with the
+    // wall-clock time each was last seen. An app-triggered startScan() on
+    // Android 14 is often optimised to a single band, and it overwrites the
+    // system's dual-band scanResults cache — so on a refresh the pre-scan
+    // snapshot no longer holds the other band and that tab goes empty. Keeping
+    // a persistent, time-stamped union means a band briefly missing from one
+    // scan is retained from the previous one; entries vanish only after they
+    // have not been seen for AP_CACHE_TTL_MS.
+    private val apCache = LinkedHashMap<String, Map<String, Any>>()
+    private val apSeen = HashMap<String, Long>()
+    private val AP_CACHE_TTL_MS = 60_000L
+
+    /**
+     * Trigger a fresh Wi-Fi scan and reply only once it has completed. Reading
+     * `scanResults` immediately after `startScan()` returns a stale/partial
+     * cache that on modern Android (13/14) often holds only the connected
+     * band, so a tab comes up empty. Waiting for the SCAN_RESULTS_AVAILABLE
+     * broadcast guarantees a complete dual-band snapshot. Falls back to the
+     * cached results when the scan is throttled or no broadcast arrives in
+     * time. Results merge into the persistent [apCache] so neither band is
+     * dropped between refreshes.
+     */
     @SuppressLint("MissingPermission")
-    private fun getWifiScanResults(): List<Map<String, Any>> {
+    private fun startWifiScan(result: MethodChannel.Result) {
         val wifiManager = applicationContext
             .getSystemService(WIFI_SERVICE) as WifiManager
+        val handler = Handler(Looper.getMainLooper())
+        var replied = false
 
-        // On API 28+ startScan() is throttled; getScanResults() returns the
-        // most recent cached scan which is good enough for interference display.
+        fun collect() {
+            val now = System.currentTimeMillis()
+            for (ap in readScanResults(wifiManager)) {
+                val key = (ap["bssid"] as? String).orEmpty()
+                    .ifEmpty { "${ap["ssid"]}/${ap["freq"]}" }
+                apCache[key] = ap
+                apSeen[key] = now
+            }
+        }
+        collect()
+
+        fun reply() {
+            if (replied) return
+            replied = true
+            wifiReceiver?.let {
+                try { applicationContext.unregisterReceiver(it) } catch (_: Exception) {}
+            }
+            wifiReceiver = null
+            collect()
+            // Drop access points not seen for a while so networks that are
+            // genuinely gone eventually disappear from the list.
+            val cutoff = System.currentTimeMillis() - AP_CACHE_TTL_MS
+            val stale = apSeen.filterValues { it < cutoff }.keys.toList()
+            for (k in stale) { apCache.remove(k); apSeen.remove(k) }
+            result.success(apCache.values.toList())
+        }
+
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(c: Context?, i: Intent?) = reply()
+        }
+        wifiReceiver = receiver
+        ContextCompat.registerReceiver(
+            applicationContext,
+            receiver,
+            IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+
+        val started = try {
+            @Suppress("DEPRECATION")
+            wifiManager.startScan()
+        } catch (_: Exception) { false }
+
+        // A full dual-band scan can take a few seconds; if throttled there will
+        // be no broadcast, so fall back to the current cache quickly.
+        handler.postDelayed({ reply() }, if (started) 8000 else 1500)
+    }
+
+    private fun readScanResults(wifiManager: WifiManager): List<Map<String, Any>> {
+        @Suppress("DEPRECATION")
         val results = wifiManager.scanResults
         return results.map { ap ->
             mapOf(
@@ -174,7 +255,8 @@ class MainActivity : FlutterActivity() {
                         result["band"]           = earfcnToBand(id.earfcn)
                         result["earfcn"]         = id.earfcn.toString()
                         result["technology"]     = "LTE (4G)"
-                        result["tower_est_dist"] = estimateDist(sig.dbm)
+                        result["tower_est_dist"] =
+                            estimateDist(sig.dbm, earfcnToFreqMhz(id.earfcn))
                         break
                     }
                     is CellInfoNr -> {
@@ -191,7 +273,9 @@ class MainActivity : FlutterActivity() {
                             result["band"]       = "5G NR (${id.nrarfcn})"
                             result["earfcn"]     = id.nrarfcn.toString()
                             result["technology"]     = "5G NR"
-                            result["tower_est_dist"] = estimateDist(sig.dbm)
+                            // 5G mid-band is the common case; a representative
+                            // 3500 MHz keeps the estimate in a sane range.
+                            result["tower_est_dist"] = estimateDist(sig.dbm, 3500)
                             break
                         }
                     }
@@ -237,14 +321,51 @@ class MainActivity : FlutterActivity() {
         else                                 -> "Unknown ($type)"
     }
 
-    /** Very rough distance estimate from RSRP using free-space path loss. */
-    private fun estimateDist(rsrpDbm: Int): String {
-        // Rough heuristic: towers typically transmit at ~46 dBm EIRP on 1800 MHz.
-        // d(km) = 10^((46 - pathloss) / 20) where pathloss = 46 - rsrp (approx)
-        if (rsrpDbm <= -140 || rsrpDbm >= 0) return "N/A"
-        val pathloss = 46.0 - rsrpDbm
-        val distKm   = Math.pow(10.0, (pathloss - 20) / 20.0)
-        return "~${(distKm * 10).roundToInt() / 10.0} km (estimated)"
+    /**
+     * Very rough distance estimate from RSRP using the Okumura-Hata urban
+     * propagation model. Free-space path loss (the previous approach) hugely
+     * underestimates real cellular attenuation and produced absurd distances of
+     * millions of km. Hata is realistic for macro cells; the result is still
+     * only an order-of-magnitude indication.
+     *
+     * Assumes a macro base station (~30 m antenna), a 1.5 m mobile and a
+     * typical ~46 dBm EIRP, so path loss = EIRP - RSRP.
+     */
+    private fun estimateDist(rsrpDbm: Int, freqMhz: Int): String {
+        if (rsrpDbm <= -140 || rsrpDbm >= 0 || freqMhz <= 0) return "N/A"
+
+        val f  = freqMhz.toDouble().coerceIn(150.0, 3800.0)
+        val hb = 30.0   // base-station antenna height (m)
+        val hm = 1.5    // mobile height (m)
+        val pathLoss = 46.0 - rsrpDbm
+
+        val logF  = Math.log10(f)
+        val logHb = Math.log10(hb)
+        // Mobile-antenna correction for a small/medium city.
+        val aHm   = (1.1 * logF - 0.7) * hm - (1.56 * logF - 0.8)
+        val constTerm = 69.55 + 26.16 * logF - 13.82 * logHb - aHm
+        val slope     = 44.9 - 6.55 * logHb
+
+        val distKm = Math.pow(10.0, (pathLoss - constTerm) / slope)
+        if (distKm.isNaN() || distKm <= 0 || distKm > 100) return "N/A"
+        return if (distKm < 1.0)
+            "~${(distKm * 1000).roundToInt()} m (estimated)"
+        else
+            "~${(distKm * 10).roundToInt() / 10.0} km (estimated)"
+    }
+
+    /** Representative downlink centre frequency (MHz) for an LTE EARFCN band. */
+    private fun earfcnToFreqMhz(earfcn: Int): Int = when {
+        earfcn in 0..599      -> 2100
+        earfcn in 600..1199   -> 1900
+        earfcn in 1200..1949  -> 1800
+        earfcn in 1950..2399  -> 1700
+        earfcn in 2400..2649  -> 850
+        earfcn in 2750..3449  -> 2600
+        earfcn in 3450..3799  -> 900
+        earfcn in 6150..6449  -> 800
+        earfcn in 9210..9659  -> 700
+        else                  -> 1800
     }
 
     private fun earfcnToBand(earfcn: Int): String = when {

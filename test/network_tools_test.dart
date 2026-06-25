@@ -303,4 +303,37 @@ void main() {
       expect(hop.reached, isFalse);
     });
   });
+
+  // ── traceroute structured model ──────────────────────────────────────────
+
+  group('TracertHop', () {
+    test('averages the replying probes and is not timed out', () {
+      const h = TracertHop(
+          hop: 2, ip: '1.2.3.4', rttsMs: [10, 20, 30]);
+      expect(h.timedOut, isFalse);
+      expect(h.avgMs, 20);
+    });
+
+    test('a hop with no IP is timed out and has no average', () {
+      const h = TracertHop(hop: 5);
+      expect(h.timedOut, isTrue);
+      expect(h.avgMs, isNull);
+    });
+  });
+
+  group('NetworkTools.tracerouteHops', () {
+    test('throws TracerouteException when the host cannot resolve', () {
+      expect(
+        NetworkTools.tracerouteHops('no.such.host.invalid').toList(),
+        throwsA(isA<TracerouteException>()),
+      );
+    });
+
+    test('reaches loopback within a single hop (maxHops: 1)', () async {
+      final hops =
+          await NetworkTools.tracerouteHops('127.0.0.1', maxHops: 1).toList();
+      expect(hops, isNotEmpty);
+      expect(hops.first.hop, 1);
+    }, timeout: const Timeout(Duration(seconds: 10)));
+  });
 }

@@ -242,11 +242,26 @@ class _CellularScreenState extends State<CellularScreen> {
                       _section('Signal Quality', [
                         _row('RSSI',        _data['rssi']        ?? '—'),
                         _row('RSRP',        _data['rsrp']        ?? '—',
-                            hint: 'Reference Signal Received Power'),
+                            hint: 'RSRP — Reference Signal Received Power.\n\n'
+                                'The average power of the cell\u0027s reference '
+                                'signals, measured in dBm. It reflects raw '
+                                'signal strength.\n\nTypical range: about '
+                                '\u221280 dBm (excellent) down to \u2212120 dBm '
+                                '(very weak). Higher (closer to zero) is '
+                                'better.'),
                         _row('RSRQ',        _data['rsrq']        ?? '—',
-                            hint: 'Reference Signal Received Quality'),
+                            hint: 'RSRQ — Reference Signal Received Quality.\n\n'
+                                'Signal quality in dB, factoring in '
+                                'interference and network load alongside '
+                                'strength.\n\nTypical range: about \u22123 dB '
+                                '(excellent) down to \u221220 dB (poor). '
+                                'Higher is better.'),
                         _row('SINR',        _data['sinr']        ?? '—',
-                            hint: 'Signal to Interference+Noise Ratio'),
+                            hint: 'SINR — Signal to Interference-plus-Noise '
+                                'Ratio.\n\nHow much the wanted signal exceeds '
+                                'interference plus background noise, in dB.\n\n'
+                                'Higher is better: above ~20 dB is excellent, '
+                                'around 0 dB or below is poor.'),
                         const SizedBox(height: 4),
                         _signalBar(context, _data['rsrp'] ?? ''),
                       ]),
@@ -255,12 +270,23 @@ class _CellularScreenState extends State<CellularScreen> {
                         _row('Cell ID',     _data['cell_id']     ?? '—'),
                         _row('LAC / TAC',   _data['lac_tac']     ?? '—'),
                         _row('PCI',         _data['pci']         ?? '—',
-                            hint: 'Physical Cell ID (LTE/5G)'),
+                            hint: 'PCI — Physical Cell ID.\n\nA number '
+                                '(0\u2013503 on LTE) that identifies the '
+                                'serving cell on the radio interface. '
+                                'Neighbouring cells use different PCIs so the '
+                                'phone can tell them apart.'),
                         _row('Band',        _data['band']        ?? '—'),
                         _row('EARFCN',      _data['earfcn']      ?? '—',
-                            hint: 'E-UTRA Absolute Radio Freq Channel Number'),
+                            hint: 'EARFCN — E-UTRA Absolute Radio Frequency '
+                                'Channel Number.\n\nIdentifies the exact '
+                                'carrier frequency the device is using; it '
+                                'maps to a specific LTE band and channel.'),
                         _row('Est. distance', _data['tower_est_dist'] ?? '—',
-                            hint: 'Very rough estimate from timing advance'),
+                            hint: 'Estimated distance to the cell tower.\n\n'
+                                'Derived from signal strength (RSRP) using a '
+                                'radio propagation model. It is a very rough, '
+                                'order-of-magnitude indication only \u2014 not '
+                                'a precise measurement.'),
                       ]),
                       const SizedBox(height: 12),
                       // ── Location section ──────────────────────────────────
@@ -300,6 +326,22 @@ class _CellularScreenState extends State<CellularScreen> {
     );
   }
 
+  void _showInfo(String title, String message) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _row(String label, String value, {String? hint}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
@@ -309,14 +351,18 @@ class _CellularScreenState extends State<CellularScreen> {
           SizedBox(
             width: 140,
             child: hint != null
-                ? Tooltip(
-                    message: hint,
-                    child: Row(children: [
-                      Text(label, style: const TextStyle(fontSize: 13)),
-                      const SizedBox(width: 2),
-                      Icon(Icons.help_outline, size: 11,
-                          color: Colors.grey.shade500),
-                    ]),
+                ? InkWell(
+                    onTap: () => _showInfo(label, hint),
+                    borderRadius: BorderRadius.circular(4),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Row(children: [
+                        Text(label, style: const TextStyle(fontSize: 13)),
+                        const SizedBox(width: 3),
+                        Icon(Icons.help_outline, size: 14,
+                            color: Colors.grey.shade500),
+                      ]),
+                    ),
                   )
                 : Text(label, style: const TextStyle(fontSize: 13)),
           ),

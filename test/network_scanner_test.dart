@@ -1,7 +1,13 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:simply_net/services/network_scanner.dart';
+import 'package:simply_net/services/oui_service.dart';
 
 void main() {
+  // deviceTypeFromMac now resolves the vendor through assets/oui.json, so the
+  // OUI database must be loaded before the MAC-based classification tests run.
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(() async => OuiService.init());
+
   // ── parseCidr ────────────────────────────────────────────────────────────
 
   group('NetworkScanner.parseCidr', () {

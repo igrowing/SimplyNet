@@ -84,9 +84,14 @@ class SettingsScreen extends StatelessWidget {
           SwitchListTile(
             secondary: const Icon(Icons.router_outlined),
             title: const Text('Show MAC Address'),
-            subtitle: const Text('Display MAC column in scan results'),
+            subtitle: Text(
+              prov.macResolutionBlocked
+                  ? 'Disabled on Android v.11 and up due to Google '
+                        'privacy concerns'
+                  : 'Display MAC column in scan results',
+            ),
             value: settings.showMac,
-            onChanged: prov.setShowMac,
+            onChanged: prov.macResolutionBlocked ? null : prov.setShowMac,
           ),
 
           SwitchListTile(
