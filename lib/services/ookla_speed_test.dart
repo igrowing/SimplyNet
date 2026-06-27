@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:math';
-
+import 'dart:async';
 import 'package:http/http.dart' as http;
 
 /// One server from Ookla's speedtest.net fleet.
@@ -87,20 +87,72 @@ class OoklaSpeedTest {
   static Future<({OoklaServer server, double pingMs})> bestServer(
     List<OoklaServer> servers,
   ) async {
-    for (final s in servers) {
-      try {
-        final sw = Stopwatch()..start();
-        final r = await http
-            .get(s.downloadUri(1), headers: headers)
-            .timeout(const Duration(seconds: 4));
-        sw.stop();
-        if (r.statusCode == 200) {
-          return (server: s, pingMs: sw.elapsedMilliseconds.toDouble());
+    if (servers.isEmpty) throw Exception('No Ookla servers available');
+
+    // Stores successful pings
+    final results = <({OoklaServer server, double pingMs})>[];
+    
+    // Shared state across all workers
+    int currentIndex = 0;
+    bool foundFastEnough = false;
+    
+    // The Completer allows us to return instantly when our condition is met
+    final completer = Completer<({OoklaServer server, double pingMs})>();
+
+    // Define the worker logic
+    Future<void> worker() async {
+      // Worker stops automatically if another worker finds a fast server
+      while (!foundFastEnough) {
+        final int index = currentIndex++;
+        if (index >= servers.length) break;
+
+        final s = servers[index];
+        try {
+          final sw = Stopwatch()..start();
+          final r = await http
+              .get(s.downloadUri(1), headers: headers)
+              .timeout(const Duration(seconds: 4));
+          sw.stop();
+          
+          if (r.statusCode == 200) {
+            final ping = sw.elapsedMilliseconds.toDouble();
+            final result = (server: s, pingMs: ping);
+            results.add(result);
+            // EARLY EXIT: If we find a server under 7ms, trigger the return immediately!
+            if (ping < 7.0 && !foundFastEnough) {
+              foundFastEnough = true; // Signals other threads to stop
+              if (!completer.isCompleted) {
+                completer.complete(result);
+              }
+              break;
+            }
+          }
+        } catch (_) {
+          // If a server times out or fails, quietly move to the next one
         }
-      } catch (_) {
-        // try the next server
       }
     }
-    throw Exception('No reachable Ookla server');
+
+    // Spawn up to 16 concurrent workers
+    final int threadCount = servers.length < 16 ? servers.length : 16;
+    final workers = List.generate(threadCount, (_) => worker());
+    
+    // When all workers finish naturally (if no server was < 7ms)
+    Future.wait(workers).then((_) {
+      if (!completer.isCompleted) {
+        if (results.isEmpty) {
+          completer.completeError(Exception('No reachable Ookla server'));
+        } else {
+          // Compare all successful pings and return the absolute lowest
+          completer.complete(results.reduce((current, next) => 
+              current.pingMs < next.pingMs ? current : next
+          ));
+        }
+      }
+    });
+
+    // This will return the moment the completer triggers, 
+    // either early (<7ms) or when all threads finish testing everything.
+    return completer.future;
   }
 }

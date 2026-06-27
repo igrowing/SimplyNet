@@ -291,6 +291,9 @@ class _SpeedTestState extends State<SpeedTestScreen> {
   bool _ooklaConsent = false;
   static const String _providerKey = 'speed_test_provider';
   static const String _ooklaConsentKey = 'speed_test_ookla_consent';
+  static const Duration testDuration = Duration(seconds: 12);
+  static const Duration tickDuration = Duration(milliseconds: 500);
+  static const int threadCount = 4;
 
   // Speed history (persisted to SharedPreferences)
   final List<_SpeedRecord> _history = [];
@@ -500,44 +503,39 @@ class _SpeedTestState extends State<SpeedTestScreen> {
     }
   }
 
+
+
   Future<({double dl, double ul, double ping})> _measureCloudflare() async {
-    // Ping
     final pingSw = Stopwatch()..start();
-    await http.get(Uri.parse('https://speed.cloudflare.com/__down?bytes=1'));
+    try {
+      await http.get(
+        Uri.parse('https://speed.cloudflare.com/__down?bytes=1'),
+        headers: OoklaSpeedTest.headers, // Important to prevent Cloudflare 403
+      );
+    } catch (_) {}
     pingSw.stop();
     final pingMs = pingSw.elapsedMilliseconds.toDouble();
+
     setState(() {
       _ping = pingMs;
       _progress = 0.15;
       _status = 'Testing download…';
     });
 
-    // Download (25 MB)
-    const dlBytes = 25 * 1024 * 1024;
-    final dlSw = Stopwatch()..start();
-    final dlReq = await http.get(
-      Uri.parse('https://speed.cloudflare.com/__down?bytes=$dlBytes'),
+    // Request 500MB to ensure high-speed networks don't finish before 10 seconds
+    final dlMbps = await _runDownloadTest(
+      Uri.parse('https://speed.cloudflare.com/__down?bytes=50000000'),
     );
-    dlSw.stop();
-    final dlMbps =
-        (dlReq.bodyBytes.length * 8) / dlSw.elapsed.inMilliseconds / 1000;
+
     setState(() {
-      _download = dlMbps;
       _progress = 0.6;
       _status = 'Testing upload…';
     });
 
-    // Upload (10 MB)
-    const ulBytes = 10 * 1024 * 1024;
-    final payload = List.generate(ulBytes, (byteIndex) => byteIndex & 0xFF);
-    final ulSw = Stopwatch()..start();
-    await http.post(
+    final ulMbps = await _runUploadTest(
       Uri.parse('https://speed.cloudflare.com/__up'),
-      body: payload,
-      headers: {'Content-Type': 'application/octet-stream'},
     );
-    ulSw.stop();
-    final ulMbps = (ulBytes * 8) / ulSw.elapsed.inMilliseconds / 1000;
+
     return (dl: dlMbps, ul: ulMbps, ping: pingMs);
   }
 
@@ -546,44 +544,193 @@ class _SpeedTestState extends State<SpeedTestScreen> {
     if (servers.isEmpty) throw Exception('No Ookla servers available');
     final best = await OoklaSpeedTest.bestServer(servers);
     final server = best.server;
+    
     setState(() {
       _ping = best.pingMs;
       _progress = 0.15;
       _status = 'Testing download…';
     });
 
-    // Download (25 MB)
-    const dlBytes = 25 * 1024 * 1024;
-    final dlSw = Stopwatch()..start();
-    final dlReq = await http
-        .get(server.downloadUri(dlBytes), headers: OoklaSpeedTest.headers)
-        .timeout(const Duration(seconds: 40));
-    dlSw.stop();
-    final dlMbps =
-        (dlReq.bodyBytes.length * 8) / dlSw.elapsed.inMilliseconds / 1000;
+    final dlMbps = await _runDownloadTest(
+      server.downloadUri(100 * 1024 * 1024),
+    );
+    
     setState(() {
-      _download = dlMbps;
       _progress = 0.6;
       _status = 'Testing upload…';
     });
-
-    // Upload (10 MB)
-    const ulBytes = 10 * 1024 * 1024;
-    final payload = List.generate(ulBytes, (byteIndex) => byteIndex & 0xFF);
-    final ulSw = Stopwatch()..start();
-    await http
-        .post(
-          server.uploadUri(),
-          body: payload,
-          headers: {
-            ...OoklaSpeedTest.headers,
-            'Content-Type': 'application/octet-stream',
-          },
-        )
-        .timeout(const Duration(seconds: 40));
-    ulSw.stop();
-    final ulMbps = (ulBytes * 8) / ulSw.elapsed.inMilliseconds / 1000;
+    
+    final ulMbps = await _runUploadTest(server.uploadUri());
+    
     return (dl: dlMbps, ul: ulMbps, ping: best.pingMs);
+  }
+
+  Future<double> _runDownloadTest(Uri url) async {
+    final client = http.Client();
+    final stopwatch = Stopwatch()..start();
+
+
+    int bytesSinceLastTick = 0;
+    double maxMbps = 0.0;
+    double currentMbps = 0.0;
+    
+    // Store the exact speed of every 500ms window
+    final List<double> tickSpeeds = [];
+
+    final Timer trackingTimer = Timer.periodic(tickDuration, (timer) {
+      currentMbps =
+          (bytesSinceLastTick * 8) / tickDuration.inMilliseconds / 1000;
+      
+      tickSpeeds.add(currentMbps);
+      
+      if (currentMbps > maxMbps) maxMbps = currentMbps;
+      setState(() {
+        _download = currentMbps;
+      });
+      bytesSinceLastTick = 0;
+    });
+
+    final Timer masterTimeout = Timer(testDuration, () {
+      client.close(); // Forcibly severs the connection
+    });
+
+    Future<void> startDownloadThread() async {
+      try {
+        // The while loop guarantees the thread keeps pulling data
+        // even if the file finishes downloading before 12s is up.
+        while (stopwatch.elapsed < testDuration) {
+          final request = http.Request('GET', url);
+          request.headers.addAll(OoklaSpeedTest.headers);
+
+          final response = await client.send(request);
+          if (response.statusCode != 200) {
+            // If server rejects the request (e.g., file too large),
+            // wait briefly to prevent a tight crash-loop.
+            await Future.delayed(const Duration(milliseconds: 250));
+            continue;
+          }
+
+          await for (final chunk in response.stream) {
+
+            bytesSinceLastTick += chunk.length;
+            if (stopwatch.elapsed >= testDuration) break;
+          }
+        }
+      } catch (_) {
+        // Expected when client is forcibly closed via masterTimeout
+      }
+    }
+
+    final threads = List.generate(threadCount, (_) => startDownloadThread());
+    await Future.wait(threads);
+
+    stopwatch.stop();
+    trackingTimer.cancel();
+    masterTimeout.cancel();
+    client.close();
+
+    // ── Steady-State Calculation ──
+    double finalMbps = 0.0;
+    // 3 seconds warmup = 6 ticks. Drop last chunk = 1 tick.
+    if (tickSpeeds.length > 7) {
+      final steadyState = tickSpeeds.sublist(6, tickSpeeds.length - 1);
+      finalMbps = steadyState.reduce((a, b) => a + b) / steadyState.length;
+    } else if (tickSpeeds.isNotEmpty) {
+      // Fallback just in case the connection died early
+      finalMbps = tickSpeeds.reduce((a, b) => a + b) / tickSpeeds.length;
+    }
+
+    setState(() {
+      _download = finalMbps; // Snap UI to the steady-state average
+    });
+    return finalMbps;
+  }
+
+  Future<double> _runUploadTest(Uri url) async {
+    const int chunkSize = 128 * 1024; // 128 KB chunks
+    final List<int> chunkData = List.filled(chunkSize, 0);
+
+    final stopwatch = Stopwatch()..start();
+
+
+    int bytesSinceLastTick = 0;
+    double maxMbps = 0.0;
+    double currentMbps = 0.0;
+    
+    // Store the exact speed of every 500ms window
+    final List<double> tickSpeeds = [];
+
+    final Timer trackingTimer = Timer.periodic(tickDuration, (timer) {
+      currentMbps =
+          (bytesSinceLastTick * 8) / tickDuration.inMilliseconds / 1000;
+          
+      tickSpeeds.add(currentMbps);
+      
+      if (currentMbps > maxMbps) maxMbps = currentMbps;
+      setState(() {
+        _upload = currentMbps;
+      });
+      bytesSinceLastTick = 0;
+    });
+
+    final clients = <HttpClient>[];
+    final Timer masterTimeout = Timer(testDuration, () {
+      for (var c in clients) {
+        c.close(force: true); // Sever sockets immediately
+      }
+    });
+
+    Future<void> startUploadThread() async {
+      final client = HttpClient();
+      clients.add(client);
+      try {
+        final request = await client.postUrl(url);
+        // Pretend to be a browser to prevent Cloudflare drops
+        OoklaSpeedTest.headers.forEach((k, v) => request.headers.set(k, v));
+        request.headers.set('Content-Type', 'application/octet-stream');
+
+        Stream<List<int>> chunkStream() async* {
+          while (stopwatch.elapsed < testDuration) {
+            yield chunkData;
+            // This is now accurate because yielding halts until TCP buffer clears
+
+            bytesSinceLastTick += chunkSize;
+          }
+        }
+
+        // Native socket handles backpressure accurately
+        await request.addStream(chunkStream());
+        await request.close();
+      } catch (_) {
+        // Expected when clients are force closed via masterTimeout
+      }
+    }
+
+    final threads = List.generate(threadCount, (_) => startUploadThread());
+    await Future.wait(threads);
+
+    stopwatch.stop();
+    trackingTimer.cancel();
+    masterTimeout.cancel();
+    for (var c in clients) {
+      c.close(force: true);
+    }
+
+    // ── Steady-State Calculation ──
+    double finalMbps = 0.0;
+    // 3 seconds warmup = 6 ticks. Drop last chunk = 1 tick.
+    if (tickSpeeds.length > 7) {
+      final steadyState = tickSpeeds.sublist(6, tickSpeeds.length - 1);
+      finalMbps = steadyState.reduce((a, b) => a + b) / steadyState.length;
+    } else if (tickSpeeds.isNotEmpty) {
+      // Fallback just in case the connection died early
+      finalMbps = tickSpeeds.reduce((a, b) => a + b) / tickSpeeds.length;
+    }
+
+    setState(() {
+      _upload = finalMbps; // Snap UI to the steady-state average
+    });
+    return finalMbps;
   }
 
   @override
