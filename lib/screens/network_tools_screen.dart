@@ -586,6 +586,7 @@ class _SpeedTestState extends State<SpeedTestScreen> {
       if (currentMbps > maxMbps) maxMbps = currentMbps;
       setState(() {
         _download = currentMbps;
+        _progress = 0.15 + (0.45 * stopwatch.elapsedMilliseconds / testDuration.inMilliseconds);
       });
       bytesSinceLastTick = 0;
     });
@@ -669,6 +670,7 @@ class _SpeedTestState extends State<SpeedTestScreen> {
       if (currentMbps > maxMbps) maxMbps = currentMbps;
       setState(() {
         _upload = currentMbps;
+        _progress = 0.6 + (0.4 * stopwatch.elapsedMilliseconds / testDuration.inMilliseconds);
       });
       bytesSinceLastTick = 0;
     });
