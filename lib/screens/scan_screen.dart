@@ -245,26 +245,34 @@ class _ResizableHeader extends StatelessWidget {
           onDrag(newLeft, newRight);
         },
         child: Container(
-          width: 8,
-          color: bg,
+          width: 32,
+          color: Colors.transparent, // Ensures the entire 32px area captures touch gestures
           child: Center(
-            child: Column(
+            child: Row(
+              mainAxisSize: MainAxisSize.min, // Keep icons and line closely grouped together
               mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
+                // Left Chevron
                 Icon(
                   Icons.chevron_left,
-                  size: 10,
-                  color: Theme.of(context).dividerColor,
+                  size: 16,
+                  color: Theme.of(context).dividerColor.withValues(alpha: 0.7),
                 ),
+                // Central Vertical Divider Line
                 Container(
-                  width: 1.5,
-                  height: 8,
-                  color: Theme.of(context).dividerColor,
+                  width: 2.0,
+                  height: 24, // Give it a more prominent vertical presence
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).dividerColor,
+                    borderRadius: BorderRadius.circular(1),
+                  ),
                 ),
+                // Right Chevron
                 Icon(
                   Icons.chevron_right,
-                  size: 10,
-                  color: Theme.of(context).dividerColor,
+                  size: 16,
+                  color: Theme.of(context).dividerColor.withValues(alpha: 0.7),
                 ),
               ],
             ),
