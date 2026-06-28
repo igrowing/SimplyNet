@@ -63,7 +63,13 @@ class _HistoryFieldState extends State<HistoryField> {
   }
 
   void _onFocusChange() {
-    if (!_focusNode.hasFocus) _remember(widget.controller.text);
+    if (_focusNode.hasFocus) {
+      // Refresh suggestions on focus so values committed elsewhere (or on
+      // another screen sharing this history key) are offered too.
+      _reload();
+    } else {
+      _remember(widget.controller.text);
+    }
   }
 
   Future<void> _remember(String value) async {

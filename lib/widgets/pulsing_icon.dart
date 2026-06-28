@@ -6,7 +6,15 @@ import 'package:flutter/material.dart';
 class PulsingIcon extends StatefulWidget {
   final Widget child;
   final bool enabled;
-  const PulsingIcon({super.key, required this.child, this.enabled = true});
+  /// Colour the icon takes at the peak of the pulse.
+  final Color pulseColor;
+ 
+  const PulsingIcon({
+    super.key,
+    required this.child,
+    this.enabled = true,
+    this.pulseColor = Colors.amber,
+  });
 
   @override
   State<PulsingIcon> createState() => _PulsingIconState();
@@ -66,6 +74,22 @@ class _PulsingIconState extends State<PulsingIcon>
   @override
   Widget build(BuildContext context) {
     if (!widget.enabled) return widget.child;
-    return ScaleTransition(scale: _scale, child: widget.child);
+    return AnimatedBuilder(
+      animation: _scale,
+      builder: (context, child) {
+        // Fade amber in/out in step with the scale: 1.0 = none, 1.4 = full.
+        final amount = ((_scale.value - 1.0) / 0.4).clamp(0.0, 1.0);
+        Widget c = child!;
+        if (amount > 0) {
+          final base = IconTheme.of(context).color;
+          c = IconTheme.merge(
+            data: IconThemeData(color: Color.lerp(base, widget.pulseColor, amount)),
+            child: c,
+          );
+        }
+        return Transform.scale(scale: _scale.value, child: c);
+      },
+      child: widget.child,
+    );
   }
 }

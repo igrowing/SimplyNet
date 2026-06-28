@@ -11,6 +11,7 @@ import 'package:simply_net/constants/network_ports.dart';
 import 'package:simply_net/services/lan_detector.dart';
 import 'package:simply_net/services/mqtt_broker_scanner.dart';
 import 'package:simply_net/widgets/history_field.dart';
+import 'package:simply_net/services/input_history.dart';
 
 // ════════════════════════════════════════════════════════════════════════════
 //  Shared MQTT connection settings (broker, auth).
@@ -518,6 +519,7 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
       setState(() => _statusMsg = 'Enter a topic first.');
       return;
     }
+    await InputHistory.add('mqtt_topic', topic);
     _sessionLog.clear();
     _sessionStart = DateTime.now();
     _connect(topic);
@@ -968,6 +970,11 @@ class _MqttPubScreenState extends State<MqttPubScreen> {
     final topic = _topicCtrl.text.trim();
     final msg   = _msgCtrl.text;
     if (topic.isEmpty) return;
+
+    // Commit the topic/message to the shared history so they are offered as
+    // suggestions next time (covers the case where the field never lost focus).
+    await InputHistory.add('mqtt_topic', topic);
+    if (msg.trim().isNotEmpty) await InputHistory.add('mqtt_message', msg);
 
     final builder = MqttClientPayloadBuilder()..addString(msg);
     _client!.publishMessage(

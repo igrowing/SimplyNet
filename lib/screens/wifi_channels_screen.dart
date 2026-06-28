@@ -90,7 +90,7 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
             final bssid = (m['bssid'] as String?) ?? '';
             final ssid = (m['ssid'] as String?);
             final net = _WifiNetwork(
-              ssid: (ssid != null && ssid.isNotEmpty) ? ssid : '<hidden>',
+              ssid: (ssid != null && ssid.trim().isNotEmpty) ? ssid : '<Hidden Network>',
               bssid: bssid,
               rssi: (m['rssi'] as int?) ?? -100,
               channel: _freqToChannel(freq),

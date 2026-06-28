@@ -128,7 +128,15 @@ class MainActivity : FlutterActivity() {
     // have not been seen for AP_CACHE_TTL_MS.
     private val apCache = LinkedHashMap<String, Map<String, Any>>()
     private val apSeen = HashMap<String, Long>()
-    private val AP_CACHE_TTL_MS = 60_000L
+    // Last time a scan actually returned ANY access point on a given band
+    // ("2.4" / "5"). Used to decide whether a cached AP is genuinely gone: we
+    // only drop it once a later scan that DID cover its band failed to see it.
+    private val bandSeen = HashMap<String, Long>()
+    // Absolute ceiling: even if a band stops being scanned, never show an AP
+    // older than this so the list cannot get stuck on long-dead networks.
+    private val AP_CACHE_TTL_MS = 10 * 60_000L
+    // Grace after a band re-scan before an unseen AP on that band is dropped.
+    private val BAND_GRACE_MS = 5_000L
 
     /**
      * Trigger a fresh Wi-Fi scan and reply only once it has completed. Reading
@@ -149,12 +157,18 @@ class MainActivity : FlutterActivity() {
 
         fun collect() {
             val now = System.currentTimeMillis()
+            val bandsThisScan = HashSet<String>()
             for (ap in readScanResults(wifiManager)) {
                 val key = (ap["bssid"] as? String).orEmpty()
                     .ifEmpty { "${ap["ssid"]}/${ap["freq"]}" }
                 apCache[key] = ap
                 apSeen[key] = now
+                bandOf(ap["freq"] as? Int ?: 0).let {
+                    if (it.isNotEmpty()) bandsThisScan.add(it)
+                }
             }
+            // Record which bands this scan actually reached.
+            for (b in bandsThisScan) bandSeen[b] = now
         }
         collect()
 
@@ -166,10 +180,20 @@ class MainActivity : FlutterActivity() {
             }
             wifiReceiver = null
             collect()
-            // Drop access points not seen for a while so networks that are
-            // genuinely gone eventually disappear from the list.
-            val cutoff = System.currentTimeMillis() - AP_CACHE_TTL_MS
-            val stale = apSeen.filterValues { it < cutoff }.keys.toList()
+            // Drop a cached AP only when (a) it is older than the absolute TTL,
+            // or (b) a later scan that DID cover its band did not see it. This
+            // keeps e.g. 2.4 GHz networks visible across refreshes that only
+            // returned the connected (5 GHz) band on Android 13/14.
+            val now = System.currentTimeMillis()
+            val stale = mutableListOf<String>()
+            for ((k, ap) in apCache) {
+                val seen = apSeen[k] ?: 0L
+                if (now - seen > AP_CACHE_TTL_MS) { stale.add(k); continue }
+                val band = bandOf(ap["freq"] as? Int ?: 0)
+                if (band.isEmpty()) continue
+                val bandTs = bandSeen[band] ?: 0L
+                if (bandTs - seen > BAND_GRACE_MS) stale.add(k)
+            }
             for (k in stale) { apCache.remove(k); apSeen.remove(k) }
             result.success(apCache.values.toList())
         }
@@ -195,6 +219,13 @@ class MainActivity : FlutterActivity() {
         handler.postDelayed({ reply() }, if (started) 8000 else 1500)
     }
 
+    /** "2.4" / "5" for the two Wi-Fi bands, "" for anything else (e.g. 6 GHz). */
+    private fun bandOf(freqMhz: Int): String = when {
+        freqMhz in 2400..2499 -> "2.4"
+        freqMhz in 4900..5899 -> "5"
+        else                  -> ""
+    }
+    
     private fun readScanResults(wifiManager: WifiManager): List<Map<String, Any>> {
         @Suppress("DEPRECATION")
         val results = wifiManager.scanResults

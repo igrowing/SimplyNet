@@ -122,9 +122,15 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: OrientationBuilder(
-        builder: (ctx, orientation) {
-          final isLandscape = orientation == Orientation.landscape;
+      // Derive orientation from MediaQuery (the stable window orientation)
+      // rather than OrientationBuilder, whose value comes from transient box
+      // constraints and briefly reported landscape while a page transition
+      // was settling — causing the home screen to flash its side-by-side
+      // layout before snapping to the correct one.
+      body: Builder(
+        builder: (ctx) {
+          final isLandscape =
+              MediaQuery.orientationOf(ctx) == Orientation.landscape;
           return SingleChildScrollView(
             padding: EdgeInsets.symmetric(
               // Portrait/tablet: generous 15% side margins.

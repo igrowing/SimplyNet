@@ -65,6 +65,10 @@ class _SpeedTestState extends State<SpeedTestScreen> {
   String _status = 'Ready';
   double _progress = 0;
 
+  bool _aborted = false;
+  http.Client? _dlClient;
+  final List<HttpClient> _ulClients = [];
+ 
   // Selected provider + remembered Ookla consent (persisted).
   SpeedProvider _provider = SpeedProvider.cloudflare;
   bool _ooklaConsent = false;
@@ -118,6 +122,21 @@ class _SpeedTestState extends State<SpeedTestScreen> {
     super.initState();
     _loadHistory();
     _loadPrefs();
+  }
+
+  @override
+  void dispose() {
+    // Abort any in-flight test so its sockets/timers don't outlive the screen.
+    _aborted = true;
+    try {
+      _dlClient?.close();
+    } catch (_) {}
+    for (final c in _ulClients) {
+      try {
+        c.close(force: true);
+      } catch (_) {}
+    }
+    super.dispose();
   }
 
   Future<void> _loadPrefs() async {
@@ -264,6 +283,7 @@ class _SpeedTestState extends State<SpeedTestScreen> {
   Future<void> _runTest() async {
     setState(() {
       _testing = true;
+      _aborted = false;
       _download = null;
       _upload = null;
       _ping = null;
@@ -277,6 +297,9 @@ class _SpeedTestState extends State<SpeedTestScreen> {
       final r = _provider == SpeedProvider.ookla
           ? await _measureOokla()
           : await _measureCloudflare();
+
+      // Discard incomplete results if the user aborted the run.
+      if (_aborted || !mounted) return;
 
       final record = _SpeedRecord(
         timestamp: DateTime.now(),
@@ -296,12 +319,35 @@ class _SpeedTestState extends State<SpeedTestScreen> {
 
       await _saveHistory();
     } catch (e, st) {
+      // Discard incomplete results if the user aborted the run.
+      if (_aborted || !mounted) return;
       setState(() {
         _status = 'Error: $e';
         _testing = false;
       });
       await _logError(e, st);
     }
+  }
+
+  /// Abort an in-progress test and discard every partial measurement.
+  void _abortTest() {
+    _aborted = true;
+    try {
+      _dlClient?.close();
+    } catch (_) {}
+    for (final c in _ulClients) {
+      try {
+        c.close(force: true);
+      } catch (_) {}
+    }
+    setState(() {
+      _testing = false;
+      _status = 'Ready';
+      _download = null;
+      _upload = null;
+      _ping = null;
+      _progress = 0;
+    });
   }
 
   /// Persist a diagnostic log only when a test fails (never on success).
@@ -382,6 +428,7 @@ class _SpeedTestState extends State<SpeedTestScreen> {
 
   Future<double> _runDownloadTest(Uri url) async {
     final client = http.Client();
+    _dlClient = client;
     final stopwatch = Stopwatch()..start();
 
 
@@ -393,6 +440,10 @@ class _SpeedTestState extends State<SpeedTestScreen> {
     final List<double> tickSpeeds = [];
 
     final Timer trackingTimer = Timer.periodic(tickDuration, (timer) {
+      if (_aborted || !mounted) {
+        timer.cancel();
+        return;
+      }
       currentMbps =
           (bytesSinceLastTick * 8) / tickDuration.inMilliseconds / 1000;
       
@@ -414,7 +465,7 @@ class _SpeedTestState extends State<SpeedTestScreen> {
       try {
         // The while loop guarantees the thread keeps pulling data
         // even if the file finishes downloading before 12s is up.
-        while (stopwatch.elapsed < testDuration) {
+        while (stopwatch.elapsed < testDuration && !_aborted) {
           final request = http.Request('GET', url);
           request.headers.addAll(OoklaSpeedTest.headers);
 
@@ -429,7 +480,7 @@ class _SpeedTestState extends State<SpeedTestScreen> {
           await for (final chunk in response.stream) {
 
             bytesSinceLastTick += chunk.length;
-            if (stopwatch.elapsed >= testDuration) break;
+            if (stopwatch.elapsed >= testDuration || _aborted) break;
           }
         }
       } catch (_) {
@@ -444,6 +495,9 @@ class _SpeedTestState extends State<SpeedTestScreen> {
     trackingTimer.cancel();
     masterTimeout.cancel();
     client.close();
+    _dlClient = null;
+ 
+    if (_aborted) return 0.0; // discarded — caller will not use the result
 
     // ── Steady-State Calculation ──
     double finalMbps = 0.0;
@@ -456,9 +510,11 @@ class _SpeedTestState extends State<SpeedTestScreen> {
       finalMbps = tickSpeeds.reduce((a, b) => a + b) / tickSpeeds.length;
     }
 
-    setState(() {
-      _download = finalMbps; // Snap UI to the steady-state average
-    });
+    if (mounted && !_aborted) {
+      setState(() {
+        _download = finalMbps; // Snap UI to the steady-state average
+      });
+    }
     return finalMbps;
   }
 
@@ -477,6 +533,10 @@ class _SpeedTestState extends State<SpeedTestScreen> {
     final List<double> tickSpeeds = [];
 
     final Timer trackingTimer = Timer.periodic(tickDuration, (timer) {
+      if (_aborted || !mounted) {
+        timer.cancel();
+        return;
+      }
       currentMbps =
           (bytesSinceLastTick * 8) / tickDuration.inMilliseconds / 1000;
           
@@ -490,7 +550,7 @@ class _SpeedTestState extends State<SpeedTestScreen> {
       bytesSinceLastTick = 0;
     });
 
-    final clients = <HttpClient>[];
+    final clients = _ulClients;
     final Timer masterTimeout = Timer(testDuration, () {
       for (var c in clients) {
         c.close(force: true); // Sever sockets immediately
@@ -507,7 +567,7 @@ class _SpeedTestState extends State<SpeedTestScreen> {
         request.headers.set('Content-Type', 'application/octet-stream');
 
         Stream<List<int>> chunkStream() async* {
-          while (stopwatch.elapsed < testDuration) {
+          while (stopwatch.elapsed < testDuration && !_aborted) {
             yield chunkData;
             // This is now accurate because yielding halts until TCP buffer clears
 
@@ -533,6 +593,10 @@ class _SpeedTestState extends State<SpeedTestScreen> {
       c.close(force: true);
     }
 
+    _ulClients.clear();
+ 
+    if (_aborted) return 0.0; // discarded — caller will not use the result
+
     // ── Steady-State Calculation ──
     double finalMbps = 0.0;
     // 3 seconds warmup = 6 ticks. Drop last chunk = 1 tick.
@@ -544,9 +608,11 @@ class _SpeedTestState extends State<SpeedTestScreen> {
       finalMbps = tickSpeeds.reduce((a, b) => a + b) / tickSpeeds.length;
     }
 
-    setState(() {
-      _upload = finalMbps; // Snap UI to the steady-state average
-    });
+    if (mounted && !_aborted) {
+      setState(() {
+        _upload = finalMbps; // Snap UI to the steady-state average
+      });
+    }
     return finalMbps;
   }
 
@@ -610,31 +676,32 @@ class _SpeedTestState extends State<SpeedTestScreen> {
             const SizedBox(height: 16),
           ],
           Center(
-            child: FilledButton.icon(
-              onPressed: _testing ? null : _runTest,
-              style: FilledButton.styleFrom(
-                backgroundColor: _provider == SpeedProvider.ookla
-                    ? Colors.amber
-                    : Colors.blue,
-                foregroundColor: _provider == SpeedProvider.ookla
-                    ? Colors.black
-                    : Colors.white,
+            child: _testing
+            // While testing the button becomes a red Stop that aborts the
+            // run and discards any partial ping/download/upload result.
+            ? FilledButton.icon(
+                onPressed: _abortTest,
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
+                icon: const Icon(Icons.stop),
+                label: const Text('Stop'),
+              )
+            : FilledButton.icon(
+                onPressed: _runTest,
+                style: FilledButton.styleFrom(
+                  backgroundColor: _provider == SpeedProvider.ookla
+                      ? Colors.amber
+                      : Colors.blue,
+                  foregroundColor: _provider == SpeedProvider.ookla
+                      ? Colors.black
+                      : Colors.white,
+                ),
+                icon: const Icon(Icons.play_arrow),
+                label: const Text('Start Test'),
               ),
-              icon: _testing
-                  ? SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: _provider == SpeedProvider.ookla
-                            ? Colors.black
-                            : Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.play_arrow),
-              label: Text(_testing ? 'Testing…' : 'Start Test'),
-            ),
-          ),
+          ),            
           const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
