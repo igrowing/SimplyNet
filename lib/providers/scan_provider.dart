@@ -75,6 +75,14 @@ class ScanProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Sort by [col] ascending (used by the portrait card-list sort dropdown).
+  void setSort(ScanSortColumn col) {
+    if (_sortColumn == col && _sortAsc) return;
+    _sortColumn = col;
+    _sortAsc = true;
+    notifyListeners();
+  }
+
   List<HostResult> _sortedResults() => sortHosts(_results, _sortColumn, _sortAsc);
 
   /// Pure sort used by [results]. Returns a new list of [hosts] ordered by

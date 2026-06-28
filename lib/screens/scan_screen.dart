@@ -120,60 +120,262 @@ class _ScanScreenState extends State<ScanScreen> {
       body: Column(
         children: [
           if (scan.isScanning) const LinearProgressIndicator(),
-
-          if (scan.results.isNotEmpty || scan.isScanning)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  '${scan.results.length} host(s) found',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ),
-            ),
-
-          // Resizable header
-          _ResizableHeader(
-            scan: scan,
-            showMac: settings.showMac,
-            wIp: _wIp,
-            wMac: _wMac,
-            wHost: _wHost,
-            onResize: (ip, mac, host) => setState(() {
-              _wIp = ip;
-              _wMac = mac;
-              _wHost = host;
-            }),
-          ),
-
           Expanded(
-            child: scan.results.isEmpty && !scan.isScanning
-                ? _EmptyState(isValid: scan.isValidTarget)
-                : ListView.separated(
-                    itemCount: scan.results.length,
-                    separatorBuilder: (_, _) =>
-                        const Divider(height: 1, thickness: 0.5),
-                    itemBuilder: (ctx, i) {
-                      final host = scan.results[i];
-                      return _ScanRow(
-                        host: host,
-                        settings: settings,
-                        wIp: _wIp,
-                        wMac: _wMac,
-                        wHost: _wHost,
-                        onTap: () => Navigator.push(
-                          ctx,
-                          MaterialPageRoute(
-                            builder: (_) => HostScreen(host: host),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+            child: OrientationBuilder(
+              builder: (context, orientation) =>
+                  orientation == Orientation.landscape
+                  ? _tableLayout(context, scan, settings)
+                  : _cardLayout(context, scan, settings),
+            ),
           ),
         ],
       ),
+    );
+  }
+
+  void _openHost(BuildContext context, HostResult host) => Navigator.push(
+    context,
+    MaterialPageRoute(builder: (_) => HostScreen(host: host)),
+  );
+
+  Widget _hostCount(ScanProvider scan) => Text(
+    '${scan.results.length} host(s) found',
+    style: const TextStyle(fontSize: 12),
+  );
+
+  // ── Landscape: resizable table ─────────────────────────────────────────────
+  Widget _tableLayout(
+    BuildContext context,
+    ScanProvider scan,
+    dynamic settings,
+  ) {
+    return Column(
+      children: [
+        if (scan.results.isNotEmpty || scan.isScanning)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            child: Align(alignment: Alignment.centerLeft, child: _hostCount(scan)),
+          ),
+        _ResizableHeader(
+          scan: scan,
+          showMac: settings.showMac,
+          wIp: _wIp,
+          wMac: _wMac,
+          wHost: _wHost,
+          onResize: (ip, mac, host) => setState(() {
+            _wIp = ip;
+            _wMac = mac;
+            _wHost = host;
+          }),
+        ),
+        Expanded(
+          child: scan.results.isEmpty && !scan.isScanning
+              ? _EmptyState(isValid: scan.isValidTarget)
+              : ListView.separated(
+                  itemCount: scan.results.length,
+                  separatorBuilder: (_, _) =>
+                      const Divider(height: 1, thickness: 0.5),
+                  itemBuilder: (ctx, i) {
+                    final host = scan.results[i];
+                    return _ScanRow(
+                      host: host,
+                      settings: settings,
+                      wIp: _wIp,
+                      wMac: _wMac,
+                      wHost: _wHost,
+                      onTap: () => _openHost(ctx, host),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  // ── Portrait: card list with sort dropdown ─────────────────────────────────
+  Widget _cardLayout(
+    BuildContext context,
+    ScanProvider scan,
+    dynamic settings,
+  ) {
+    return Column(
+      children: [
+        if (scan.results.isNotEmpty || scan.isScanning)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 8, 4),
+            child: Row(
+              children: [
+                Expanded(child: _hostCount(scan)),
+                _SortDropdown(
+                  column: scan.sortColumn,
+                  showMac: settings.showMac,
+                  onChanged: scan.setSort,
+                ),
+              ],
+            ),
+          ),
+        Expanded(
+          child: scan.results.isEmpty && !scan.isScanning
+              ? _EmptyState(isValid: scan.isValidTarget)
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                  itemCount: scan.results.length,
+                  itemBuilder: (ctx, i) {
+                    final host = scan.results[i];
+                    return _ScanCard(
+                      host: host,
+                      showMac: settings.showMac,
+                      onTap: () => _openHost(ctx, host),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Sort dropdown (portrait) ──────────────────────────────────────────────────
+
+class _SortDropdown extends StatelessWidget {
+  final ScanSortColumn column;
+  final bool showMac;
+  final ValueChanged<ScanSortColumn> onChanged;
+
+  const _SortDropdown({
+    required this.column,
+    required this.showMac,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final items = <DropdownMenuItem<ScanSortColumn>>[
+      const DropdownMenuItem(value: ScanSortColumn.ip, child: Text('IP')),
+      if (showMac)
+        const DropdownMenuItem(value: ScanSortColumn.mac, child: Text('MAC')),
+      const DropdownMenuItem(
+        value: ScanSortColumn.hostname,
+        child: Text('Hostname'),
+      ),
+    ];
+    // MAC can be the active column from a previous session; fall back to IP when
+    // it's hidden so the dropdown always has a valid selection.
+    final value = (column == ScanSortColumn.mac && !showMac)
+        ? ScanSortColumn.ip
+        : column;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.sort, size: 18),
+        const SizedBox(width: 4),
+        DropdownButton<ScanSortColumn>(
+          value: value,
+          isDense: true,
+          underline: const SizedBox.shrink(),
+          style: TextStyle(
+            fontSize: 13,
+            color: Theme.of(context).colorScheme.onSurface,
+          ),
+          items: items,
+          onChanged: (v) {
+            if (v != null) onChanged(v);
+          },
+        ),
+      ],
+    );
+  }
+}
+
+// ── Card (portrait) ───────────────────────────────────────────────────────────
+
+class _ScanCard extends StatelessWidget {
+  final HostResult host;
+  final bool showMac;
+  final VoidCallback onTap;
+
+  const _ScanCard({
+    required this.host,
+    required this.showMac,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final subtle = Theme.of(
+      context,
+    ).colorScheme.onSurface.withValues(alpha: 0.6);
+    final hostname = host.hostname.isEmpty ? host.manufacturer : host.hostname;
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _field(context, 'IP', host.ip, mono: true),
+                    if (showMac) ...[
+                      const SizedBox(height: 3),
+                      _field(context, 'MAC', host.mac, mono: true),
+                    ],
+                    const SizedBox(height: 3),
+                    _field(
+                      context,
+                      'Hostname',
+                      hostname.isEmpty ? '—' : hostname,
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: subtle),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _field(
+    BuildContext context,
+    String label,
+    String value, {
+    bool mono = false,
+  }) {
+    final subtle = Theme.of(
+      context,
+    ).colorScheme.onSurface.withValues(alpha: 0.6);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 78,
+          child: Text(
+            '$label:',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: subtle,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: TextStyle(
+              fontSize: 13,
+              fontFamily: mono ? 'monospace' : null,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -245,8 +447,8 @@ class _ResizableHeader extends StatelessWidget {
           onDrag(newLeft, newRight);
         },
         child: Container(
-          width: 32,
-          color: Colors.transparent, // Ensures the entire 32px area captures touch gestures
+          width: 48,
+          color: Colors.transparent, // Ensures the entire 48px area captures touch gestures
           child: Center(
             child: Row(
               mainAxisSize: MainAxisSize.min, // Keep icons and line closely grouped together
@@ -256,22 +458,22 @@ class _ResizableHeader extends StatelessWidget {
                 // Left Chevron
                 Icon(
                   Icons.chevron_left,
-                  size: 16,
+                  size: 18,
                   color: Theme.of(context).dividerColor.withValues(alpha: 0.7),
                 ),
                 // Central Vertical Divider Line
                 Container(
-                  width: 2.0,
-                  height: 24, // Give it a more prominent vertical presence
+                  width: 3.0,
+                  height: 26, // Give it a more prominent vertical presence
                   decoration: BoxDecoration(
                     color: Theme.of(context).dividerColor,
-                    borderRadius: BorderRadius.circular(1),
+                    borderRadius: BorderRadius.circular(1.5),
                   ),
                 ),
                 // Right Chevron
                 Icon(
                   Icons.chevron_right,
-                  size: 16,
+                  size: 18,
                   color: Theme.of(context).dividerColor.withValues(alpha: 0.7),
                 ),
               ],
