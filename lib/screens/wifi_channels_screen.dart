@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:simply_net/widgets/pulsing_icon.dart';
 
 class WifiChannelsScreen extends StatefulWidget {
   const WifiChannelsScreen({super.key});
@@ -29,6 +30,37 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
   void dispose() {
     _tabs.dispose();
     super.dispose();
+  }
+
+  void _showBandInfo() {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Why one 5 GHz network uses two channels'),
+        content: const SingleChildScrollView(
+          child: Text(
+            'On the 5 GHz band you will usually see each access point appear on '
+            'two (or more) channels at once. That is normal.\n\n'
+            'To go faster, modern routers glue neighbouring 20 MHz channels '
+            'together into one wider lane — 40, 80, or even 160 MHz. This is '
+            'called "channel bonding". A wider lane carries more data, just '
+            'like a wider road carries more cars.\n\n'
+            'With "dynamic channel width" the router picks the widest lane it '
+            'can and narrows it automatically when the air gets busy or noisy, '
+            'so it stays fast without stepping on the neighbours.\n\n'
+            'So a single 5 GHz network showing on channels 36 and 40, for '
+            'example, is just one access point using an 40 MHz-wide bonded '
+            'channel — not two separate networks.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   // The native side now triggers a real scan and waits for the
@@ -164,6 +196,11 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            tooltip: 'About 5 GHz channels',
+            onPressed: _showBandInfo,
+          ),
           if (_scanning)
             const Padding(
               padding: EdgeInsets.all(16),
@@ -178,7 +215,7 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
             )
           else
             IconButton(
-              icon: const Icon(Icons.refresh),
+              icon: const PulsingIcon(child: Icon(Icons.refresh)),
               tooltip: 'Re-scan',
               onPressed: _scan,
             ),
@@ -287,7 +324,7 @@ class _ErrorBanner extends StatelessWidget {
 
 // ── Channel chart ─────────────────────────────────────────────────────────────
 
-class _ChannelChart extends StatelessWidget {
+class _ChannelChart extends StatefulWidget {
   final List<_WifiNetwork> networks;
   final List<int> channels;
   final String band;
@@ -298,7 +335,45 @@ class _ChannelChart extends StatelessWidget {
   });
 
   @override
+  State<_ChannelChart> createState() => _ChannelChartState();
+}
+
+class _ChannelChartState extends State<_ChannelChart> {
+  _WifiSort _sort = _WifiSort.channel;
+  bool _asc = true;
+
+  void _onSort(_WifiSort col) {
+    setState(() {
+      if (_sort == col) {
+        _asc = !_asc;
+      } else {
+        _sort = col;
+        _asc = true;
+      }
+    });
+  }
+
+  // Sort on the numeric fields (channel/rssi are ints) so the natural order is
+  // honoured — no ascii pitfall where "101" would sort before "20".
+  int _cmp(_WifiNetwork a, _WifiNetwork b) {
+    int c;
+    switch (_sort) {
+      case _WifiSort.ssid:
+        c = a.ssid.toLowerCase().compareTo(b.ssid.toLowerCase());
+      case _WifiSort.channel:
+        c = a.channel.compareTo(b.channel);
+      case _WifiSort.rssi:
+      case _WifiSort.quality:
+        c = a.rssi.compareTo(b.rssi);
+    }
+    return _asc ? c : -c;
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final networks = widget.networks;
+    final channels = widget.channels;
+    final band = widget.band;
     if (networks.isEmpty) {
       return Center(child: Text('No $band networks detected.'));
     }
@@ -331,7 +406,7 @@ class _ChannelChart extends StatelessWidget {
       builder: (ctx, orientation) {
         final isLandscape = orientation == Orientation.landscape;
         final chart = _buildChart(context, byChannel, colorMap);
-        final list = _buildList(context, networks, colorMap);
+        final list = _buildList(context, [...networks]..sort(_cmp), colorMap);
 
         if (isLandscape) {
           return Row(
@@ -360,6 +435,35 @@ class _ChannelChart extends StatelessWidget {
     );
   }
 
+  Widget _headerCell(String label, _WifiSort col, bool rightAlign) {
+    final active = _sort == col;
+    return InkWell(
+      onTap: () => _onSort(col),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
+          mainAxisAlignment:
+              rightAlign ? MainAxisAlignment.end : MainAxisAlignment.start,
+          children: [
+            Flexible(
+              child: Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: rightAlign ? TextAlign.right : TextAlign.left,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (active)
+              Icon(_asc ? Icons.arrow_upward : Icons.arrow_downward, size: 11),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildChart(
     BuildContext context,
     Map<int, List<_WifiNetwork>> byChannel,
@@ -374,7 +478,7 @@ class _ChannelChart extends StatelessWidget {
             : constraints.maxHeight;
         final minW = math.max(
           MediaQuery.of(context).size.width - 16,
-          channels.length * 52.0,
+          widget.channels.length * 52.0,
         );
         return SingleChildScrollView(
           scrollDirection: Axis.horizontal,
@@ -385,7 +489,7 @@ class _ChannelChart extends StatelessWidget {
             child: CustomPaint(
               painter: _ChannelPainter(
                 byChannel: byChannel,
-                channels: channels,
+                channels: widget.channels,
                 colorMap: colorMap,
               ),
             ),
@@ -403,49 +507,17 @@ class _ChannelChart extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       children: [
-        // Legend header row
+        // Sortable header row — tap a column to sort, tap again to reverse.
         Padding(
           padding: const EdgeInsets.only(bottom: 4),
           child: Row(
             children: [
-              const Expanded(
-                child: Text(
-                  'SSID',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                ),
-              ),
-              SizedBox(
-                width: 48,
-                child: Text(
-                  'Ch',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  textAlign: TextAlign.right,
-                ),
-              ),
+              Expanded(child: _headerCell('SSID', _WifiSort.ssid, false)),
+              SizedBox(width: 48, child: _headerCell('Ch', _WifiSort.channel, true)),
+              SizedBox(width: 64, child: _headerCell('RSSI', _WifiSort.rssi, true)),
               SizedBox(
                 width: 64,
-                child: Text(
-                  'RSSI',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  textAlign: TextAlign.right,
-                ),
-              ),
-              SizedBox(
-                width: 64,
-                child: Text(
-                  'Quality',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  textAlign: TextAlign.right,
-                ),
+                child: _headerCell('Quality', _WifiSort.quality, true),
               ),
             ],
           ),
@@ -600,6 +672,8 @@ class _ChannelPainter extends CustomPainter {
 }
 
 // ── Data model ────────────────────────────────────────────────────────────────
+
+enum _WifiSort { ssid, channel, rssi, quality }
 
 class _WifiNetwork {
   final String ssid, bssid, band;

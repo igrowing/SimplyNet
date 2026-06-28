@@ -7,6 +7,7 @@ import 'package:simply_net/providers/settings_provider.dart';
 import 'package:simply_net/screens/mqtt_screen.dart';
 import 'package:simply_net/services/iot_scanner.dart';
 import 'package:simply_net/services/network_scanner.dart';
+import 'package:simply_net/widgets/pulsing_icon.dart';
 
 class IotScanScreen extends StatefulWidget {
   final String cidr;
@@ -72,7 +73,10 @@ class _IotScanScreenState extends State<IotScanScreen> {
               duration: const Duration(milliseconds: 200),
               child: scanning
                   ? const Icon(Icons.stop_rounded,   key: ValueKey('s'), size: 28)
-                  : const Icon(Icons.refresh_rounded, key: ValueKey('r'), size: 26),
+                  : const PulsingIcon(
+                      key: ValueKey('r'),
+                      child: Icon(Icons.refresh_rounded, size: 26),
+                    ),
             ),
             tooltip: scanning ? 'Stop' : 'Re-scan',
             onPressed: scanning ? iot.stopScan : _rescan,

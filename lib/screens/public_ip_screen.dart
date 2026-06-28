@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:simply_net/widgets/pulsing_icon.dart';
 
 // ════════════════════════════════════════════════════════════════════
 //  2. PUBLIC IP
@@ -62,7 +63,10 @@ class _PublicIpState extends State<PublicIpScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
+            icon: PulsingIcon(
+              enabled: !_loading,
+              child: const Icon(Icons.refresh),
+            ),
             onPressed: _loading ? null : _load,
           ),
         ],

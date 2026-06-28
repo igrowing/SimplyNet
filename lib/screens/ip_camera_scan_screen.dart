@@ -5,6 +5,7 @@ import 'package:simply_net/providers/scan_provider.dart';
 import 'package:simply_net/providers/settings_provider.dart';
 import 'package:simply_net/services/ip_camera_detector.dart';
 import 'package:simply_net/services/network_scanner.dart';
+import 'package:simply_net/widgets/pulsing_icon.dart';
 
 // ════════════════════════════════════════════════════════════════════
 //  3. IP CAMERA SCAN  (fixed: always terminates; toggle button)
@@ -100,10 +101,9 @@ class _IpCameraScanState extends State<IpCameraScanScreen> {
                       key: ValueKey('stop'),
                       size: 26,
                     )
-                  : const Icon(
-                      Icons.refresh_rounded,
+                  : const PulsingIcon(
                       key: ValueKey('refresh'),
-                      size: 24,
+                      child: Icon(Icons.refresh_rounded, size: 24),
                     ),
             ),
             tooltip: scanning ? 'Stop scan' : 'Re-scan',

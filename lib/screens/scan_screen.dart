@@ -4,6 +4,7 @@ import 'package:simply_net/models/host_result.dart';
 import 'package:simply_net/providers/scan_provider.dart';
 import 'package:simply_net/providers/settings_provider.dart';
 import 'package:simply_net/screens/host_screen.dart';
+import 'package:simply_net/widgets/pulsing_icon.dart';
 
 class ScanScreen extends StatefulWidget {
   const ScanScreen({super.key});
@@ -106,10 +107,9 @@ class _ScanScreenState extends State<ScanScreen> {
                       key: ValueKey('stop'),
                       size: 28,
                     )
-                  : const Icon(
-                      Icons.refresh_rounded,
+                  : const PulsingIcon(
                       key: ValueKey('refresh'),
-                      size: 26,
+                      child: Icon(Icons.refresh_rounded, size: 26),
                     ),
             ),
             tooltip: scan.isScanning ? 'Stop scan' : 'Re-scan',
