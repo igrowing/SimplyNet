@@ -36,7 +36,7 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Why one 5 GHz network uses two channels'),
+        title: const Text('Dual access point detection in 5 GHz network'),
         content: const SingleChildScrollView(
           child: Text(
             'On the 5 GHz band you will usually see each access point appear on '

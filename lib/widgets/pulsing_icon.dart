@@ -22,7 +22,7 @@ class _PulsingIconState extends State<PulsingIcon>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 5),
+      duration: const Duration(seconds: 3),
     );
     // 80% of the cycle (4 s) held still, then a quick grow/shrink over the
     // final second.
@@ -31,13 +31,13 @@ class _PulsingIconState extends State<PulsingIcon>
       TweenSequenceItem(
         tween: Tween<double>(
           begin: 1.0,
-          end: 1.3,
+          end: 1.4,
         ).chain(CurveTween(curve: Curves.easeInOut)),
         weight: 10,
       ),
       TweenSequenceItem(
         tween: Tween<double>(
-          begin: 1.3,
+          begin: 1.4,
           end: 1.0,
         ).chain(CurveTween(curve: Curves.easeInOut)),
         weight: 10,
