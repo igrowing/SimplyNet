@@ -15,6 +15,7 @@ import 'package:simply_net/screens/markdown_info_screen.dart';
 import 'package:simply_net/providers/camera_scan_provider.dart';
 import 'package:simply_net/providers/scan_provider.dart';
 import 'package:simply_net/widgets/diag_widgets.dart';
+import 'package:simply_net/widgets/history_field.dart';
 import 'package:provider/provider.dart';
 import 'package:simply_net/screens/iot_scan_screen.dart';
 import 'package:simply_net/screens/wifi_channels_screen.dart';
@@ -1575,8 +1576,9 @@ class _WhoisState extends State<WhoisScreen> {
             child: Row(
               children: [
                 Expanded(
-                  child: TextField(
+                  child: HistoryField(
                     controller: _ctrl,
+                    historyKey: 'host',
                     textInputAction: TextInputAction.go,
                     onSubmitted: (_) => _loading ? null : _lookup(),
                     enabled: !_loading,
@@ -1722,8 +1724,9 @@ class _PingScreenState extends State<PingScreen> {
             child: Row(
               children: [
                 Expanded(
-                  child: TextField(
+                  child: HistoryField(
                     controller: _ctrl,
+                    historyKey: 'host',
                     textInputAction: TextInputAction.go,
                     onSubmitted: (_) => _toggle(),
                     enabled: !_running,
@@ -1921,8 +1924,9 @@ class _TracerouteScreenState extends State<TracerouteScreen> {
             child: Row(
               children: [
                 Expanded(
-                  child: TextField(
+                  child: HistoryField(
                     controller: _ctrl,
+                    historyKey: 'host',
                     textInputAction: TextInputAction.go,
                     onSubmitted: (_) => _running ? null : _run(),
                     enabled: !_running,
@@ -2329,8 +2333,9 @@ class _PortScanScreenState extends State<PortScanScreen> {
             child: Row(
               children: [
                 Expanded(
-                  child: TextField(
+                  child: HistoryField(
                     controller: _ctrl,
+                    historyKey: 'host',
                     textInputAction: TextInputAction.go,
                     onSubmitted: (_) => _scanning ? null : _startScan(),
                     enabled: !_scanning,

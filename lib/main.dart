@@ -47,6 +47,10 @@ class SimplyNetApp extends StatelessWidget {
             themeMode: settings.themeMode,
             theme: _buildTheme(Brightness.light),
             darkTheme: _buildTheme(Brightness.dark),
+            // Keep content clear of the Android navigation bar (3-button mode)
+            // while leaving the status-bar area to each screen's AppBar.
+            builder: (_, child) =>
+                SafeArea(top: false, child: child ?? const SizedBox.shrink()),
             initialRoute: '/',
             routes: {
               '/':              (_) => const HomeScreen(),

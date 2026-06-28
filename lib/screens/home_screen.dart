@@ -11,6 +11,7 @@ import 'package:simply_net/screens/network_tools_screen.dart';
 import 'package:simply_net/screens/wifi_channels_screen.dart';
 import 'package:simply_net/services/lan_detector.dart';
 import 'package:simply_net/services/network_scanner.dart';
+import 'package:simply_net/widgets/history_field.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -164,9 +165,10 @@ class _HomeScreenState extends State<HomeScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // Network target input
-          TextField(
+          HistoryField(
             controller: _ctrl,
             focusNode: _focusNode,
+            historyKey: 'network_target',
             onChanged: _onChanged,
             onSubmitted: _onSubmitted,
             textInputAction: TextInputAction.go,
