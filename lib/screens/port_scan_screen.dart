@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:simply_net/providers/settings_provider.dart';
+import 'package:simply_net/screens/markdown_info_screen.dart';
 import 'package:simply_net/services/log_service.dart';
 import 'package:simply_net/services/network_tools.dart';
 import 'package:simply_net/widgets/history_field.dart';
@@ -115,6 +116,18 @@ class _PortScanScreenState extends State<PortScanScreen> {
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            tooltip: 'About Port Scan',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const MarkdownInfoScreen(
+                  title: 'About Port Scan',
+                  assetPath: 'assets/portscan_info.md',
+                ),
+              ),
+            ),
+          ),
           IconButton(
             tooltip: _settingsVisible ? 'Hide settings' : 'Settings',
             icon: Icon(

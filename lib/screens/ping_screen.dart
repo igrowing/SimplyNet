@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:simply_net/services/foreground_service.dart';
+import 'package:simply_net/screens/markdown_info_screen.dart';
 import 'package:simply_net/services/network_tools.dart';
 import 'package:simply_net/widgets/diag_widgets.dart';
 import 'package:simply_net/widgets/history_field.dart';
@@ -86,6 +87,20 @@ class _PingScreenState extends State<PingScreen> {
           'Ping',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            tooltip: 'About Ping',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const MarkdownInfoScreen(
+                  title: 'About Ping',
+                  assetPath: 'assets/ping_info.md',
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
       body: Column(
         children: [

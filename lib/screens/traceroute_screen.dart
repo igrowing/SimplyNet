@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:simply_net/providers/settings_provider.dart';
+import 'package:simply_net/screens/markdown_info_screen.dart';
 import 'package:simply_net/services/foreground_service.dart';
 import 'package:simply_net/services/log_service.dart';
 import 'package:simply_net/services/network_tools.dart';
@@ -142,6 +143,20 @@ class _TracerouteScreenState extends State<TracerouteScreen> {
           'Traceroute',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            tooltip: 'About Traceroute',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const MarkdownInfoScreen(
+                  title: 'About Traceroute',
+                  assetPath: 'assets/tracert_info.md',
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
       body: Column(
         children: [

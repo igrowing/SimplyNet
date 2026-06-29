@@ -12,6 +12,7 @@ import 'package:simply_net/screens/wifi_channels_screen.dart';
 import 'package:simply_net/services/lan_detector.dart';
 import 'package:simply_net/services/network_scanner.dart';
 import 'package:simply_net/widgets/history_field.dart';
+import 'package:simply_net/main.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -20,7 +21,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with RouteAware {
   String _appVersion = '';
   late TextEditingController _ctrl;
   final FocusNode _focusNode = FocusNode();
@@ -46,7 +47,21 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route is PageRoute) routeObserver.subscribe(this, route);
+  }
+
+  // Drop focus from the CIDR field before another screen covers the home
+  // screen. Otherwise Flutter restores focus to it on return, re-popping the
+  // keyboard even though the user only wanted to come back to the home screen.
+  @override
+  void didPushNext() => _focusNode.unfocus();
+
+  @override
   void dispose() {
+    routeObserver.unsubscribe(this);
     _ctrl.dispose();
     _focusNode.dispose();
     super.dispose();

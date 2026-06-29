@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:simply_net/providers/settings_provider.dart';
+import 'package:simply_net/screens/markdown_info_screen.dart';
 import 'package:simply_net/services/log_service.dart';
 import 'package:simply_net/services/network_tools.dart';
 import 'package:simply_net/widgets/history_field.dart';
@@ -191,6 +192,20 @@ class _WhoisState extends State<WhoisScreen> {
           'Who Is…',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            tooltip: 'About Who Is',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const MarkdownInfoScreen(
+                  title: 'About Who Is',
+                  assetPath: 'assets/whois_info.md',
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
       body: Column(
         children: [

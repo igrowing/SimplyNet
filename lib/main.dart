@@ -13,6 +13,12 @@ import 'package:simply_net/screens/scan_screen.dart';
 import 'package:simply_net/screens/settings_screen.dart';
 import 'package:simply_net/services/oui_service.dart';
 
+/// Observes route pushes/pops so screens can react when they are covered or
+/// re-revealed (e.g. the home screen drops keyboard focus from its CIDR field
+/// when navigating away, so returning never re-pops the keyboard).
+final RouteObserver<PageRoute<dynamic>> routeObserver =
+    RouteObserver<PageRoute<dynamic>>();
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await OuiService.init();
@@ -51,6 +57,7 @@ class SimplyNetApp extends StatelessWidget {
             // while leaving the status-bar area to each screen's AppBar.
             builder: (_, child) =>
                 SafeArea(top: false, child: child ?? const SizedBox.shrink()),
+            navigatorObservers: [routeObserver],
             initialRoute: '/',
             routes: {
               '/':              (_) => const HomeScreen(),
