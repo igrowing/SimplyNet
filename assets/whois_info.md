@@ -52,5 +52,5 @@ If your phone rings and shows an unknown number like `1-800-555-0199`, you might
 By combining these three features, our tool gives you a complete "background check" on any digital target:
 
 1. DNS Resolution tells you the IP address ("phone number") of a website name.
-1. Reverse Resolution tells you the website name ("Caller ID") of a mystery IP address.
-1. WHOIS tells you the actual legal owner, registrar, and expiration dates of that property.
+2. Reverse Resolution tells you the website name ("Caller ID") of a mystery IP address.
+3. WHOIS tells you the actual legal owner, registrar, and expiration dates of that property.

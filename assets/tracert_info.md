@@ -11,11 +11,11 @@ Imagine you live in Rome, Italy, and you want to mail a physical letter to a fri
 Your letter does not magically teleport across the Atlantic. Instead, it goes on a journey:
 
 1. It starts at your local neighborhood post office.
-1. It gets loaded onto a truck to a regional sorting facility in Rome.
-1. It is flown to an international airport hub in London.
-1. It flies across the ocean to a customs facility in New York.
-1. It goes to a local delivery station in Manhattan.
-1. Finally, it arrives at your friend's house.
+2. It gets loaded onto a truck to a regional sorting facility in Rome.
+3. It is flown to an international airport hub in London.
+4. It flies across the ocean to a customs facility in New York.
+5. It goes to a local delivery station in Manhattan.
+6. Finally, it arrives at your friend's house.
 
 In the digital world, every time you visit a website (like Google, Netflix, or your favorite blog), your phone is sending millions of tiny digital envelopes called "packets" across the globe.
 
