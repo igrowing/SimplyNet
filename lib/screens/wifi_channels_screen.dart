@@ -39,7 +39,8 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
         title: const Text('Dual access point detection in 5 GHz network'),
         content: const SingleChildScrollView(
           child: Text(
-            'On the 5 GHz band you will usually see each access point appear on '
+            '💡 Hold SSID to see full Access Point name.\n\n'
+            'ℹ️ On the 5 GHz band you will usually see each access point appear on '
             'two (or more) channels at once. That is normal.\n\n'
             'To go faster, modern routers glue neighbouring 20 MHz channels '
             'together into one wider lane — 40, 80, or even 160 MHz. This is '
@@ -95,6 +96,7 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
               rssi: (m['rssi'] as int?) ?? -100,
               channel: _freqToChannel(freq),
               band: band,
+              security: wifiSecurityLabel(m['capabilities'] as String?),
             );
             final key = bssid.isNotEmpty ? bssid : '${net.ssid}/${net.channel}';
             merged[key] = net; // latest snapshot wins for this AP
@@ -142,6 +144,7 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
       rssi: -45,
       channel: 6,
       band: '2.4',
+      security: 'WPA2',
     ),
     _WifiNetwork(
       ssid: 'NeighborWifi',
@@ -149,6 +152,7 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
       rssi: -68,
       channel: 6,
       band: '2.4',
+      security: 'WPA2',
     ),
     _WifiNetwork(
       ssid: 'Office_WiFi',
@@ -156,6 +160,7 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
       rssi: -72,
       channel: 1,
       band: '2.4',
+      security: 'WPA3',
     ),
     _WifiNetwork(
       ssid: 'Guest',
@@ -163,6 +168,7 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
       rssi: -80,
       channel: 11,
       band: '2.4',
+      security: 'Open',
     ),
     _WifiNetwork(
       ssid: 'HomeNet5G',
@@ -170,6 +176,7 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
       rssi: -50,
       channel: 36,
       band: '5',
+      security: 'WPA2',
     ),
     _WifiNetwork(
       ssid: 'Office5G',
@@ -177,6 +184,7 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
       rssi: -65,
       channel: 44,
       band: '5',
+      security: 'WPA2',
     ),
     _WifiNetwork(
       ssid: 'Neighbor5G',
@@ -184,6 +192,7 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
       rssi: -78,
       channel: 36,
       band: '5',
+      security: 'Open',
     ),
   ];
 
@@ -239,7 +248,7 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
             // only via the TabBar tap (which is what you want in landscape).
             child: AnimatedBuilder(
               animation: _tabs,
-              builder: (_, __) => IndexedStack(
+              builder: (_, _) => IndexedStack(
                 index: _tabs.index,
                 children: [
                   _ChannelChart(
@@ -395,7 +404,9 @@ class _ChannelChartState extends State<_ChannelChart> {
     };
 
     final byChannel = <int, List<_WifiNetwork>>{};
-    for (final ch in channels) byChannel[ch] = [];
+    for (final ch in channels) {
+      byChannel[ch] = [];
+    }
     for (final n in networks) {
       if (byChannel.containsKey(n.channel)) byChannel[n.channel]!.add(n);
     }
@@ -498,84 +509,138 @@ class _ChannelChartState extends State<_ChannelChart> {
       },
     );
   }
+  final double _securityWidth = 60;
+  final double _chWidth = 32;
+  final double _rssiWidth = 60;
+  final double _qualityWidth = 60;
 
   Widget _buildList(
     BuildContext context,
     List<_WifiNetwork> nets,
     Map<String, Color> colorMap,
   ) {
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    return Column(
       children: [
-        // Sortable header row — tap a column to sort, tap again to reverse.
         Padding(
-          padding: const EdgeInsets.only(bottom: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
           child: Row(
             children: [
               Expanded(child: _headerCell('SSID', _WifiSort.ssid, false)),
-              SizedBox(width: 48, child: _headerCell('Ch', _WifiSort.channel, true)),
-              SizedBox(width: 64, child: _headerCell('RSSI', _WifiSort.rssi, true)),
               SizedBox(
-                width: 64,
+                width: _securityWidth,
+                child: Text(
+                  'Security',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              SizedBox(width: _chWidth, child: _headerCell('Ch', _WifiSort.channel, true)),
+              SizedBox(width: _rssiWidth, child: _headerCell('RSSI', _WifiSort.rssi, true)),
+              SizedBox(
+                width: _qualityWidth,
                 child: _headerCell('Quality', _WifiSort.quality, true),
               ),
             ],
           ),
         ),
         const Divider(height: 4),
-        ...nets.map(
-          (n) => Padding(
-            padding: const EdgeInsets.symmetric(vertical: 3),
-            child: Row(
-              children: [
-                Container(
-                  width: 10,
-                  height: 10,
-                  margin: const EdgeInsets.only(right: 6),
-                  decoration: BoxDecoration(
-                    color: colorMap[n.ssid],
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                Expanded(
-                  child: Text(
-                    n.ssid,
-                    style: const TextStyle(fontSize: 12),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                SizedBox(
-                  width: 48,
-                  child: Text(
-                    'ch ${n.channel}',
-                    style: const TextStyle(fontSize: 11),
-                    textAlign: TextAlign.right,
-                  ),
-                ),
-                SizedBox(
-                  width: 64,
-                  child: Text(
-                    '${n.rssi} dBm',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontFamily: 'monospace',
-                    ),
-                    textAlign: TextAlign.right,
-                  ),
-                ),
-                SizedBox(
-                  width: 64,
-                  child: Text(
-                    _quality(n.rssi),
-                    style: TextStyle(fontSize: 11, color: _qColor(n.rssi)),
-                    textAlign: TextAlign.right,
-                  ),
-                ),
-              ],
-            ),
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            itemCount: nets.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 6),
+            itemBuilder: (ctx, index) {
+              final n = nets[index];
+              return _buildNetworkRow(ctx, n, colorMap);
+            },
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildNetworkRow(
+    BuildContext context,
+    _WifiNetwork n,
+    Map<String, Color> colorMap,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: [
+          Container(
+            width: 10,
+            height: 10,
+            margin: const EdgeInsets.only(right: 6),
+            decoration: BoxDecoration(
+              color: colorMap[n.ssid],
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          Expanded(
+            child: Tooltip(
+              message: n.ssid,
+              waitDuration: Duration.zero,
+              showDuration: const Duration(seconds: 3),
+              child: Row(
+                children: [
+                  Icon(
+                    _securityIcon(n.security),
+                    size: 14,
+                    color: _securityIconColor(n.security),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      n.ssid,
+                      style: const TextStyle(fontSize: 12),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          SizedBox(
+            width: _securityWidth,
+            child: Text(
+              n.security,
+              style: const TextStyle(fontSize: 11),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          SizedBox(
+            width: _chWidth,
+            child: Text(
+              '${n.channel}',
+              style: const TextStyle(fontSize: 11),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          SizedBox(
+            width: _rssiWidth,
+            child: Text(
+              '${n.rssi} dBm',
+              style: const TextStyle(
+                fontSize: 11,
+                fontFamily: 'monospace',
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          SizedBox(
+            width: _qualityWidth,
+            child: Text(
+              _quality(n.rssi),
+              style: TextStyle(fontSize: 11, color: _qColor(n.rssi)),
+              textAlign: TextAlign.right,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -593,6 +658,41 @@ class _ChannelChartState extends State<_ChannelChart> {
     if (r >= -70) return Colors.orange;
     return Colors.red;
   }
+
+  static IconData _securityIcon(String security) {
+    return security.toLowerCase() == 'open'
+        ? Icons.lock_open
+        : Icons.lock_outline;
+  }
+
+  static Color _securityIconColor(String security) {
+    return security.toLowerCase() == 'open'
+        ? Colors.green
+        : Colors.orange;
+  }
+}
+
+String wifiSecurityLabel(String? capabilities) {
+  final caps = capabilities?.trim() ?? '';
+  if (caps.isEmpty) return 'Unknown';
+
+  final upper = caps.toUpperCase();
+  final hasWpa3 = upper.contains('WPA3') || upper.contains('SAE');
+  final hasWpa2 = upper.contains('WPA2');
+  final hasWpa = upper.contains('WPA');
+  final hasWep = upper.contains('WEP');
+  final hasOwe = upper.contains('OWE');
+  final hasEap = upper.contains('802.1X') || upper.contains('EAP');
+  final hasEss = upper.contains('ESS');
+
+  if (hasWep) return 'WEP';
+  if (hasWpa3) return 'WPA3';
+  if (hasWpa2) return 'WPA2';
+  if (hasWpa) return 'WPA';
+  if (hasOwe) return 'OWE';
+  if (hasEap) return '802.1X';
+  if (hasEss) return 'Open';
+  return 'Protected';
 }
 
 // ── CustomPainter ─────────────────────────────────────────────────────────────
@@ -676,7 +776,7 @@ class _ChannelPainter extends CustomPainter {
 enum _WifiSort { ssid, channel, rssi, quality }
 
 class _WifiNetwork {
-  final String ssid, bssid, band;
+  final String ssid, bssid, band, security;
   final int rssi, channel;
   const _WifiNetwork({
     required this.ssid,
@@ -684,5 +784,6 @@ class _WifiNetwork {
     required this.rssi,
     required this.channel,
     required this.band,
+    required this.security,
   });
 }

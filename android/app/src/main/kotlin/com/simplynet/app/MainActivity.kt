@@ -231,10 +231,11 @@ class MainActivity : FlutterActivity() {
         val results = wifiManager.scanResults
         return results.map { ap ->
             mapOf(
-                "ssid"  to (if (Build.VERSION.SDK_INT >= 33) ap.wifiSsid?.toString()?.trim('"') ?: "" else @Suppress("DEPRECATION") ap.SSID ?: ""),
-                "bssid" to (ap.BSSID ?: ""),
-                "rssi"  to ap.level,
-                "freq"  to ap.frequency,
+                "ssid"         to (if (Build.VERSION.SDK_INT >= 33) ap.wifiSsid?.toString()?.trim('"') ?: "" else @Suppress("DEPRECATION") ap.SSID ?: ""),
+                "bssid"        to (ap.BSSID ?: ""),
+                "rssi"         to ap.level,
+                "freq"         to ap.frequency,
+                "capabilities" to (ap.capabilities ?: ""),
             )
         }
     }
