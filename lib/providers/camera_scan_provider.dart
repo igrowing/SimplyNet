@@ -76,7 +76,7 @@ class CameraScanProvider extends ChangeNotifier {
     void onProgress(int done, int total) {
       _done = done;
       _total = total;
-      notifyListeners();
+      _safeNotify();
     }
 
     final Stream<CameraCandidate> stream;
@@ -90,7 +90,7 @@ class CameraScanProvider extends ChangeNotifier {
     _sub = stream.listen(
       (candidate) {
         _results.add(candidate);
-        notifyListeners();
+        _safeNotify();
       },
       onDone: _onDone,
       onError: (_) => _onError(),
@@ -109,14 +109,28 @@ class CameraScanProvider extends ChangeNotifier {
   Future<void> _onDone() async {
     _scanning = false;
     _sortByIp();
-    notifyListeners();
+    _safeNotify();
     await _saveCache();
     if (_loggingEnabled) await _writeLog();
   }
 
   void _onError() {
     _scanning = false;
-    notifyListeners();
+    _safeNotify();
+  }
+
+  void _safeNotify() {
+    try {
+      notifyListeners();
+    } on FlutterError {
+      // Silently ignore if disposed
+    }
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
   }
 
   void _sortByIp() =>
@@ -146,11 +160,5 @@ class CameraScanProvider extends ChangeNotifier {
       content: buf.toString(),
       summary: 'IP camera scan $_cidr: ${_results.length} found ($label)',
     );
-  }
-
-  @override
-  void dispose() {
-    _sub?.cancel();
-    super.dispose();
   }
 }

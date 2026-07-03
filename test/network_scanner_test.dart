@@ -1,8 +1,27 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:simply_net/services/network_scanner.dart';
 import 'package:simply_net/services/oui_service.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  const pathProvider = MethodChannel('plugins.flutter.io/path_provider');
+
+  setUp(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(pathProvider, (call) async {
+      if (call.method == 'getApplicationDocumentsDirectory') {
+        return '/tmp';
+      }
+      return null;
+    });
+  });
+
+  tearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(pathProvider, null);
+  });
   // deviceTypeFromMac now resolves the vendor through assets/oui.json, so the
   // OUI database must be loaded before the MAC-based classification tests run.
   TestWidgetsFlutterBinding.ensureInitialized();
