@@ -10,6 +10,8 @@ import 'package:simply_net/providers/mqtt_provider.dart';
 import 'package:simply_net/constants/network_ports.dart';
 import 'package:simply_net/services/lan_detector.dart';
 import 'package:simply_net/services/mqtt_broker_scanner.dart';
+import 'package:simply_net/widgets/history_field.dart';
+import 'package:simply_net/services/input_history.dart';
 
 // ════════════════════════════════════════════════════════════════════════════
 //  Shared MQTT connection settings (broker, auth).
@@ -206,6 +208,7 @@ class _MqttSettingsSheetState extends State<_MqttSettingsSheet> {
             const SizedBox(height: 20),
             _field(controller: _brokerCtrl,
                 label: 'Broker IP / FQDN',
+                historyKey: 'mqtt_broker',
                 hint: _discovering
                     ? 'Searching subnet…'
                     : 'e.g. 192.168.1.10 or broker.example.com',
@@ -223,6 +226,7 @@ class _MqttSettingsSheetState extends State<_MqttSettingsSheet> {
             const SizedBox(height: 12),
             _field(controller: _portCtrl,
                 label: 'Port', hint: '1883',
+                historyKey: 'mqtt_port',
                 keyboard: TextInputType.number,
                 onChanged: _onPortChanged),
             const SizedBox(height: 12),
@@ -280,23 +284,35 @@ class _MqttSettingsSheetState extends State<_MqttSettingsSheet> {
     required TextEditingController controller,
     required String label,
     String? hint,
+    String? historyKey,
     TextInputType keyboard = TextInputType.text,
     ValueChanged<String>? onChanged,
     Widget? suffix,
-  }) =>
-      TextField(
+  }) {
+    final decoration = InputDecoration(
+      labelText: label,
+      hintText:  hint,
+      border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10)),
+      isDense: true,
+      suffixIcon: suffix,
+    );
+    if (historyKey == null) {
+      return TextField(
         controller:   controller,
         keyboardType: keyboard,
         onChanged:    onChanged,
-        decoration: InputDecoration(
-          labelText: label,
-          hintText:  hint,
-          border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10)),
-          isDense: true,
-          suffixIcon: suffix,
-        ),
+        decoration:   decoration,
       );
+    }
+    return HistoryField(
+      controller:   controller,
+      historyKey:   historyKey,
+      keyboardType: keyboard,
+      onChanged:    onChanged,
+      decoration:   decoration,
+    );
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -503,6 +519,7 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
       setState(() => _statusMsg = 'Enter a topic first.');
       return;
     }
+    await InputHistory.add('mqtt_topic', topic);
     _sessionLog.clear();
     _sessionStart = DateTime.now();
     _connect(topic);
@@ -671,8 +688,9 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
                   padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
                   child: Row(children: [
                     Expanded(
-                      child: TextField(
+                      child: HistoryField(
                         controller:      _topicCtrl,
+                        historyKey:      'mqtt_topic',
                         enabled:         !isActive,
                         textInputAction: TextInputAction.go,
                         onChanged:       _saveTopic,
@@ -953,6 +971,11 @@ class _MqttPubScreenState extends State<MqttPubScreen> {
     final msg   = _msgCtrl.text;
     if (topic.isEmpty) return;
 
+    // Commit the topic/message to the shared history so they are offered as
+    // suggestions next time (covers the case where the field never lost focus).
+    await InputHistory.add('mqtt_topic', topic);
+    if (msg.trim().isNotEmpty) await InputHistory.add('mqtt_message', msg);
+
     final builder = MqttClientPayloadBuilder()..addString(msg);
     _client!.publishMessage(
       topic,
@@ -1003,8 +1026,9 @@ class _MqttPubScreenState extends State<MqttPubScreen> {
                   const SizedBox(height: 12),
 
                   // ── Topic (editable, per-screen) ───────────────────────
-                  TextField(
+                  HistoryField(
                     controller:      _topicCtrl,
+                    historyKey:      'mqtt_topic',
                     textInputAction: TextInputAction.next,
                     onChanged:       _saveTopic,
                     onEditingComplete: () {
@@ -1027,8 +1051,9 @@ class _MqttPubScreenState extends State<MqttPubScreen> {
                   const SizedBox(height: 12),
 
                   // ── Message ────────────────────────────────────────────
-                  TextField(
+                  HistoryField(
                     controller: _msgCtrl,
+                    historyKey: 'mqtt_message',
                     maxLines:   5,
                     onChanged:  _saveMessage,
                     decoration: InputDecoration(

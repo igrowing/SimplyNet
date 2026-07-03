@@ -11,6 +11,8 @@ import 'package:simply_net/screens/network_tools_screen.dart';
 import 'package:simply_net/screens/wifi_channels_screen.dart';
 import 'package:simply_net/services/lan_detector.dart';
 import 'package:simply_net/services/network_scanner.dart';
+import 'package:simply_net/widgets/history_field.dart';
+import 'package:simply_net/main.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -19,7 +21,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with RouteAware {
   String _appVersion = '';
   late TextEditingController _ctrl;
   final FocusNode _focusNode = FocusNode();
@@ -45,7 +47,21 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route is PageRoute) routeObserver.subscribe(this, route);
+  }
+
+  // Drop focus from the CIDR field before another screen covers the home
+  // screen. Otherwise Flutter restores focus to it on return, re-popping the
+  // keyboard even though the user only wanted to come back to the home screen.
+  @override
+  void didPushNext() => _focusNode.unfocus();
+
+  @override
   void dispose() {
+    routeObserver.unsubscribe(this);
     _ctrl.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -121,9 +137,15 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: OrientationBuilder(
-        builder: (ctx, orientation) {
-          final isLandscape = orientation == Orientation.landscape;
+      // Derive orientation from MediaQuery (the stable window orientation)
+      // rather than OrientationBuilder, whose value comes from transient box
+      // constraints and briefly reported landscape while a page transition
+      // was settling — causing the home screen to flash its side-by-side
+      // layout before snapping to the correct one.
+      body: Builder(
+        builder: (ctx) {
+          final isLandscape =
+              MediaQuery.orientationOf(ctx) == Orientation.landscape;
           return SingleChildScrollView(
             padding: EdgeInsets.symmetric(
               // Portrait/tablet: generous 15% side margins.
@@ -164,9 +186,10 @@ class _HomeScreenState extends State<HomeScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // Network target input
-          TextField(
+          HistoryField(
             controller: _ctrl,
             focusNode: _focusNode,
+            historyKey: 'network_target',
             onChanged: _onChanged,
             onSubmitted: _onSubmitted,
             textInputAction: TextInputAction.go,

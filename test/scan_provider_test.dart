@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:simply_net/models/host_result.dart';
@@ -5,6 +8,27 @@ import 'package:simply_net/providers/scan_provider.dart';
 import 'package:simply_net/services/scan_storage.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  const pathProvider = MethodChannel('plugins.flutter.io/path_provider');
+  late Directory tmp;
+
+  setUp(() async {
+    tmp = await Directory.systemTemp.createTemp('simplynet_scan_prov_test');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(pathProvider, (call) async {
+      if (call.method == 'getApplicationDocumentsDirectory') {
+        return tmp.path;
+      }
+      return null;
+    });
+  });
+
+  tearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(pathProvider, null);
+    if (tmp.existsSync()) tmp.deleteSync(recursive: true);
+  });
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('ScanProvider cache', () {

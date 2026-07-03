@@ -7,6 +7,7 @@ import 'package:simply_net/models/host_result.dart';
 import 'package:simply_net/providers/settings_provider.dart';
 import 'package:simply_net/services/log_service.dart';
 import 'package:simply_net/services/network_tools.dart';
+import 'package:simply_net/widgets/pulsing_icon.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 enum _DiagTool { ping }
@@ -372,7 +373,7 @@ class _HostScreenState extends State<HostScreen> {
               // Rescan button (only when not scanning)
               if (!_portScanning)
                 IconButton(
-                  icon: const Icon(Icons.refresh, size: 20),
+                  icon: const PulsingIcon(child: Icon(Icons.refresh, size: 20)),
                   tooltip: 'Re-scan ports',
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),

@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:simply_net/services/network_scanner.dart';
 
@@ -13,6 +14,24 @@ import 'package:simply_net/services/network_scanner.dart';
 /// iOS `arp -a` branch (or the avahi path on a host without the daemon) would
 /// require abstracting `Process.run`/`Platform` behind an injectable runner.
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  const pathProvider = MethodChannel('plugins.flutter.io/path_provider');
+
+  setUp(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(pathProvider, (call) async {
+      if (call.method == 'getApplicationDocumentsDirectory') {
+        return '/tmp';
+      }
+      return null;
+    });
+  });
+
+  tearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(pathProvider, null);
+  });
   group('NetworkScanner.readArpTable', () {
     test('returns an ip→mac map without throwing (host-OS branch)', () async {
       final table = await NetworkScanner.readArpTable();

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:simply_net/widgets/pulsing_icon.dart';
 
 class WifiChannelsScreen extends StatefulWidget {
   const WifiChannelsScreen({super.key});
@@ -31,6 +32,38 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
     super.dispose();
   }
 
+  void _showBandInfo() {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Dual access point detection in 5 GHz network'),
+        content: const SingleChildScrollView(
+          child: Text(
+            '💡 Hold SSID to see full Access Point name.\n\n'
+            'ℹ️ On the 5 GHz band you will usually see each access point appear on '
+            'two (or more) channels at once. That is normal.\n\n'
+            'To go faster, modern routers glue neighbouring 20 MHz channels '
+            'together into one wider lane — 40, 80, or even 160 MHz. This is '
+            'called "channel bonding". A wider lane carries more data, just '
+            'like a wider road carries more cars.\n\n'
+            'With "dynamic channel width" the router picks the widest lane it '
+            'can and narrows it automatically when the air gets busy or noisy, '
+            'so it stays fast without stepping on the neighbours.\n\n'
+            'So a single 5 GHz network showing on channels 36 and 40, for '
+            'example, is just one access point using an 40 MHz-wide bonded '
+            'channel — not two separate networks.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
   // The native side now triggers a real scan and waits for the
   // SCAN_RESULTS_AVAILABLE broadcast, so a single pass already returns a
   // complete dual-band snapshot. A second pass is merged for robustness in
@@ -58,11 +91,12 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
             final bssid = (m['bssid'] as String?) ?? '';
             final ssid = (m['ssid'] as String?);
             final net = _WifiNetwork(
-              ssid: (ssid != null && ssid.isNotEmpty) ? ssid : '<hidden>',
+              ssid: (ssid != null && ssid.trim().isNotEmpty) ? ssid : '<Hidden Network>',
               bssid: bssid,
               rssi: (m['rssi'] as int?) ?? -100,
               channel: _freqToChannel(freq),
               band: band,
+              security: wifiSecurityLabel(m['capabilities'] as String?),
             );
             final key = bssid.isNotEmpty ? bssid : '${net.ssid}/${net.channel}';
             merged[key] = net; // latest snapshot wins for this AP
@@ -110,6 +144,7 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
       rssi: -45,
       channel: 6,
       band: '2.4',
+      security: 'WPA2',
     ),
     _WifiNetwork(
       ssid: 'NeighborWifi',
@@ -117,6 +152,7 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
       rssi: -68,
       channel: 6,
       band: '2.4',
+      security: 'WPA2',
     ),
     _WifiNetwork(
       ssid: 'Office_WiFi',
@@ -124,6 +160,7 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
       rssi: -72,
       channel: 1,
       band: '2.4',
+      security: 'WPA3',
     ),
     _WifiNetwork(
       ssid: 'Guest',
@@ -131,6 +168,7 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
       rssi: -80,
       channel: 11,
       band: '2.4',
+      security: 'Open',
     ),
     _WifiNetwork(
       ssid: 'HomeNet5G',
@@ -138,6 +176,7 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
       rssi: -50,
       channel: 36,
       band: '5',
+      security: 'WPA2',
     ),
     _WifiNetwork(
       ssid: 'Office5G',
@@ -145,6 +184,7 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
       rssi: -65,
       channel: 44,
       band: '5',
+      security: 'WPA2',
     ),
     _WifiNetwork(
       ssid: 'Neighbor5G',
@@ -152,6 +192,7 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
       rssi: -78,
       channel: 36,
       band: '5',
+      security: 'Open',
     ),
   ];
 
@@ -164,6 +205,11 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            tooltip: 'About 5 GHz channels',
+            onPressed: _showBandInfo,
+          ),
           if (_scanning)
             const Padding(
               padding: EdgeInsets.all(16),
@@ -178,7 +224,7 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
             )
           else
             IconButton(
-              icon: const Icon(Icons.refresh),
+              icon: const PulsingIcon(child: Icon(Icons.refresh)),
               tooltip: 'Re-scan',
               onPressed: _scan,
             ),
@@ -202,7 +248,7 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
             // only via the TabBar tap (which is what you want in landscape).
             child: AnimatedBuilder(
               animation: _tabs,
-              builder: (_, __) => IndexedStack(
+              builder: (_, _) => IndexedStack(
                 index: _tabs.index,
                 children: [
                   _ChannelChart(
@@ -287,7 +333,7 @@ class _ErrorBanner extends StatelessWidget {
 
 // ── Channel chart ─────────────────────────────────────────────────────────────
 
-class _ChannelChart extends StatelessWidget {
+class _ChannelChart extends StatefulWidget {
   final List<_WifiNetwork> networks;
   final List<int> channels;
   final String band;
@@ -298,7 +344,45 @@ class _ChannelChart extends StatelessWidget {
   });
 
   @override
+  State<_ChannelChart> createState() => _ChannelChartState();
+}
+
+class _ChannelChartState extends State<_ChannelChart> {
+  _WifiSort _sort = _WifiSort.channel;
+  bool _asc = true;
+
+  void _onSort(_WifiSort col) {
+    setState(() {
+      if (_sort == col) {
+        _asc = !_asc;
+      } else {
+        _sort = col;
+        _asc = true;
+      }
+    });
+  }
+
+  // Sort on the numeric fields (channel/rssi are ints) so the natural order is
+  // honoured — no ascii pitfall where "101" would sort before "20".
+  int _cmp(_WifiNetwork a, _WifiNetwork b) {
+    int c;
+    switch (_sort) {
+      case _WifiSort.ssid:
+        c = a.ssid.toLowerCase().compareTo(b.ssid.toLowerCase());
+      case _WifiSort.channel:
+        c = a.channel.compareTo(b.channel);
+      case _WifiSort.rssi:
+      case _WifiSort.quality:
+        c = a.rssi.compareTo(b.rssi);
+    }
+    return _asc ? c : -c;
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final networks = widget.networks;
+    final channels = widget.channels;
+    final band = widget.band;
     if (networks.isEmpty) {
       return Center(child: Text('No $band networks detected.'));
     }
@@ -320,7 +404,9 @@ class _ChannelChart extends StatelessWidget {
     };
 
     final byChannel = <int, List<_WifiNetwork>>{};
-    for (final ch in channels) byChannel[ch] = [];
+    for (final ch in channels) {
+      byChannel[ch] = [];
+    }
     for (final n in networks) {
       if (byChannel.containsKey(n.channel)) byChannel[n.channel]!.add(n);
     }
@@ -331,7 +417,7 @@ class _ChannelChart extends StatelessWidget {
       builder: (ctx, orientation) {
         final isLandscape = orientation == Orientation.landscape;
         final chart = _buildChart(context, byChannel, colorMap);
-        final list = _buildList(context, networks, colorMap);
+        final list = _buildList(context, [...networks]..sort(_cmp), colorMap);
 
         if (isLandscape) {
           return Row(
@@ -360,6 +446,35 @@ class _ChannelChart extends StatelessWidget {
     );
   }
 
+  Widget _headerCell(String label, _WifiSort col, bool rightAlign) {
+    final active = _sort == col;
+    return InkWell(
+      onTap: () => _onSort(col),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
+          mainAxisAlignment:
+              rightAlign ? MainAxisAlignment.end : MainAxisAlignment.start,
+          children: [
+            Flexible(
+              child: Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: rightAlign ? TextAlign.right : TextAlign.left,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (active)
+              Icon(_asc ? Icons.arrow_upward : Icons.arrow_downward, size: 11),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildChart(
     BuildContext context,
     Map<int, List<_WifiNetwork>> byChannel,
@@ -374,7 +489,7 @@ class _ChannelChart extends StatelessWidget {
             : constraints.maxHeight;
         final minW = math.max(
           MediaQuery.of(context).size.width - 16,
-          channels.length * 52.0,
+          widget.channels.length * 52.0,
         );
         return SingleChildScrollView(
           scrollDirection: Axis.horizontal,
@@ -385,7 +500,7 @@ class _ChannelChart extends StatelessWidget {
             child: CustomPaint(
               painter: _ChannelPainter(
                 byChannel: byChannel,
-                channels: channels,
+                channels: widget.channels,
                 colorMap: colorMap,
               ),
             ),
@@ -394,116 +509,138 @@ class _ChannelChart extends StatelessWidget {
       },
     );
   }
+  final double _securityWidth = 60;
+  final double _chWidth = 32;
+  final double _rssiWidth = 60;
+  final double _qualityWidth = 60;
 
   Widget _buildList(
     BuildContext context,
     List<_WifiNetwork> nets,
     Map<String, Color> colorMap,
   ) {
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    return Column(
       children: [
-        // Legend header row
         Padding(
-          padding: const EdgeInsets.only(bottom: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
           child: Row(
             children: [
-              const Expanded(
-                child: Text(
-                  'SSID',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                ),
-              ),
+              Expanded(child: _headerCell('SSID', _WifiSort.ssid, false)),
               SizedBox(
-                width: 48,
+                width: _securityWidth,
                 child: Text(
-                  'Ch',
+                  'Security',
                   style: const TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
                   ),
-                  textAlign: TextAlign.right,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
+              SizedBox(width: _chWidth, child: _headerCell('Ch', _WifiSort.channel, true)),
+              SizedBox(width: _rssiWidth, child: _headerCell('RSSI', _WifiSort.rssi, true)),
               SizedBox(
-                width: 64,
-                child: Text(
-                  'RSSI',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  textAlign: TextAlign.right,
-                ),
-              ),
-              SizedBox(
-                width: 64,
-                child: Text(
-                  'Quality',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  textAlign: TextAlign.right,
-                ),
+                width: _qualityWidth,
+                child: _headerCell('Quality', _WifiSort.quality, true),
               ),
             ],
           ),
         ),
         const Divider(height: 4),
-        ...nets.map(
-          (n) => Padding(
-            padding: const EdgeInsets.symmetric(vertical: 3),
-            child: Row(
-              children: [
-                Container(
-                  width: 10,
-                  height: 10,
-                  margin: const EdgeInsets.only(right: 6),
-                  decoration: BoxDecoration(
-                    color: colorMap[n.ssid],
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                Expanded(
-                  child: Text(
-                    n.ssid,
-                    style: const TextStyle(fontSize: 12),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                SizedBox(
-                  width: 48,
-                  child: Text(
-                    'ch ${n.channel}',
-                    style: const TextStyle(fontSize: 11),
-                    textAlign: TextAlign.right,
-                  ),
-                ),
-                SizedBox(
-                  width: 64,
-                  child: Text(
-                    '${n.rssi} dBm',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontFamily: 'monospace',
-                    ),
-                    textAlign: TextAlign.right,
-                  ),
-                ),
-                SizedBox(
-                  width: 64,
-                  child: Text(
-                    _quality(n.rssi),
-                    style: TextStyle(fontSize: 11, color: _qColor(n.rssi)),
-                    textAlign: TextAlign.right,
-                  ),
-                ),
-              ],
-            ),
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            itemCount: nets.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 6),
+            itemBuilder: (ctx, index) {
+              final n = nets[index];
+              return _buildNetworkRow(ctx, n, colorMap);
+            },
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildNetworkRow(
+    BuildContext context,
+    _WifiNetwork n,
+    Map<String, Color> colorMap,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: [
+          Container(
+            width: 10,
+            height: 10,
+            margin: const EdgeInsets.only(right: 6),
+            decoration: BoxDecoration(
+              color: colorMap[n.ssid],
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          Expanded(
+            child: Tooltip(
+              message: n.ssid,
+              waitDuration: Duration.zero,
+              showDuration: const Duration(seconds: 3),
+              child: Row(
+                children: [
+                  Icon(
+                    _securityIcon(n.security),
+                    size: 14,
+                    color: _securityIconColor(n.security),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      n.ssid,
+                      style: const TextStyle(fontSize: 12),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          SizedBox(
+            width: _securityWidth,
+            child: Text(
+              n.security,
+              style: const TextStyle(fontSize: 11),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          SizedBox(
+            width: _chWidth,
+            child: Text(
+              '${n.channel}',
+              style: const TextStyle(fontSize: 11),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          SizedBox(
+            width: _rssiWidth,
+            child: Text(
+              '${n.rssi} dBm',
+              style: const TextStyle(
+                fontSize: 11,
+                fontFamily: 'monospace',
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          SizedBox(
+            width: _qualityWidth,
+            child: Text(
+              _quality(n.rssi),
+              style: TextStyle(fontSize: 11, color: _qColor(n.rssi)),
+              textAlign: TextAlign.right,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -521,6 +658,41 @@ class _ChannelChart extends StatelessWidget {
     if (r >= -70) return Colors.orange;
     return Colors.red;
   }
+
+  static IconData _securityIcon(String security) {
+    return security.toLowerCase() == 'open'
+        ? Icons.lock_open
+        : Icons.lock_outline;
+  }
+
+  static Color _securityIconColor(String security) {
+    return security.toLowerCase() == 'open'
+        ? Colors.green
+        : Colors.orange;
+  }
+}
+
+String wifiSecurityLabel(String? capabilities) {
+  final caps = capabilities?.trim() ?? '';
+  if (caps.isEmpty) return 'Unknown';
+
+  final upper = caps.toUpperCase();
+  final hasWpa3 = upper.contains('WPA3') || upper.contains('SAE');
+  final hasWpa2 = upper.contains('WPA2');
+  final hasWpa = upper.contains('WPA');
+  final hasWep = upper.contains('WEP');
+  final hasOwe = upper.contains('OWE');
+  final hasEap = upper.contains('802.1X') || upper.contains('EAP');
+  final hasEss = upper.contains('ESS');
+
+  if (hasWep) return 'WEP';
+  if (hasWpa3) return 'WPA3';
+  if (hasWpa2) return 'WPA2';
+  if (hasWpa) return 'WPA';
+  if (hasOwe) return 'OWE';
+  if (hasEap) return '802.1X';
+  if (hasEss) return 'Open';
+  return 'Protected';
 }
 
 // ── CustomPainter ─────────────────────────────────────────────────────────────
@@ -601,8 +773,10 @@ class _ChannelPainter extends CustomPainter {
 
 // ── Data model ────────────────────────────────────────────────────────────────
 
+enum _WifiSort { ssid, channel, rssi, quality }
+
 class _WifiNetwork {
-  final String ssid, bssid, band;
+  final String ssid, bssid, band, security;
   final int rssi, channel;
   const _WifiNetwork({
     required this.ssid,
@@ -610,5 +784,6 @@ class _WifiNetwork {
     required this.rssi,
     required this.channel,
     required this.band,
+    required this.security,
   });
 }

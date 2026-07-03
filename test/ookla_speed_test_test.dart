@@ -58,4 +58,54 @@ void main() {
       expect(ul.queryParameters['nocache'], isNotEmpty);
     });
   });
+   
+  group('OoklaServer.label', () {
+    test('uses sponsor + place when both present', () {
+      const s = OoklaServer(
+          host: 'h:8080', sponsor: 'Acme', name: 'Berlin', country: 'Germany');
+      expect(s.label, 'Acme — Berlin, Germany');
+    });
+ 
+    test('falls back to place when sponsor is empty', () {
+      const s = OoklaServer(host: 'h:8080', name: 'Paris', country: 'France');
+      expect(s.label, 'Paris, France');
+    });
+ 
+    test('falls back to sponsor when place is empty', () {
+      const s = OoklaServer(host: 'h:8080', sponsor: 'Globex');
+      expect(s.label, 'Globex');
+    });
+ 
+    test('falls back to host when sponsor and place are empty', () {
+      const s = OoklaServer(host: 'srv.example.com:8080');
+      expect(s.label, 'srv.example.com:8080');
+    });
+ 
+    test('joins only the non-empty of name/country', () {
+      const onlyName = OoklaServer(host: 'h', name: 'Rome');
+      expect(onlyName.label, 'Rome');
+      const onlyCountry = OoklaServer(host: 'h', country: 'Italy');
+      expect(onlyCountry.label, 'Italy');
+    });
+  });
+ 
+  group('OoklaSpeedTest.bestServer', () {
+    test('throws when the server list is empty', () {
+      expect(OoklaSpeedTest.bestServer(const []), throwsA(isA<Exception>()));
+    });
+ 
+    test('throws when no server is reachable', () async {
+      // RFC 5737 TEST-NET-1 hosts are unroutable, so every probe times out and
+      // bestServer reports that none answered (exercises the worker + error
+      // completion path without real network dependence).
+      const servers = [
+        OoklaServer(host: '192.0.2.1:8080'),
+        OoklaServer(host: '192.0.2.2:8080'),
+      ];
+      await expectLater(
+        OoklaSpeedTest.bestServer(servers),
+        throwsA(isA<Exception>()),
+      );
+    }, timeout: const Timeout(Duration(seconds: 30)));
+  });
 }

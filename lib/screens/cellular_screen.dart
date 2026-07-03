@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 import 'package:simply_net/providers/settings_provider.dart';
 import 'package:simply_net/services/log_service.dart';
+import 'package:simply_net/widgets/pulsing_icon.dart';
 
 /// Cellular Info screen.
 /// Shows Rx/Tx signal levels, connected cell tower data, provider, and
@@ -201,7 +202,7 @@ class _CellularScreenState extends State<CellularScreen> {
             )
           else
             IconButton(
-              icon: const Icon(Icons.refresh),
+              icon: const PulsingIcon(child: Icon(Icons.refresh)),
               tooltip: 'Refresh',
               onPressed: _refresh,
             ),
