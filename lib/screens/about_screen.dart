@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:simply_net/l10n/app_localizations.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Displays README.md with markdown-style formatting.
@@ -29,8 +30,8 @@ class _AboutScreenState extends State<AboutScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('About SimplyNet',
-            style: TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(AppLocalizations.of(context).aboutSimplyNet,
+            style: const TextStyle(fontWeight: FontWeight.bold)),
       ),
       body: _raw.isEmpty
           ? const Center(child: CircularProgressIndicator())
