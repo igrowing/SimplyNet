@@ -168,6 +168,38 @@ void main() {
       expect(p.scanning, isTrue);
       expect(p.dispose, returnsNormally);
     });
+
+    test('collects a live device, caches and logs it', () async {
+      // Open the MQTT port (1883) on loopback so the scan classifies the host
+      // as an MQTT broker via a raw TCP knock — no HttpClient, which the test
+      // binding stubs to HTTP 400. Drives the provider's onData → save → log.
+      ServerSocket? srv;
+      try {
+        srv = await ServerSocket.bind(InternetAddress.loopbackIPv4, 1883);
+      } on SocketException {
+        return; // Port already in use on this host — skip silently.
+      }
+      srv.listen((s) => s.destroy());
+
+      final p = IotScanProvider();
+      try {
+        p.startScan('127.0.0.1/32', knownIps: ['127.0.0.1'], logging: true);
+        final done =
+            await _waitUntil(() => !p.scanning, const Duration(seconds: 25));
+        expect(done, isTrue, reason: 'scan did not finish in time');
+        expect(p.devices, hasLength(1));
+        expect(p.devices.single.ip, '127.0.0.1');
+        expect(p.devices.single.protocol, contains('MQTT'));
+
+        final snap = await ScanStorage.load(ScanStorage.kIotDevices);
+        expect(snap, isNotNull);
+        expect(snap!.items, hasLength(1));
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+      } finally {
+        await srv.close();
+        p.dispose();
+      }
+    }, timeout: const Timeout(Duration(seconds: 30)));
   });
 }
  

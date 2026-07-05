@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:simply_net/services/iot_scanner.dart';
 
@@ -7,6 +9,40 @@ void main() {
       final devices = await IotScanner.scanHosts([]).toList();
       expect(devices, isEmpty);
     });
+
+    test('probes a live host end-to-end and fingerprints it over HTTP',
+        () async {
+      // Stand up a real loopback HTTP server on an IoT port (8080) that answers
+      // like a Tasmota device, so scanHosts drives the full per-host pipeline:
+      // TCP port scan → ARP lookup → HTTP probe → fingerprint classification.
+      HttpServer? server;
+      try {
+        server = await HttpServer.bind(InternetAddress.loopbackIPv4, 8080);
+      } on SocketException {
+        return; // Port 8080 already in use on this host — skip silently.
+      }
+      server.listen((req) {
+        req.response.headers.set('server', 'Tasmota/13.0');
+        req.response.headers.set('x-firmware', 'tasmota-13.0');
+        req.response
+            .write('<html><title>Sonoff Basic</title><body>ok</body></html>');
+        req.response.close();
+      });
+
+      try {
+        final devices = await IotScanner.scanHosts(['127.0.0.1']).toList();
+        expect(devices, hasLength(1));
+        final d = devices.single;
+        expect(d.ip, '127.0.0.1');
+        expect(d.protocol, 'Tasmota');
+        expect(d.model, 'Sonoff Basic');
+        expect(d.detectionMethod, contains('HTTP'));
+        expect(d.confidence, IotConfidence.definite);
+        expect(d.openPorts, contains(8080));
+      } finally {
+        await server.close(force: true);
+      }
+    }, timeout: const Timeout(Duration(seconds: 30)));
   });
 
   group('IotScanner.scanSubnet', () {
