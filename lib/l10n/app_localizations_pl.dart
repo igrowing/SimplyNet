@@ -9,187 +9,189 @@ class AppLocalizationsPl extends AppLocalizations {
   AppLocalizationsPl([String locale = 'pl']) : super(locale);
 
   @override
-  String get settingsTitle => 'Settings';
+  String get settingsTitle => 'Ustawienia';
 
   @override
-  String get appearance => 'Appearance';
+  String get appearance => 'Wygląd';
 
   @override
-  String get language => 'Language';
+  String get language => 'Język';
 
   @override
-  String get theme => 'Theme';
+  String get theme => 'Motyw';
 
   @override
-  String get themeLight => 'Light';
+  String get themeLight => 'Jasny';
 
   @override
-  String get themeDark => 'Dark';
+  String get themeDark => 'Ciemny';
 
   @override
   String get themeAuto => 'Auto';
 
   @override
-  String get screenOnTimeout => 'Screen On Timeout';
+  String get screenOnTimeout => 'Limit czasu ekranu';
 
   @override
-  String get timeoutSystem => 'System';
+  String get timeoutSystem => 'Systemowy';
 
   @override
-  String get timeoutTriple => '3× System';
+  String get timeoutTriple => '3× systemowy';
 
   @override
-  String get timeoutStayOn => 'Stay On';
+  String get timeoutStayOn => 'Zawsze wł.';
 
   @override
-  String get scanning => 'Scanning';
+  String get scanning => 'Skanowanie';
 
   @override
-  String get showMacAddress => 'Show MAC Address';
+  String get showMacAddress => 'Pokaż adres MAC';
 
   @override
   String get showMacBlocked =>
-      'Disabled on Android v.11 and up due to Google privacy concerns';
+      'Wyłączone w Androidzie v.11 i nowszym ze względu na prywatność Google';
 
   @override
-  String get showMacSubtitle => 'Display MAC column in scan results';
+  String get showMacSubtitle => 'Pokaż kolumnę MAC w wynikach skanowania';
 
   @override
-  String get resolveHostnames => 'Resolve Hostnames';
+  String get resolveHostnames => 'Rozwiązuj nazwy hostów';
 
   @override
   String get resolveHostnamesSubtitle =>
-      'Perform reverse-DNS + mDNS during scan';
+      'Wykonaj odwrotny DNS + mDNS podczas skanowania';
 
   @override
-  String get enableLogging => 'Enable Logging';
+  String get enableLogging => 'Włącz dziennik';
 
   @override
-  String get enableLoggingSubtitle => 'Save scan and tool output to log files';
+  String get enableLoggingSubtitle =>
+      'Zapisuj wynik skanowania i narzędzi do plików dziennika';
 
   @override
-  String get account => 'Account';
+  String get account => 'Konto';
 
   @override
-  String get logIn => 'Log In';
+  String get logIn => 'Zaloguj się';
 
   @override
-  String get comingSoon => 'Coming soon';
+  String get comingSoon => 'Wkrótce';
 
   @override
-  String get settings => 'Settings';
+  String get settings => 'Ustawienia';
 
   @override
-  String get aboutSimplyNet => 'About SimplyNet';
+  String get aboutSimplyNet => 'O SimplyNet';
 
   @override
-  String get scan => 'Scan';
+  String get scan => 'Skanuj';
 
   @override
-  String get logs => 'Logs';
+  String get logs => 'Dzienniki';
 
   @override
-  String get networkTools => 'Network Tools';
+  String get networkTools => 'Narzędzia sieciowe';
 
   @override
-  String get networkTarget => 'Network Target';
+  String get networkTarget => 'Cel sieci';
 
   @override
-  String get networkTargetHint => 'e.g. 192.168.1.0/24';
+  String get networkTargetHint => 'np. 192.168.1.0/24';
 
   @override
-  String get invalidCidr => 'Invalid CIDR — use format like 192.168.1.0/24';
+  String get invalidCidr =>
+      'Nieprawidłowy CIDR — użyj formatu takiego jak 192.168.1.0/24';
 
   @override
-  String get detectMyNetwork => 'Detect my network';
+  String get detectMyNetwork => 'Wykryj moją sieć';
 
   @override
-  String get toolSpeedTest => 'Speed Test';
+  String get toolSpeedTest => 'Test prędkości';
 
   @override
-  String get toolSpeedTestSub => 'Download & upload speed';
+  String get toolSpeedTestSub => 'Prędkość pobierania i wysyłania';
 
   @override
-  String get toolPublicIp => 'Public IP';
+  String get toolPublicIp => 'Publiczny IP';
 
   @override
-  String get toolPublicIpSub => 'Your IP, ISP & location';
+  String get toolPublicIpSub => 'Twój IP, ISP i lokalizacja';
 
   @override
-  String get toolIpCameras => 'IP Cameras';
+  String get toolIpCameras => 'Kamery IP';
 
   @override
-  String get toolIpCamerasSub => 'Find cameras on your LAN';
+  String get toolIpCamerasSub => 'Znajdź kamery w sieci LAN';
 
   @override
-  String get toolIotDevices => 'IoT Devices';
+  String get toolIotDevices => 'Urządzenia IoT';
 
   @override
-  String get toolIotDevicesSub => 'Matter, Tasmota, Shelly & more';
+  String get toolIotDevicesSub => 'Matter, Tasmota, Shelly i inne';
 
   @override
   String get toolMqttSub => 'MQTT Sub';
 
   @override
-  String get toolMqttSubSub => 'Subscribe to an MQTT topic';
+  String get toolMqttSubSub => 'Subskrybuj temat MQTT';
 
   @override
   String get toolMqttPub => 'MQTT Pub';
 
   @override
-  String get toolMqttPubSub => 'Publish to an MQTT topic';
+  String get toolMqttPubSub => 'Publikuj w temacie MQTT';
 
   @override
-  String get toolPortScan => 'Port Scan';
+  String get toolPortScan => 'Skan portów';
 
   @override
-  String get toolPortScanSub => 'Open TCP/UDP ports on any host';
+  String get toolPortScanSub => 'Otwarte porty TCP/UDP na dowolnym hoście';
 
   @override
   String get toolPing => 'Ping';
 
   @override
-  String get toolPingSub => 'Live ping with graph';
+  String get toolPingSub => 'Ping na żywo z wykresem';
 
   @override
   String get toolTraceroute => 'Traceroute';
 
   @override
-  String get toolTracerouteSub => 'Hop-by-hop path to any host';
+  String get toolTracerouteSub => 'Ścieżka skok po skoku do dowolnego hosta';
 
   @override
   String get toolWhois => 'Who Is…';
 
   @override
-  String get toolWhoisSub => 'WHOIS, DNS & reverse lookup';
+  String get toolWhoisSub => 'WHOIS, DNS i wyszukiwanie wsteczne';
 
   @override
-  String get toolWifiChannels => 'Wi-Fi Channels';
+  String get toolWifiChannels => 'Kanały Wi-Fi';
 
   @override
-  String get toolWifiChannelsSub => '2.4 & 5 GHz interference map';
+  String get toolWifiChannelsSub => 'Mapa zakłóceń 2,4 i 5 GHz';
 
   @override
-  String get toolCellularInfo => 'Cellular Info';
+  String get toolCellularInfo => 'Informacje o sieci komórkowej';
 
   @override
-  String get toolCellularInfoSub => 'Signal, cell ID & tower data';
+  String get toolCellularInfoSub => 'Sygnał, ID komórki i dane masztu';
 
   @override
-  String get about => 'About';
+  String get about => 'O aplikacji';
 
   @override
-  String get close => 'Close';
+  String get close => 'Zamknij';
 
   @override
-  String get cancel => 'Cancel';
+  String get cancel => 'Anuluj';
 
   @override
   String get ok => 'OK';
 
   @override
-  String get delete => 'Delete';
+  String get delete => 'Usuń';
 
   @override
-  String get retry => 'Retry';
+  String get retry => 'Ponów';
 }

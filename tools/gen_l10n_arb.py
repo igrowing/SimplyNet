@@ -587,8 +587,10 @@ T = {
 
 
 def arb_locale_tag(loc):
-    # ARB @@locale uses BCP-47 style; keep script variants as zh-Hant / zh-Hans.
-    return loc.replace("_", "-")
+    # @@locale must match the ARB filename token exactly (underscore form for
+    # script variants, e.g. app_zh_Hant.arb -> "zh_Hant"); gen-l10n rejects a
+    # mismatch (e.g. the BCP-47 "zh-Hant" form).
+    return loc
 
 
 def value_for(key, loc):

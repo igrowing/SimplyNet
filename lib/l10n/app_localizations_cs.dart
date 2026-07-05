@@ -9,187 +9,190 @@ class AppLocalizationsCs extends AppLocalizations {
   AppLocalizationsCs([String locale = 'cs']) : super(locale);
 
   @override
-  String get settingsTitle => 'Settings';
+  String get settingsTitle => 'Nastavení';
 
   @override
-  String get appearance => 'Appearance';
+  String get appearance => 'Vzhled';
 
   @override
-  String get language => 'Language';
+  String get language => 'Jazyk';
 
   @override
-  String get theme => 'Theme';
+  String get theme => 'Motiv';
 
   @override
-  String get themeLight => 'Light';
+  String get themeLight => 'Světlý';
 
   @override
-  String get themeDark => 'Dark';
+  String get themeDark => 'Tmavý';
 
   @override
   String get themeAuto => 'Auto';
 
   @override
-  String get screenOnTimeout => 'Screen On Timeout';
+  String get screenOnTimeout => 'Časový limit obrazovky';
 
   @override
-  String get timeoutSystem => 'System';
+  String get timeoutSystem => 'Systém';
 
   @override
-  String get timeoutTriple => '3× System';
+  String get timeoutTriple => '3× systém';
 
   @override
-  String get timeoutStayOn => 'Stay On';
+  String get timeoutStayOn => 'Nechat zapnuté';
 
   @override
-  String get scanning => 'Scanning';
+  String get scanning => 'Skenování';
 
   @override
-  String get showMacAddress => 'Show MAC Address';
+  String get showMacAddress => 'Zobrazit adresu MAC';
 
   @override
   String get showMacBlocked =>
-      'Disabled on Android v.11 and up due to Google privacy concerns';
+      'Zakázáno na Androidu v.11 a novějším kvůli ochraně soukromí Google';
 
   @override
-  String get showMacSubtitle => 'Display MAC column in scan results';
+  String get showMacSubtitle => 'Zobrazit sloupec MAC ve výsledcích skenování';
 
   @override
-  String get resolveHostnames => 'Resolve Hostnames';
+  String get resolveHostnames => 'Překládat názvy hostitelů';
 
   @override
   String get resolveHostnamesSubtitle =>
-      'Perform reverse-DNS + mDNS during scan';
+      'Provádět reverzní DNS + mDNS během skenování';
 
   @override
-  String get enableLogging => 'Enable Logging';
+  String get enableLogging => 'Povolit protokolování';
 
   @override
-  String get enableLoggingSubtitle => 'Save scan and tool output to log files';
+  String get enableLoggingSubtitle =>
+      'Ukládat výstup skenování a nástrojů do souborů protokolu';
 
   @override
-  String get account => 'Account';
+  String get account => 'Účet';
 
   @override
-  String get logIn => 'Log In';
+  String get logIn => 'Přihlásit se';
 
   @override
-  String get comingSoon => 'Coming soon';
+  String get comingSoon => 'Již brzy';
 
   @override
-  String get settings => 'Settings';
+  String get settings => 'Nastavení';
 
   @override
-  String get aboutSimplyNet => 'About SimplyNet';
+  String get aboutSimplyNet => 'O aplikaci SimplyNet';
 
   @override
-  String get scan => 'Scan';
+  String get scan => 'Skenovat';
 
   @override
-  String get logs => 'Logs';
+  String get logs => 'Protokoly';
 
   @override
-  String get networkTools => 'Network Tools';
+  String get networkTools => 'Síťové nástroje';
 
   @override
-  String get networkTarget => 'Network Target';
+  String get networkTarget => 'Cíl sítě';
 
   @override
-  String get networkTargetHint => 'e.g. 192.168.1.0/24';
+  String get networkTargetHint => 'např. 192.168.1.0/24';
 
   @override
-  String get invalidCidr => 'Invalid CIDR — use format like 192.168.1.0/24';
+  String get invalidCidr =>
+      'Neplatný CIDR — použijte formát jako 192.168.1.0/24';
 
   @override
-  String get detectMyNetwork => 'Detect my network';
+  String get detectMyNetwork => 'Zjistit moji síť';
 
   @override
-  String get toolSpeedTest => 'Speed Test';
+  String get toolSpeedTest => 'Test rychlosti';
 
   @override
-  String get toolSpeedTestSub => 'Download & upload speed';
+  String get toolSpeedTestSub => 'Rychlost stahování a odesílání';
 
   @override
-  String get toolPublicIp => 'Public IP';
+  String get toolPublicIp => 'Veřejná IP';
 
   @override
-  String get toolPublicIpSub => 'Your IP, ISP & location';
+  String get toolPublicIpSub => 'Vaše IP, ISP a poloha';
 
   @override
-  String get toolIpCameras => 'IP Cameras';
+  String get toolIpCameras => 'IP kamery';
 
   @override
-  String get toolIpCamerasSub => 'Find cameras on your LAN';
+  String get toolIpCamerasSub => 'Najít kamery v síti LAN';
 
   @override
-  String get toolIotDevices => 'IoT Devices';
+  String get toolIotDevices => 'Zařízení IoT';
 
   @override
-  String get toolIotDevicesSub => 'Matter, Tasmota, Shelly & more';
+  String get toolIotDevicesSub => 'Matter, Tasmota, Shelly a další';
 
   @override
   String get toolMqttSub => 'MQTT Sub';
 
   @override
-  String get toolMqttSubSub => 'Subscribe to an MQTT topic';
+  String get toolMqttSubSub => 'Přihlásit odběr tématu MQTT';
 
   @override
   String get toolMqttPub => 'MQTT Pub';
 
   @override
-  String get toolMqttPubSub => 'Publish to an MQTT topic';
+  String get toolMqttPubSub => 'Publikovat do tématu MQTT';
 
   @override
-  String get toolPortScan => 'Port Scan';
+  String get toolPortScan => 'Sken portů';
 
   @override
-  String get toolPortScanSub => 'Open TCP/UDP ports on any host';
+  String get toolPortScanSub =>
+      'Otevřené porty TCP/UDP na libovolném hostiteli';
 
   @override
   String get toolPing => 'Ping';
 
   @override
-  String get toolPingSub => 'Live ping with graph';
+  String get toolPingSub => 'Živý ping s grafem';
 
   @override
   String get toolTraceroute => 'Traceroute';
 
   @override
-  String get toolTracerouteSub => 'Hop-by-hop path to any host';
+  String get toolTracerouteSub => 'Cesta skok po skoku k libovolnému hostiteli';
 
   @override
   String get toolWhois => 'Who Is…';
 
   @override
-  String get toolWhoisSub => 'WHOIS, DNS & reverse lookup';
+  String get toolWhoisSub => 'WHOIS, DNS a zpětné vyhledávání';
 
   @override
-  String get toolWifiChannels => 'Wi-Fi Channels';
+  String get toolWifiChannels => 'Kanály Wi-Fi';
 
   @override
-  String get toolWifiChannelsSub => '2.4 & 5 GHz interference map';
+  String get toolWifiChannelsSub => 'Mapa rušení 2,4 a 5 GHz';
 
   @override
-  String get toolCellularInfo => 'Cellular Info';
+  String get toolCellularInfo => 'Informace o mobilní síti';
 
   @override
-  String get toolCellularInfoSub => 'Signal, cell ID & tower data';
+  String get toolCellularInfoSub => 'Signál, ID buňky a data vysílače';
 
   @override
-  String get about => 'About';
+  String get about => 'O aplikaci';
 
   @override
-  String get close => 'Close';
+  String get close => 'Zavřít';
 
   @override
-  String get cancel => 'Cancel';
+  String get cancel => 'Zrušit';
 
   @override
   String get ok => 'OK';
 
   @override
-  String get delete => 'Delete';
+  String get delete => 'Smazat';
 
   @override
-  String get retry => 'Retry';
+  String get retry => 'Zkusit znovu';
 }

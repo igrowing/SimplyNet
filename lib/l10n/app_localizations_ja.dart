@@ -9,187 +9,185 @@ class AppLocalizationsJa extends AppLocalizations {
   AppLocalizationsJa([String locale = 'ja']) : super(locale);
 
   @override
-  String get settingsTitle => 'Settings';
+  String get settingsTitle => '設定';
 
   @override
-  String get appearance => 'Appearance';
+  String get appearance => '外観';
 
   @override
-  String get language => 'Language';
+  String get language => '言語';
 
   @override
-  String get theme => 'Theme';
+  String get theme => 'テーマ';
 
   @override
-  String get themeLight => 'Light';
+  String get themeLight => 'ライト';
 
   @override
-  String get themeDark => 'Dark';
+  String get themeDark => 'ダーク';
 
   @override
-  String get themeAuto => 'Auto';
+  String get themeAuto => '自動';
 
   @override
-  String get screenOnTimeout => 'Screen On Timeout';
+  String get screenOnTimeout => '画面点灯タイムアウト';
 
   @override
-  String get timeoutSystem => 'System';
+  String get timeoutSystem => 'システム';
 
   @override
-  String get timeoutTriple => '3× System';
+  String get timeoutTriple => '3× システム';
 
   @override
-  String get timeoutStayOn => 'Stay On';
+  String get timeoutStayOn => '常時点灯';
 
   @override
-  String get scanning => 'Scanning';
+  String get scanning => 'スキャン';
 
   @override
-  String get showMacAddress => 'Show MAC Address';
+  String get showMacAddress => 'MAC アドレスを表示';
 
   @override
-  String get showMacBlocked =>
-      'Disabled on Android v.11 and up due to Google privacy concerns';
+  String get showMacBlocked => 'Google のプライバシー上の理由により Android v.11 以降では無効です';
 
   @override
-  String get showMacSubtitle => 'Display MAC column in scan results';
+  String get showMacSubtitle => 'スキャン結果に MAC 列を表示';
 
   @override
-  String get resolveHostnames => 'Resolve Hostnames';
+  String get resolveHostnames => 'ホスト名を解決';
 
   @override
-  String get resolveHostnamesSubtitle =>
-      'Perform reverse-DNS + mDNS during scan';
+  String get resolveHostnamesSubtitle => 'スキャン中に逆引き DNS + mDNS を実行';
 
   @override
-  String get enableLogging => 'Enable Logging';
+  String get enableLogging => 'ログを有効化';
 
   @override
-  String get enableLoggingSubtitle => 'Save scan and tool output to log files';
+  String get enableLoggingSubtitle => 'スキャンとツールの出力をログファイルに保存';
 
   @override
-  String get account => 'Account';
+  String get account => 'アカウント';
 
   @override
-  String get logIn => 'Log In';
+  String get logIn => 'ログイン';
 
   @override
-  String get comingSoon => 'Coming soon';
+  String get comingSoon => '近日公開';
 
   @override
-  String get settings => 'Settings';
+  String get settings => '設定';
 
   @override
-  String get aboutSimplyNet => 'About SimplyNet';
+  String get aboutSimplyNet => 'SimplyNet について';
 
   @override
-  String get scan => 'Scan';
+  String get scan => 'スキャン';
 
   @override
-  String get logs => 'Logs';
+  String get logs => 'ログ';
 
   @override
-  String get networkTools => 'Network Tools';
+  String get networkTools => 'ネットワークツール';
 
   @override
-  String get networkTarget => 'Network Target';
+  String get networkTarget => 'ネットワーク対象';
 
   @override
-  String get networkTargetHint => 'e.g. 192.168.1.0/24';
+  String get networkTargetHint => '例: 192.168.1.0/24';
 
   @override
-  String get invalidCidr => 'Invalid CIDR — use format like 192.168.1.0/24';
+  String get invalidCidr => '無効な CIDR — 192.168.1.0/24 の形式を使用してください';
 
   @override
-  String get detectMyNetwork => 'Detect my network';
+  String get detectMyNetwork => '自分のネットワークを検出';
 
   @override
-  String get toolSpeedTest => 'Speed Test';
+  String get toolSpeedTest => '速度テスト';
 
   @override
-  String get toolSpeedTestSub => 'Download & upload speed';
+  String get toolSpeedTestSub => 'ダウンロード・アップロード速度';
 
   @override
-  String get toolPublicIp => 'Public IP';
+  String get toolPublicIp => 'パブリック IP';
 
   @override
-  String get toolPublicIpSub => 'Your IP, ISP & location';
+  String get toolPublicIpSub => 'あなたの IP、ISP、位置';
 
   @override
-  String get toolIpCameras => 'IP Cameras';
+  String get toolIpCameras => 'IP カメラ';
 
   @override
-  String get toolIpCamerasSub => 'Find cameras on your LAN';
+  String get toolIpCamerasSub => 'LAN 上のカメラを検索';
 
   @override
-  String get toolIotDevices => 'IoT Devices';
+  String get toolIotDevices => 'IoT デバイス';
 
   @override
-  String get toolIotDevicesSub => 'Matter, Tasmota, Shelly & more';
+  String get toolIotDevicesSub => 'Matter、Tasmota、Shelly など';
 
   @override
-  String get toolMqttSub => 'MQTT Sub';
+  String get toolMqttSub => 'MQTT 購読';
 
   @override
-  String get toolMqttSubSub => 'Subscribe to an MQTT topic';
+  String get toolMqttSubSub => 'MQTT トピックを購読';
 
   @override
-  String get toolMqttPub => 'MQTT Pub';
+  String get toolMqttPub => 'MQTT 発行';
 
   @override
-  String get toolMqttPubSub => 'Publish to an MQTT topic';
+  String get toolMqttPubSub => 'MQTT トピックに発行';
 
   @override
-  String get toolPortScan => 'Port Scan';
+  String get toolPortScan => 'ポートスキャン';
 
   @override
-  String get toolPortScanSub => 'Open TCP/UDP ports on any host';
+  String get toolPortScanSub => '任意のホストの開いている TCP/UDP ポート';
 
   @override
   String get toolPing => 'Ping';
 
   @override
-  String get toolPingSub => 'Live ping with graph';
+  String get toolPingSub => 'グラフ付きライブ Ping';
 
   @override
   String get toolTraceroute => 'Traceroute';
 
   @override
-  String get toolTracerouteSub => 'Hop-by-hop path to any host';
+  String get toolTracerouteSub => '任意のホストへのホップごとの経路';
 
   @override
   String get toolWhois => 'Who Is…';
 
   @override
-  String get toolWhoisSub => 'WHOIS, DNS & reverse lookup';
+  String get toolWhoisSub => 'WHOIS、DNS、逆引き';
 
   @override
-  String get toolWifiChannels => 'Wi-Fi Channels';
+  String get toolWifiChannels => 'Wi-Fi チャンネル';
 
   @override
-  String get toolWifiChannelsSub => '2.4 & 5 GHz interference map';
+  String get toolWifiChannelsSub => '2.4・5 GHz 干渉マップ';
 
   @override
-  String get toolCellularInfo => 'Cellular Info';
+  String get toolCellularInfo => 'セルラー情報';
 
   @override
-  String get toolCellularInfoSub => 'Signal, cell ID & tower data';
+  String get toolCellularInfoSub => '信号、セル ID、基地局データ';
 
   @override
-  String get about => 'About';
+  String get about => '情報';
 
   @override
-  String get close => 'Close';
+  String get close => '閉じる';
 
   @override
-  String get cancel => 'Cancel';
+  String get cancel => 'キャンセル';
 
   @override
   String get ok => 'OK';
 
   @override
-  String get delete => 'Delete';
+  String get delete => '削除';
 
   @override
-  String get retry => 'Retry';
+  String get retry => '再試行';
 }
