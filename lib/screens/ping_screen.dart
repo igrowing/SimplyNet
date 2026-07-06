@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:simply_net/l10n/app_localizations.dart';
 import 'package:simply_net/services/foreground_service.dart';
 import 'package:simply_net/screens/markdown_info_screen.dart';
 import 'package:simply_net/services/network_tools.dart';
@@ -81,20 +82,21 @@ class _PingScreenState extends State<PingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Ping',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Text(
+          l.toolPing,
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
           IconButton(
             icon: const Icon(Icons.info_outline),
-            tooltip: 'About Ping',
+            tooltip: l.aboutPing,
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
-                builder: (_) => const MarkdownInfoScreen(
-                  title: 'About Ping',
+                builder: (_) => MarkdownInfoScreen(
+                  title: l.aboutPing,
                   assetPath: 'assets/ping_info.md',
                 ),
               ),
@@ -116,7 +118,7 @@ class _PingScreenState extends State<PingScreen> {
                     onSubmitted: (_) => _toggle(),
                     enabled: !_running,
                     decoration: InputDecoration(
-                      hintText: 'IP address or hostname',
+                      hintText: l.hostHint,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -128,7 +130,7 @@ class _PingScreenState extends State<PingScreen> {
                 FilledButton.icon(
                   onPressed: _toggle,
                   icon: Icon(_running ? Icons.stop : Icons.play_arrow),
-                  label: Text(_running ? 'Stop' : 'Go'),
+                  label: Text(_running ? l.stop : l.go),
                   style: FilledButton.styleFrom(
                     backgroundColor: _running
                         ? Theme.of(context).colorScheme.error
@@ -144,7 +146,7 @@ class _PingScreenState extends State<PingScreen> {
               child: _ctrl.text.isEmpty && !_running && _pingTimings.isEmpty
                   ? Center(
                       child: Text(
-                        'Enter a host and press Go',
+                        l.enterHostGo,
                         style: TextStyle(
                           color: Theme.of(
                             context,

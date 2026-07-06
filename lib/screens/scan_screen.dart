@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:simply_net/l10n/app_localizations.dart';
 import 'package:simply_net/models/host_result.dart';
 import 'package:simply_net/providers/scan_provider.dart';
 import 'package:simply_net/providers/settings_provider.dart';
@@ -55,21 +56,16 @@ class _ScanScreenState extends State<ScanScreen> {
   }
 
   void _showInfo() {
+    final l = AppLocalizations.of(context);
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('About this scan'),
-        content: const Text(
-          "Devices blocking ICMP (pings) will not appear here. Run the "
-          "'IoT Devices' or 'IP Cameras' scan to locate them via their open "
-          "ports and services.\n\n"
-          "In Android 11+ devices, MAC addresses cannot be retrieved due to "
-          "Google's privacy restrictions, so they are not displayed.",
-        ),
+        title: Text(l.aboutThisScan),
+        content: Text(l.scanInfoBody),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('OK'),
+            child: Text(l.ok),
           ),
         ],
       ),
@@ -80,13 +76,14 @@ class _ScanScreenState extends State<ScanScreen> {
   Widget build(BuildContext context) {
     final scan = context.watch<ScanProvider>();
     final settings = context.watch<SettingsProvider>().settings;
+    final l = AppLocalizations.of(context);
 
     return Scaffold(
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Scan', style: TextStyle(fontWeight: FontWeight.bold)),
+            Text(l.scan, style: const TextStyle(fontWeight: FontWeight.bold)),
             if (scan.target.isNotEmpty)
               Text(scan.target, style: const TextStyle(fontSize: 12)),
           ],
@@ -94,7 +91,7 @@ class _ScanScreenState extends State<ScanScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.info_outline),
-            tooltip: 'About this scan',
+            tooltip: l.aboutThisScan,
             onPressed: _showInfo,
           ),
           // Single toggle button: round-arrow (idle) ↔ square-stop (running)
@@ -112,7 +109,7 @@ class _ScanScreenState extends State<ScanScreen> {
                       child: Icon(Icons.refresh_rounded, size: 26),
                     ),
             ),
-            tooltip: scan.isScanning ? 'Stop scan' : 'Re-scan',
+            tooltip: scan.isScanning ? l.stopScan : l.reScan,
             onPressed: scan.isValidTarget ? _toggleScan : null,
           ),
         ],
@@ -139,7 +136,7 @@ class _ScanScreenState extends State<ScanScreen> {
   );
 
   Widget _hostCount(ScanProvider scan) => Text(
-    '${scan.results.length} host(s) found',
+    '${scan.results.length} ${AppLocalizations.of(context).hostsFound}',
     style: const TextStyle(fontSize: 12),
   );
 
@@ -250,13 +247,14 @@ class _SortDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     final items = <DropdownMenuItem<ScanSortColumn>>[
       const DropdownMenuItem(value: ScanSortColumn.ip, child: Text('IP')),
       if (showMac)
         const DropdownMenuItem(value: ScanSortColumn.mac, child: Text('MAC')),
-      const DropdownMenuItem(
+      DropdownMenuItem(
         value: ScanSortColumn.hostname,
-        child: Text('Hostname'),
+        child: Text(l.hostname),
       ),
     ];
     // MAC can be the active column from a previous session; fall back to IP when
@@ -327,7 +325,7 @@ class _ScanCard extends StatelessWidget {
                     const SizedBox(height: 3),
                     _field(
                       context,
-                      'Hostname',
+                      AppLocalizations.of(context).hostname,
                       hostname.isEmpty ? '—' : hostname,
                     ),
                   ],
@@ -494,7 +492,8 @@ class _ResizableHeader extends StatelessWidget {
             divider(wMac, wHost, (l, r) => onResize(wIp, l, r)),
           ] else
             divider(wIp, wHost, (l, r) => onResize(l, wMac, r)),
-          headerCell('Hostname', ScanSortColumn.hostname, wHost),
+          headerCell(AppLocalizations.of(context).hostname,
+              ScanSortColumn.hostname, wHost),
         ],
       ),
     );
@@ -580,6 +579,7 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -591,13 +591,11 @@ class _EmptyState extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            isValid ? 'No saved results' : 'No network target set',
+            isValid ? l.noSavedResults : l.noNetworkTarget,
             style: Theme.of(context).textTheme.titleMedium,
           ),
           Text(
-            isValid
-                ? 'Tap the refresh button to scan'
-                : 'Set a target on the Home screen',
+            isValid ? l.tapRefreshToScan : l.setTargetHome,
             style: const TextStyle(fontSize: 12),
           ),
         ],

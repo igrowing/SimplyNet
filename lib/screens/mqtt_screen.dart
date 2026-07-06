@@ -12,6 +12,7 @@ import 'package:simply_net/services/lan_detector.dart';
 import 'package:simply_net/services/mqtt_broker_scanner.dart';
 import 'package:simply_net/widgets/history_field.dart';
 import 'package:simply_net/services/input_history.dart';
+import 'package:simply_net/l10n/app_localizations.dart';
 
 // ════════════════════════════════════════════════════════════════════════════
 //  Shared MQTT connection settings (broker, auth).
@@ -189,6 +190,7 @@ class _MqttSettingsSheetState extends State<_MqttSettingsSheet> {
   @override
   Widget build(BuildContext context) {
     final mq = MediaQuery.of(context);
+    final l = AppLocalizations.of(context);
     return Padding(
       padding: EdgeInsets.only(
           left: 20, right: 20, top: 20,
@@ -201,17 +203,17 @@ class _MqttSettingsSheetState extends State<_MqttSettingsSheet> {
             Row(children: [
               const Icon(Icons.settings_input_antenna),
               const SizedBox(width: 10),
-              Text('MQTT Settings',
+              Text(l.mqttSettingsTitle,
                   style: Theme.of(context).textTheme.titleLarge
                       ?.copyWith(fontWeight: FontWeight.bold)),
             ]),
             const SizedBox(height: 20),
             _field(controller: _brokerCtrl,
-                label: 'Broker IP / FQDN',
+                label: l.brokerIpFqdn,
                 historyKey: 'mqtt_broker',
                 hint: _discovering
-                    ? 'Searching subnet…'
-                    : 'e.g. 192.168.1.10 or broker.example.com',
+                    ? l.searchingSubnet
+                    : l.brokerHint,
                 keyboard: TextInputType.url,
                 suffix: _discovering
                     ? const Padding(
@@ -225,21 +227,21 @@ class _MqttSettingsSheetState extends State<_MqttSettingsSheet> {
                     : null),
             const SizedBox(height: 12),
             _field(controller: _portCtrl,
-                label: 'Port', hint: '1883',
+                label: l.portLabel, hint: '1883',
                 historyKey: 'mqtt_port',
                 keyboard: TextInputType.number,
                 onChanged: _onPortChanged),
             const SizedBox(height: 12),
             _field(controller: _userCtrl,
-                label: 'Username (optional)',
-                hint: 'leave empty if not required'),
+                label: l.usernameOptional,
+                hint: l.leaveEmptyOptional),
             const SizedBox(height: 12),
             TextField(
               controller:  _pwdCtrl,
               obscureText: _obscurePwd,
               decoration: InputDecoration(
-                labelText: 'Password (optional)',
-                hintText:  'leave empty if not required',
+                labelText: l.passwordOptional,
+                hintText:  l.leaveEmptyOptional,
                 border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10)),
                 isDense: true,
@@ -256,11 +258,11 @@ class _MqttSettingsSheetState extends State<_MqttSettingsSheet> {
             CheckboxListTile(
               value:    _keepPassword,
               onChanged: (v) => setState(() => _keepPassword = v ?? false),
-              title: const Text('Keep password (not recommended)',
-                  style: TextStyle(fontSize: 13)),
-              subtitle: const Text(
-                  'Password is stored in plain text in app storage.',
-                  style: TextStyle(fontSize: 11)),
+              title: Text(l.keepPassword,
+                  style: const TextStyle(fontSize: 13)),
+              subtitle: Text(
+                  l.keepPasswordSub,
+                  style: const TextStyle(fontSize: 11)),
               controlAffinity: ListTileControlAffinity.leading,
               contentPadding: EdgeInsets.zero,
               dense: true,
@@ -271,7 +273,7 @@ class _MqttSettingsSheetState extends State<_MqttSettingsSheet> {
               child: FilledButton.icon(
                 onPressed: _save,
                 icon:  const Icon(Icons.save_outlined),
-                label: const Text('Save'),
+                label: Text(l.save),
               ),
             ),
           ],
@@ -320,25 +322,28 @@ class _MqttSettingsSheetState extends State<_MqttSettingsSheet> {
 // ════════════════════════════════════════════════════════════════════════════
 
 List<Widget> mqttAppBarActions({
+  required BuildContext context,
   required bool keepScreenOn,
   required VoidCallback onToggleScreen,
   required VoidCallback onSettings,
-}) =>
-    [
+}) {
+  final l = AppLocalizations.of(context);
+  return [
       IconButton(
         icon: Icon(
           keepScreenOn ? Icons.light_mode : Icons.light_mode_outlined,
           color: keepScreenOn ? Colors.amber : null,
         ),
-        tooltip: keepScreenOn ? 'Screen stays on' : 'Screen may sleep',
+        tooltip: keepScreenOn ? l.screenStaysOn : l.screenMaySleep,
         onPressed: onToggleScreen,
       ),
       IconButton(
         icon: const Icon(Icons.settings_outlined),
-        tooltip: 'MQTT settings',
+        tooltip: l.mqttSettingsTitle,
         onPressed: onSettings,
       ),
     ];
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 //  Shared status-bar widget
@@ -415,7 +420,7 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
 
   bool   _listening  = false;   // true while actively connected + subscribed
   bool   _connecting = false;   // false initially (idle state with info icon)
-  String _statusMsg  = 'Enter the topic and tap Listen';
+  String _statusMsg  = '';
 
   // ── UI state ───────────────────────────────────────────────────────────
   // Messages are stored newest-first (index 0 = most recent).
@@ -455,7 +460,8 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
     final p   = await SharedPreferences.getInstance();
     final cfg = await MqttSettings.load();
     if (!mounted) return;
-    
+    final l = AppLocalizations.of(context);
+
     // Check if service has an active connection from a previous screen visit
     final hasActiveConnection = _mqttService.isConnected;
     
@@ -468,8 +474,8 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
       _listening      = hasActiveConnection;
       _connecting     = false;
       _statusMsg      = hasActiveConnection
-          ? 'Listening on "${_topicCtrl.text.trim()}"'
-          : 'Enter the topic and tap Listen';
+          ? l.listeningOn(_topicCtrl.text.trim())
+          : l.enterTopicListen;
     });
     // Open settings immediately if broker is not yet configured.
     // Do NOT auto-start listening — user controls that explicitly.
@@ -516,7 +522,7 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
       return;
     }
     if (topic.isEmpty) {
-      setState(() => _statusMsg = 'Enter a topic first.');
+      setState(() => _statusMsg = AppLocalizations.of(context).enterTopicFirst);
       return;
     }
     await InputHistory.add('mqtt_topic', topic);
@@ -530,7 +536,7 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
     setState(() {
       _listening  = false;
       _connecting = false;
-      _statusMsg  = 'Stopped.';
+      _statusMsg  = AppLocalizations.of(context).stoppedStatus;
     });
     await _flushSessionLog();
   }
@@ -546,7 +552,8 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
   // ── MQTT connection ───────────────────────────────────────────────────────
 
   void _connect(String topic) {
-    setState(() { _connecting = true; _statusMsg = 'Connecting…'; });
+    final l = AppLocalizations.of(context);
+    setState(() { _connecting = true; _statusMsg = l.connectingStatus; });
 
     final clientId = 'sn_sub_${DateTime.now().millisecondsSinceEpoch}';
     final client   = MqttServerClient(_cfg.broker, clientId)
@@ -554,7 +561,7 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
       ..keepAlivePeriod = 20
       ..onDisconnected  = _onDisconnected
       ..onAutoReconnect = () {
-          if (mounted) setState(() => _statusMsg = 'Reconnecting…');
+          if (mounted) setState(() => _statusMsg = l.reconnectingStatus);
         }
       ..autoReconnect   = true;
     
@@ -576,7 +583,7 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
       if (mounted) setState(() {
         _listening  = false;
         _connecting = false;
-        _statusMsg  = 'Connection failed: $e';
+        _statusMsg  = l.connFailed('$e');
       });
     });
   }
@@ -586,7 +593,7 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
     setState(() {
       _listening  = true;
       _connecting = false;
-      _statusMsg  = 'Listening on "$topic"';
+      _statusMsg  = AppLocalizations.of(context).listeningOn(topic);
     });
     _mqttService.client!.subscribe(topic, MqttQos.atLeastOnce);
 
@@ -601,7 +608,7 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
     // (_stopListening sets _listening=false before disconnecting).
     if (!mounted) return;
     if (_listening) {
-      setState(() => _statusMsg = 'Reconnecting…');
+      setState(() => _statusMsg = AppLocalizations.of(context).reconnectingStatus);
     }
   }
 
@@ -664,11 +671,13 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
   @override
   Widget build(BuildContext context) {
     final isActive = _listening || _connecting;
+    final l = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('MQTT Subscribe',
-            style: TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(l.mqttSubscribe,
+            style: const TextStyle(fontWeight: FontWeight.bold)),
         actions: mqttAppBarActions(
+          context:        context,
           keepScreenOn:   _keepScreenOn,
           onToggleScreen: _toggleScreenOn,
           onSettings:     _openSettings,
@@ -698,8 +707,8 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
                           if (!isActive) _startListening();
                         },
                         decoration: InputDecoration(
-                          labelText: 'Topic',
-                          hintText:  'e.g. home/sensor/# or home/sensor/temp',
+                          labelText: l.topicLabel,
+                          hintText:  l.topicSubHint,
                           border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10)),
                           isDense: true,
@@ -716,7 +725,7 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
                         minimumSize: const Size(80, 40),
                       ),
                       icon: Icon(isActive ? Icons.stop : Icons.hearing),
-                      label: Text(isActive ? 'Stop' : 'Listen'),
+                      label: Text(isActive ? l.stop : l.listen),
                     ),
                   ]),
                 ),
@@ -734,8 +743,8 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
                           setState(() => _prettyJson = val);
                           _savePrettyJson(val);
                         },
-                        title: const Text('Human-readable JSON',
-                            style: TextStyle(fontSize: 13)),
+                        title: Text(l.humanReadableJson,
+                            style: const TextStyle(fontSize: 13)),
                         controlAffinity:
                             ListTileControlAffinity.leading,
                         contentPadding: EdgeInsets.zero,
@@ -747,7 +756,7 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
                         onPressed: () =>
                             setState(() => _messages.clear()),
                         icon:  const Icon(Icons.clear_all, size: 18),
-                        label: const Text('Clear'),
+                        label: Text(l.clear),
                       ),
                   ]),
                 ),
@@ -758,10 +767,10 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
                       ? Center(
                           child: Text(
                             isActive
-                                ? 'Waiting for messages…'
+                                ? l.waitingForMessages
                                 : (_topicCtrl.text.trim().isEmpty
-                                    ? 'Enter a topic and tap Listen'
-                                    : 'Tap Listen to start receiving'),
+                                    ? l.enterTopicListen
+                                    : l.tapListenReceive),
                             style: TextStyle(
                                 color: Theme.of(context)
                                     .colorScheme
@@ -905,7 +914,8 @@ class _MqttPubScreenState extends State<MqttPubScreen> {
 
   void _connect() {
     if (_cfg.isEmpty) return;
-    setState(() { _connecting = true; _statusMsg = 'Connecting…'; });
+    final l = AppLocalizations.of(context);
+    setState(() { _connecting = true; _statusMsg = l.connectingStatus; });
 
     final clientId = 'sn_pub_${DateTime.now().millisecondsSinceEpoch}';
     final client   = MqttServerClient(_cfg.broker, clientId)
@@ -915,7 +925,7 @@ class _MqttPubScreenState extends State<MqttPubScreen> {
       ..onConnected     = _onConnected
       ..onDisconnected  = _onDisconnected
       ..onAutoReconnect = () {
-          if (mounted) setState(() => _statusMsg = 'Reconnecting…');
+          if (mounted) setState(() => _statusMsg = l.reconnectingStatus);
         }
       ..autoReconnect   = true;
 
@@ -932,20 +942,21 @@ class _MqttPubScreenState extends State<MqttPubScreen> {
     client.connect().catchError((e) {
       if (mounted) setState(() {
         _connecting = false;
-        _statusMsg  = 'Connection failed: $e';
+        _statusMsg  = l.connFailed('$e');
       });
     });
   }
 
   void _onConnected() {
     if (!mounted) return;
+    final l = AppLocalizations.of(context);
     final topic = _topicCtrl.text.trim();
     setState(() {
       _connected  = true;
       _connecting = false;
       _statusMsg  = topic.isEmpty
-          ? 'Connected — enter a topic below'
-          : 'Connected — topic: "$topic"';
+          ? l.connectedEnterTopic
+          : l.connectedTopic(topic);
     });
   }
 
@@ -954,7 +965,7 @@ class _MqttPubScreenState extends State<MqttPubScreen> {
     setState(() {
       _connected  = false;
       _connecting = false;
-      _statusMsg  = 'Disconnected';
+      _statusMsg  = AppLocalizations.of(context).disconnectedStatus;
     });
   }
 
@@ -993,7 +1004,7 @@ class _MqttPubScreenState extends State<MqttPubScreen> {
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('Published to "$topic"'),
+      content: Text(AppLocalizations.of(context).publishedTo(topic)),
       duration: const Duration(seconds: 2),
     ));
   }
@@ -1002,11 +1013,13 @@ class _MqttPubScreenState extends State<MqttPubScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('MQTT Publish',
-            style: TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(l.mqttPublish,
+            style: const TextStyle(fontWeight: FontWeight.bold)),
         actions: mqttAppBarActions(
+          context:        context,
           keepScreenOn:   _keepScreenOn,
           onToggleScreen: _toggleScreenOn,
           onSettings:     _openSettings,
@@ -1036,13 +1049,13 @@ class _MqttPubScreenState extends State<MqttPubScreen> {
                       if (mounted && _connected) {
                         setState(() => _statusMsg =
                             topic.isEmpty
-                                ? 'Connected — enter a topic below'
-                                : 'Connected — topic: "$topic"');
+                                ? l.connectedEnterTopic
+                                : l.connectedTopic(topic));
                       }
                     },
                     decoration: InputDecoration(
-                      labelText: 'Topic',
-                      hintText:  'e.g. home/light/switch',
+                      labelText: l.topicLabel,
+                      hintText:  l.topicPubHint,
                       border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10)),
                       isDense: true,
@@ -1057,8 +1070,8 @@ class _MqttPubScreenState extends State<MqttPubScreen> {
                     maxLines:   5,
                     onChanged:  _saveMessage,
                     decoration: InputDecoration(
-                      labelText: 'Message',
-                      hintText:  'Enter payload…',
+                      labelText: l.messageLabel,
+                      hintText:  l.enterPayload,
                       alignLabelWithHint: true,
                       border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10)),
@@ -1074,11 +1087,11 @@ class _MqttPubScreenState extends State<MqttPubScreen> {
                       setState(() => _retain = val);
                       _saveRetain(val);
                     },
-                    title: const Text('Retain',
-                        style: TextStyle(fontSize: 13)),
-                    subtitle: const Text(
-                        'Broker keeps the last message for new subscribers.',
-                        style: TextStyle(fontSize: 11)),
+                    title: Text(l.retain,
+                        style: const TextStyle(fontSize: 13)),
+                    subtitle: Text(
+                        l.retainSub,
+                        style: const TextStyle(fontSize: 11)),
                     controlAffinity:
                         ListTileControlAffinity.leading,
                     contentPadding: EdgeInsets.zero,
@@ -1093,7 +1106,7 @@ class _MqttPubScreenState extends State<MqttPubScreen> {
                         ? _publish
                         : null,
                     icon:  const Icon(Icons.send_outlined),
-                    label: const Text('Publish'),
+                    label: Text(l.publish),
                   ),
                 ],
               ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:simply_net/l10n/app_localizations.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Loads a bundled markdown asset and shows it nicely formatted with a back
@@ -37,6 +38,7 @@ class _MarkdownInfoScreenState extends State<MarkdownInfoScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -45,7 +47,7 @@ class _MarkdownInfoScreenState extends State<MarkdownInfoScreen> {
         ),
       ),
       body: _failed
-          ? const Center(child: Text('Information not available.'))
+          ? Center(child: Text(l.infoUnavailable))
           : _raw.isEmpty
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
@@ -57,7 +59,7 @@ class _MarkdownInfoScreenState extends State<MarkdownInfoScreen> {
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
           child: FilledButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('OK'),
+            child: Text(l.ok),
           ),
         ),
       ),

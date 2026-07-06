@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
+import 'package:simply_net/l10n/app_localizations.dart';
 import 'package:simply_net/providers/settings_provider.dart';
 import 'package:simply_net/screens/markdown_info_screen.dart';
 import 'package:simply_net/services/log_service.dart';
@@ -186,20 +187,21 @@ class _WhoisState extends State<WhoisScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Who Is…',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Text(
+          l.toolWhois,
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
           IconButton(
             icon: const Icon(Icons.info_outline),
-            tooltip: 'About Who Is',
+            tooltip: l.aboutWhois,
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
-                builder: (_) => const MarkdownInfoScreen(
-                  title: 'About Who Is',
+                builder: (_) => MarkdownInfoScreen(
+                  title: l.aboutWhois,
                   assetPath: 'assets/whois_info.md',
                 ),
               ),
@@ -221,7 +223,7 @@ class _WhoisState extends State<WhoisScreen> {
                     onSubmitted: (_) => _loading ? null : _lookup(),
                     enabled: !_loading,
                     decoration: InputDecoration(
-                      hintText: 'Domain, IP address, or hostname',
+                      hintText: l.domainHostHint,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -242,17 +244,17 @@ class _WhoisState extends State<WhoisScreen> {
                           ),
                         )
                       : const Icon(Icons.search),
-                  label: Text(_loading ? 'Looking up…' : 'Look up'),
+                  label: Text(_loading ? l.lookingUp : l.lookUp),
                 ),
               ],
             ),
           ),
           Expanded(
             child: _buf.isEmpty && !_loading
-                ? const Center(
+                ? Center(
                     child: Text(
-                      'Enter a domain, IP, or hostname',
-                      style: TextStyle(color: Colors.grey),
+                      l.enterDomainIp,
+                      style: const TextStyle(color: Colors.grey),
                     ),
                   )
                 : SingleChildScrollView(

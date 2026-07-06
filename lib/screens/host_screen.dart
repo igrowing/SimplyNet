@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:simply_net/widgets/diag_widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:simply_net/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:simply_net/models/host_result.dart';
 import 'package:simply_net/providers/settings_provider.dart';
@@ -201,7 +202,7 @@ class _HostScreenState extends State<HostScreen> {
   void _copy(BuildContext ctx, String value) {
     Clipboard.setData(ClipboardData(text: value));
     ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
-      content: Text('Copied: $value'),
+      content: Text('${AppLocalizations.of(ctx).copied}: $value'),
       duration: const Duration(seconds: 1),
       behavior: SnackBarBehavior.floating,
     ));
@@ -215,7 +216,7 @@ class _HostScreenState extends State<HostScreen> {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } else if (ctx.mounted) {
       ScaffoldMessenger.of(ctx).showSnackBar(
-          const SnackBar(content: Text('Could not open browser')));
+          SnackBar(content: Text(AppLocalizations.of(ctx).couldNotOpenBrowser)));
     }
   }
 
@@ -224,8 +225,8 @@ class _HostScreenState extends State<HostScreen> {
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } else if (ctx.mounted) {
-      ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
-          content: Text('No SSH app found. Install ConnectBot or Termius.')));
+      ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
+          content: Text(AppLocalizations.of(ctx).noSshApp)));
     }
   }
 
@@ -233,6 +234,7 @@ class _HostScreenState extends State<HostScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l          = AppLocalizations.of(context);
     final host       = widget.host;
     final isWide     = MediaQuery.of(context).size.width > 600;
     final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
@@ -265,12 +267,12 @@ class _HostScreenState extends State<HostScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.open_in_browser),
-            tooltip: 'Open in browser (HTTP)',
+            tooltip: l.openInBrowser,
             onPressed: () => _openHttp(context),
           ),
           IconButton(
             icon: const Icon(Icons.terminal),
-            tooltip: 'Open SSH',
+            tooltip: l.openSsh,
             onPressed: () => _openSsh(context),
           ),
         ],
@@ -292,13 +294,14 @@ class _HostScreenState extends State<HostScreen> {
   // ── Info card ──────────────────────────────────────────────────────────────
 
   Widget _buildInfoCard(BuildContext context, HostResult host) {
+    final l = AppLocalizations.of(context);
     // Always show hostname row; display "—" when empty so it's always present.
     final rows = [
-      ('IP Address',    host.ip),
-      ('MAC Address',   host.mac),
-      ('Hostname',      host.hostname.isEmpty ? '—' : host.hostname),
-      if (host.manufacturer.isNotEmpty) ('Manufacturer', host.manufacturer),
-      if (host.deviceType.isNotEmpty)   ('Device Type',  host.deviceType),
+      (l.ipAddress,     host.ip),
+      (l.macAddress,    host.mac),
+      (l.hostname,      host.hostname.isEmpty ? '—' : host.hostname),
+      if (host.manufacturer.isNotEmpty) (l.manufacturer, host.manufacturer),
+      if (host.deviceType.isNotEmpty)   (l.deviceTypeLabel, host.deviceType),
     ];
 
     return Card(
@@ -307,7 +310,7 @@ class _HostScreenState extends State<HostScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Device Info',
+            Text(l.deviceInfo,
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold,
                       color: Theme.of(context).colorScheme.primary,
@@ -327,6 +330,7 @@ class _HostScreenState extends State<HostScreen> {
   // ── Ports card ────────────────────────────────────────────────────────────
 
   Widget _buildPortsCard(BuildContext context) {
+    final l = AppLocalizations.of(context);
     final primary = Theme.of(context).colorScheme.primary;
     return Card(
       child: Padding(
@@ -336,7 +340,7 @@ class _HostScreenState extends State<HostScreen> {
           children: [
             // Header row
             Row(children: [
-              Text('Open Ports',
+              Text(l.openPorts,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.bold, color: primary)),
               const Spacer(),
@@ -353,7 +357,7 @@ class _HostScreenState extends State<HostScreen> {
                 // Stop port scan button
                 IconButton(
                   icon: const Icon(Icons.stop_rounded, size: 20),
-                  tooltip: 'Stop port scan',
+                  tooltip: l.stopPortScan,
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
                   onPressed: _stopPortScan,
@@ -363,7 +367,7 @@ class _HostScreenState extends State<HostScreen> {
               // Settings button
               IconButton(
                 icon: const Icon(Icons.tune, size: 20),
-                tooltip: 'Port scan settings',
+                tooltip: l.portScanSettings,
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
                 onPressed: () =>
@@ -374,7 +378,7 @@ class _HostScreenState extends State<HostScreen> {
               if (!_portScanning)
                 IconButton(
                   icon: const PulsingIcon(child: Icon(Icons.refresh, size: 20)),
-                  tooltip: 'Re-scan ports',
+                  tooltip: l.reScanPorts,
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
                   onPressed: _runPortScan,
@@ -390,10 +394,10 @@ class _HostScreenState extends State<HostScreen> {
 
             // Port list
             if (_openPorts.isEmpty && !_portScanning)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
-                child: Text('No open ports found.',
-                    style: TextStyle(fontSize: 12)),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(l.noOpenPorts,
+                    style: const TextStyle(fontSize: 12)),
               )
             else
               ..._openPorts.map((p) => Padding(
@@ -417,21 +421,22 @@ class _HostScreenState extends State<HostScreen> {
   }
 
   Widget _buildPortSettings(BuildContext context) {
+    final l = AppLocalizations.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Port selection mode
         Row(children: [
-          const Text('Ports:', style: TextStyle(fontSize: 12)),
+          Text('${l.portsLabel}:', style: const TextStyle(fontSize: 12)),
           const SizedBox(width: 8),
           ChoiceChip(
-            label: const Text('Well-known'),
+            label: Text(l.wellKnown),
             selected: _portUseWellKnown,
             onSelected: (v) => setState(() => _portUseWellKnown = true),
           ),
           const SizedBox(width: 6),
           ChoiceChip(
-            label: const Text('Range'),
+            label: Text(l.rangeLabel),
             selected: !_portUseWellKnown,
             onSelected: (v) => setState(() => _portUseWellKnown = false),
           ),
@@ -439,7 +444,7 @@ class _HostScreenState extends State<HostScreen> {
         if (!_portUseWellKnown) ...[
           const SizedBox(height: 8),
           Row(children: [
-            const Text('From:', style: TextStyle(fontSize: 12)),
+            Text('${l.fromLabel}:', style: const TextStyle(fontSize: 12)),
             const SizedBox(width: 6),
             SizedBox(
               width: 70,
@@ -453,7 +458,7 @@ class _HostScreenState extends State<HostScreen> {
               ),
             ),
             const SizedBox(width: 10),
-            const Text('To:', style: TextStyle(fontSize: 12)),
+            Text('${l.toLabel}:', style: const TextStyle(fontSize: 12)),
             const SizedBox(width: 6),
             SizedBox(
               width: 70,
@@ -471,7 +476,7 @@ class _HostScreenState extends State<HostScreen> {
         const SizedBox(height: 8),
         // Protocol selection
         Row(children: [
-          const Text('Protocol:', style: TextStyle(fontSize: 12)),
+          Text('${l.protocolLabel}:', style: const TextStyle(fontSize: 12)),
           const SizedBox(width: 8),
           Checkbox(
             value: _portTcp,
@@ -490,7 +495,7 @@ class _HostScreenState extends State<HostScreen> {
           alignment: Alignment.centerRight,
           child: TextButton.icon(
             icon: const Icon(Icons.play_arrow, size: 16),
-            label: const Text('Apply & Rescan'),
+            label: Text(l.applyRescan),
             onPressed: () {
               setState(() => _portSettingsVisible = false);
               _runPortScan();
@@ -504,13 +509,14 @@ class _HostScreenState extends State<HostScreen> {
   // ── Diag panel ────────────────────────────────────────────────────────────
 
   Widget _buildDiagPanel(BuildContext context) {
+    final l = AppLocalizations.of(context);
     final primary = Theme.of(context).colorScheme.primary;
     return Padding(
       padding: const EdgeInsets.all(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Diagnostics',
+          Text(l.diagnostics,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.bold, color: primary)),
           const SizedBox(height: 8),
@@ -519,7 +525,7 @@ class _HostScreenState extends State<HostScreen> {
           Row(children: [
             OutlinedButton.icon(
               icon: const Icon(Icons.wifi_tethering, size: 16),
-              label: const Text('Ping'),
+              label: Text(l.toolPing),
               onPressed: _diagRunning ? null : () => _runDiag(_DiagTool.ping),
             ),
             const SizedBox(width: 8),
@@ -539,7 +545,7 @@ class _HostScreenState extends State<HostScreen> {
               ),
             ),
             const SizedBox(width: 6),
-            const Text('times', style: TextStyle(fontSize: 12)),
+            Text(l.times, style: const TextStyle(fontSize: 12)),
             const Spacer(),
             if (_diagRunning)
               SizedBox(
@@ -553,7 +559,7 @@ class _HostScreenState extends State<HostScreen> {
                     foregroundColor: Colors.white,
                   ),
                   onPressed: _stopDiag,
-                  tooltip: 'Stop',
+                  tooltip: l.stop,
                 ),
               ),
           ]),

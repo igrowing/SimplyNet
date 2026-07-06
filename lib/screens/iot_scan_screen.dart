@@ -8,6 +8,7 @@ import 'package:simply_net/screens/mqtt_screen.dart';
 import 'package:simply_net/services/iot_scanner.dart';
 import 'package:simply_net/services/network_scanner.dart';
 import 'package:simply_net/widgets/pulsing_icon.dart';
+import 'package:simply_net/l10n/app_localizations.dart';
 
 class IotScanScreen extends StatefulWidget {
   final String cidr;
@@ -57,13 +58,14 @@ class _IotScanScreenState extends State<IotScanScreen> {
     final iot      = context.watch<IotScanProvider>();
     final devices  = iot.devices;
     final scanning = iot.scanning;
+    final l        = AppLocalizations.of(context);
 
     return Scaffold(
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('IoT Devices', style: TextStyle(fontWeight: FontWeight.bold)),
+            Text(l.toolIotDevices, style: const TextStyle(fontWeight: FontWeight.bold)),
             Text(widget.cidr, style: const TextStyle(fontSize: 11)),
           ],
         ),
@@ -78,7 +80,7 @@ class _IotScanScreenState extends State<IotScanScreen> {
                       child: Icon(Icons.refresh_rounded, size: 26),
                     ),
             ),
-            tooltip: scanning ? 'Stop' : 'Re-scan',
+            tooltip: scanning ? l.stop : l.reScan,
             onPressed: scanning ? iot.stopScan : _rescan,
           ),
         ],
@@ -94,15 +96,15 @@ class _IotScanScreenState extends State<IotScanScreen> {
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  'Scanning… ${devices.length} IoT device(s) found',
+                  '${l.scanningEllipsis} ${devices.length} ${l.iotDevicesFound}',
                   style: const TextStyle(fontSize: 12),
                 ),
               ),
             ),
           if (!scanning && devices.isEmpty)
-            const Expanded(
+            Expanded(
               child: Center(
-                child: Text('No saved results.\nTap refresh to scan.',
+                child: Text(l.iotNoSaved,
                     textAlign: TextAlign.center),
               ),
             )
@@ -159,7 +161,9 @@ class _DeviceCard extends StatelessWidget {
                     _ConfidenceBadge(device.confidence),
                   ]),
                   const SizedBox(height: 2),
-                  Text(device.protocol.isEmpty ? 'Unknown' : device.protocol,
+                  Text(device.protocol.isEmpty
+                          ? AppLocalizations.of(context).unknown
+                          : device.protocol,
                       style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 13)),
                   if (device.model.isNotEmpty)
                     Text(device.model, style: const TextStyle(fontSize: 12)),
@@ -183,7 +187,7 @@ class _DeviceCard extends StatelessWidget {
                           style: const TextStyle(fontSize: 11, color: Colors.grey))),
                   ],
                   const SizedBox(height: 2),
-                  Text('via ${device.detectionMethod}',
+                  Text('${AppLocalizations.of(context).viaLabel} ${device.detectionMethod}',
                       style: const TextStyle(fontSize: 10, color: Colors.grey)),
                 ],
               ),
@@ -191,7 +195,7 @@ class _DeviceCard extends StatelessWidget {
             // Copy IP button
             IconButton(
               icon: const Icon(Icons.copy, size: 16),
-              tooltip: 'Copy IP',
+              tooltip: AppLocalizations.of(context).copyIp,
               onPressed: () => Clipboard.setData(ClipboardData(text: device.ip)),
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
@@ -248,10 +252,11 @@ class _ConfidenceBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     final (label, color) = switch (confidence) {
-      IotConfidence.definite  => ('✓ definite',  Colors.green),
-      IotConfidence.probable  => ('~ probable',  Colors.orange),
-      IotConfidence.possible  => ('? possible',  Colors.grey),
+      IotConfidence.definite  => ('✓ ${l.confDefinite}',  Colors.green),
+      IotConfidence.probable  => ('~ ${l.confProbable}',  Colors.orange),
+      IotConfidence.possible  => ('? ${l.confPossible}',  Colors.grey),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),

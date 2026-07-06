@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:simply_net/l10n/app_localizations.dart';
 import 'package:simply_net/providers/settings_provider.dart';
 import 'package:simply_net/screens/markdown_info_screen.dart';
 import 'package:simply_net/services/foreground_service.dart';
@@ -90,21 +91,21 @@ class _TracerouteScreenState extends State<TracerouteScreen> {
   }
 
   // ── Node classification ────────────────────────────────────────────────
-  _TraceNode _nodeOf(TracertHop h) {
+  _TraceNode _nodeOf(TracertHop h, AppLocalizations l) {
     if (h.timedOut) {
-      return const _TraceNode(
-        'Hidden Node',
+      return _TraceNode(
+        l.hiddenNode,
         Icons.shield_outlined,
         Colors.grey,
       );
     }
     if (h.reached) {
-      return const _TraceNode('Destination', Icons.cloud, Colors.blue);
+      return _TraceNode(l.destination, Icons.cloud, Colors.blue);
     }
     if (h.hop == 1) {
-      return const _TraceNode('Your router', Icons.router, Colors.teal);
+      return _TraceNode(l.yourRouter, Icons.router, Colors.teal);
     }
-    return const _TraceNode('Network Hop', Icons.location_city, Colors.indigo);
+    return _TraceNode(l.networkHop, Icons.location_city, Colors.indigo);
   }
 
   static Color _latencyColor(double ms) {
@@ -114,21 +115,16 @@ class _TracerouteScreenState extends State<TracerouteScreen> {
   }
 
   void _showHiddenInfo() {
+    final l = AppLocalizations.of(context);
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Hidden Node'),
-        content: const Text(
-          'This router did not reply to our probes. Many ISPs, firewalls '
-          'and security appliances deliberately drop or rate-limit ICMP '
-          '(ping) traffic, so the hop stays anonymous even though your '
-          'data still passes through it.\n\nThis is normal and does not '
-          'mean the route is broken.',
-        ),
+        title: Text(l.hiddenNode),
+        content: Text(l.hiddenNodeInfo),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('OK'),
+            child: Text(l.ok),
           ),
         ],
       ),
@@ -137,20 +133,21 @@ class _TracerouteScreenState extends State<TracerouteScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Traceroute',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Text(
+          l.toolTraceroute,
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
           IconButton(
             icon: const Icon(Icons.info_outline),
-            tooltip: 'About Traceroute',
+            tooltip: l.aboutTraceroute,
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
-                builder: (_) => const MarkdownInfoScreen(
-                  title: 'About Traceroute',
+                builder: (_) => MarkdownInfoScreen(
+                  title: l.aboutTraceroute,
                   assetPath: 'assets/tracert_info.md',
                 ),
               ),
@@ -172,7 +169,7 @@ class _TracerouteScreenState extends State<TracerouteScreen> {
                     onSubmitted: (_) => _running ? null : _run(),
                     enabled: !_running,
                     decoration: InputDecoration(
-                      hintText: 'IP address or hostname',
+                      hintText: l.hostHint,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -184,7 +181,7 @@ class _TracerouteScreenState extends State<TracerouteScreen> {
                 FilledButton.icon(
                   onPressed: _running ? _stop : _run,
                   icon: Icon(_running ? Icons.stop : Icons.play_arrow),
-                  label: Text(_running ? 'Stop' : 'Trace'),
+                  label: Text(_running ? l.stop : l.trace),
                   style: FilledButton.styleFrom(
                     backgroundColor: _running
                         ? Theme.of(context).colorScheme.error
@@ -220,7 +217,7 @@ class _TracerouteScreenState extends State<TracerouteScreen> {
             child: _hops.isEmpty && !_running
                 ? Center(
                     child: Text(
-                      'Enter a host and press Trace',
+                      l.enterHostTrace,
                       style: TextStyle(
                         color: Theme.of(
                           context,
@@ -236,6 +233,7 @@ class _TracerouteScreenState extends State<TracerouteScreen> {
   }
 
   Widget _buildTimeline(BuildContext context) {
+    final l = AppLocalizations.of(context);
     final total = _hops.length + (_running ? 1 : 0);
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
@@ -250,19 +248,19 @@ class _TracerouteScreenState extends State<TracerouteScreen> {
             color: Colors.grey,
             hasAbove: hasAbove,
             hasBelow: hasBelow,
-            child: const Padding(
-              padding: EdgeInsets.symmetric(vertical: 14),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 14),
               child: Row(
                 children: [
-                  SizedBox(
+                  const SizedBox(
                     width: 16,
                     height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   ),
-                  SizedBox(width: 10),
+                  const SizedBox(width: 10),
                   Text(
-                    'Probing next hop…',
-                    style: TextStyle(color: Colors.grey),
+                    l.probingNextHop,
+                    style: const TextStyle(color: Colors.grey),
                   ),
                 ],
               ),
@@ -270,7 +268,7 @@ class _TracerouteScreenState extends State<TracerouteScreen> {
           );
         }
         final h = _hops[i];
-        final node = _nodeOf(h);
+        final node = _nodeOf(h, l);
         return _railRow(
           context,
           icon: node.icon,
@@ -333,6 +331,7 @@ class _TracerouteScreenState extends State<TracerouteScreen> {
   }
 
   Widget _hopCard(BuildContext context, TracertHop h, _TraceNode node) {
+    final l = AppLocalizations.of(context);
     final dim = h.timedOut;
     final addr = h.hostname != null ? '${h.hostname} (${h.ip})' : h.ip;
     final subtle = Theme.of(
@@ -340,7 +339,7 @@ class _TracerouteScreenState extends State<TracerouteScreen> {
     ).colorScheme.onSurface.withValues(alpha: 0.6);
     final avg = h.avgMs;
     final avgTxt = avg == null ? 'avg. — ms' : 'avg. ${avg.round()} ms';
-    final lower = dim ? 'no reply · $avgTxt' : '$addr · $avgTxt';
+    final lower = dim ? '${l.noReply} · $avgTxt' : '$addr · $avgTxt';
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 5),
       child: Padding(
@@ -354,7 +353,7 @@ class _TracerouteScreenState extends State<TracerouteScreen> {
                   Row(
                     children: [
                       Text(
-                        'Hop ${h.hop}',
+                        '${l.hop} ${h.hop}',
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           color: dim ? Colors.grey : subtle,
@@ -398,7 +397,7 @@ class _TracerouteScreenState extends State<TracerouteScreen> {
                 visualDensity: VisualDensity.compact,
                 iconSize: 18,
                 color: subtle,
-                tooltip: 'Copy IP',
+                tooltip: l.copyIp,
                 icon: const Icon(Icons.copy),
                 onPressed: () => _copyIp(context, h.ip!),
               ),
@@ -414,9 +413,10 @@ class _TracerouteScreenState extends State<TracerouteScreen> {
   Future<void> _copyIp(BuildContext context, String ip) async {
     await Clipboard.setData(ClipboardData(text: ip));
     if (!context.mounted) return;
+    final l = AppLocalizations.of(context);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Copied $ip'),
+        content: Text('${l.copied} $ip'),
         duration: const Duration(seconds: 2),
       ),
     );

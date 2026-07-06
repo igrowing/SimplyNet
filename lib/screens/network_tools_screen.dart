@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:simply_net/l10n/app_localizations.dart';
 import 'package:simply_net/providers/scan_provider.dart';
 import 'package:simply_net/screens/cellular_screen.dart';
 import 'package:simply_net/screens/iot_scan_screen.dart';
@@ -26,11 +27,12 @@ class NetworkToolsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     final tools = [
       _ToolCard(
         icon: Icons.speed,
-        title: 'Speed Test',
-        subtitle: 'Test download & upload speed',
+        title: l.toolSpeedTest,
+        subtitle: l.toolSpeedTestSub,
         color: Colors.blue,
         onTap: () => Navigator.push(
           context,
@@ -39,8 +41,8 @@ class NetworkToolsScreen extends StatelessWidget {
       ),
       _ToolCard(
         icon: Icons.public,
-        title: 'My Public IP',
-        subtitle: 'Discover your public IP, ISP & location',
+        title: l.toolPublicIp,
+        subtitle: l.toolPublicIpSub,
         color: Colors.green,
         onTap: () => Navigator.push(
           context,
@@ -49,8 +51,8 @@ class NetworkToolsScreen extends StatelessWidget {
       ),
       _ToolCard(
         icon: Icons.videocam,
-        title: 'IP Camera Scan',
-        subtitle: 'Find cameras on your LAN',
+        title: l.toolIpCameras,
+        subtitle: l.toolIpCamerasSub,
         color: Colors.orange,
         onTap: () => Navigator.push(
           context,
@@ -62,8 +64,8 @@ class NetworkToolsScreen extends StatelessWidget {
       ),
       _ToolCard(
         icon: Icons.memory,
-        title: 'IoT Devices',
-        subtitle: 'Find Tasmota, Matter, ESPHome, Shelly & more',
+        title: l.toolIotDevices,
+        subtitle: l.toolIotDevicesSub,
         color: Colors.deepPurple,
         onTap: () => Navigator.push(
           context,
@@ -75,8 +77,8 @@ class NetworkToolsScreen extends StatelessWidget {
       ),
       _ToolCard(
         icon: Icons.radar,
-        title: 'Port Scan',
-        subtitle: 'Scan open TCP/UDP ports on any host',
+        title: l.toolPortScan,
+        subtitle: l.toolPortScanSub,
         color: Colors.purple,
         onTap: () => Navigator.push(
           context,
@@ -85,8 +87,8 @@ class NetworkToolsScreen extends StatelessWidget {
       ),
       _ToolCard(
         icon: Icons.network_ping,
-        title: 'Ping',
-        subtitle: 'Continuous ping with live graph',
+        title: l.toolPing,
+        subtitle: l.toolPingSub,
         color: Colors.teal,
         onTap: () => Navigator.push(
           context,
@@ -95,8 +97,8 @@ class NetworkToolsScreen extends StatelessWidget {
       ),
       _ToolCard(
         icon: Icons.route,
-        title: 'Traceroute',
-        subtitle: 'Trace the path to any host, hop by hop',
+        title: l.toolTraceroute,
+        subtitle: l.toolTracerouteSub,
         color: Colors.deepOrange,
         onTap: () => Navigator.push(
           context,
@@ -105,8 +107,8 @@ class NetworkToolsScreen extends StatelessWidget {
       ),
       _ToolCard(
         icon: Icons.manage_search,
-        title: 'Who Is…',
-        subtitle: 'WHOIS, DNS & nslookup for any domain or IP',
+        title: l.toolWhois,
+        subtitle: l.toolWhoisSub,
         color: Colors.indigo,
         onTap: () => Navigator.push(
           context,
@@ -115,8 +117,8 @@ class NetworkToolsScreen extends StatelessWidget {
       ),
       _ToolCard(
         icon: Icons.wifi_find,
-        title: 'Wi-Fi Channels',
-        subtitle: 'RSSI per channel, 2.4 & 5 GHz interference map',
+        title: l.toolWifiChannels,
+        subtitle: l.toolWifiChannelsSub,
         color: Colors.cyan,
         onTap: () => Navigator.push(
           context,
@@ -125,8 +127,8 @@ class NetworkToolsScreen extends StatelessWidget {
       ),
       _ToolCard(
         icon: Icons.cell_tower,
-        title: 'Cellular Info',
-        subtitle: 'Signal levels, cell ID, provider & tower data',
+        title: l.toolCellularInfo,
+        subtitle: l.toolCellularInfoSub,
         color: Colors.deepPurple,
         onTap: () => Navigator.push(
           context,
@@ -137,9 +139,9 @@ class NetworkToolsScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Network Tools',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Text(
+          l.networkTools,
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
       body: Padding(
