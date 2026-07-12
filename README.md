@@ -7,23 +7,21 @@ Ever wondered what's actually connected to your WiFi? SimplyNet gives you comple
 ## WHAT DOES IT DO?
 
 - ✓ Network Scanning — Find all active hosts on your LAN with blazing speed
-- ✓ Device Detection — Identify devices by IP, MAC address, and hostname
-- ✓ LAN Auto-Detection — Automatically detects your network boundaries
 - ✓ Port Scanning — Check which services are running on any host
 - ✓ Network Diagnostics — Ping, DNS lookup, and advanced tools built-in
-- ✓ OUI Database — See manufacturer info for every MAC address
-- ✓ Find and Test your IoT devices - Subscribe and Publish on MQTT broker
+- ✓ Find and Test your IoT devices — Subscribe and Publish on MQTT broker
 
 ## WHY YOU'LL LOVE IT
 
 - Lightning fast — Scans complete in seconds
 - Zero clutter — Clean, intuitive interface
 - Works in LAN — No cloud required, no tracking
-- Flexible logging - Enable/disable logging, review what was when
+- Flexible logging — Enable/disable logging, review what was when
 - Developer friendly — Perfect for IT professionals and curious users alike
-- 100% free - No ads, not tracking, no bothers. Donations are welcome
-- Zero BS - only useful and really working tools included
+- 100% free — No ads, not tracking, no bothers. Donations are welcome
+- Zero BS — only useful and really working tools included
 - Open source — Transparent, community-driven development. [Check out the source code](https://github.com/igrowing/SimplyNet) anytime. Click the ⭐ "Star" 😊
+- Translated to 15 languages
 
 ## PERFECT FOR
 
