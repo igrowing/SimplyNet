@@ -6,13 +6,17 @@ import 'package:url_launcher/url_launcher.dart';
 /// Loads a bundled markdown asset and shows it nicely formatted with a back
 /// button in the app bar. Handles: # headings, **bold**, `code`, - bullets,
 /// --- rules, [text](url) links and plain paragraphs.
+///
+/// [assetName] is a bare file name (e.g. `ping_info.md`). The screen loads the
+/// copy matching the active locale from `assets/help/<tag>/<name>`, falling
+/// back to the English copy under `assets/help/en/<name>`.
 class MarkdownInfoScreen extends StatefulWidget {
   final String title;
-  final String assetPath;
+  final String assetName;
   const MarkdownInfoScreen({
     super.key,
     required this.title,
-    required this.assetPath,
+    required this.assetName,
   });
 
   @override
@@ -22,18 +26,35 @@ class MarkdownInfoScreen extends StatefulWidget {
 class _MarkdownInfoScreenState extends State<MarkdownInfoScreen> {
   String _raw = '';
   bool _failed = false;
+  bool _loaded = false;
 
   @override
-  void initState() {
-    super.initState();
-    rootBundle
-        .loadString(widget.assetPath)
-        .then((s) {
-          if (mounted) setState(() => _raw = s);
-        })
-        .catchError((_) {
-          if (mounted) setState(() => _failed = true);
-        });
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_loaded) return;
+    _loaded = true;
+    _load();
+  }
+
+  Future<void> _load() async {
+    final locale = Localizations.localeOf(context);
+    final tag = locale.scriptCode == null
+        ? locale.languageCode
+        : '${locale.languageCode}_${locale.scriptCode}';
+    final candidates = <String>[
+      'assets/help/$tag/${widget.assetName}',
+      'assets/help/en/${widget.assetName}',
+    ];
+    for (final path in candidates) {
+      try {
+        final s = await rootBundle.loadString(path);
+        if (mounted) setState(() => _raw = s);
+        return;
+      } catch (_) {
+        // try next candidate
+      }
+    }
+    if (mounted) setState(() => _failed = true);
   }
 
   @override

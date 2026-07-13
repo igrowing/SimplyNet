@@ -125,7 +125,7 @@ class _PortScanScreenState extends State<PortScanScreen> {
               MaterialPageRoute<void>(
                 builder: (_) => MarkdownInfoScreen(
                   title: l.aboutPortScan,
-                  assetPath: 'assets/portscan_info.md',
+                  assetName: 'portscan_info.md',
                 ),
               ),
             ),

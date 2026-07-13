@@ -148,7 +148,7 @@ class _TracerouteScreenState extends State<TracerouteScreen> {
               MaterialPageRoute<void>(
                 builder: (_) => MarkdownInfoScreen(
                   title: l.aboutTraceroute,
-                  assetPath: 'assets/tracert_info.md',
+                  assetName: 'tracert_info.md',
                 ),
               ),
             ),

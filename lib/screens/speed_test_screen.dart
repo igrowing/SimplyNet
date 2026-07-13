@@ -220,7 +220,7 @@ class _SpeedTestState extends State<SpeedTestScreen> {
       MaterialPageRoute<void>(
         builder: (_) => MarkdownInfoScreen(
           title: l.speedTestInfo,
-          assetPath: 'assets/speedtest_info.md',
+          assetName: 'speedtest_info.md',
         ),
       ),
     );

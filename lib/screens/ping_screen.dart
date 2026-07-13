@@ -97,7 +97,7 @@ class _PingScreenState extends State<PingScreen> {
               MaterialPageRoute<void>(
                 builder: (_) => MarkdownInfoScreen(
                   title: l.aboutPing,
-                  assetPath: 'assets/ping_info.md',
+                  assetName: 'ping_info.md',
                 ),
               ),
             ),

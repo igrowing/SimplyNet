@@ -202,7 +202,7 @@ class _WhoisState extends State<WhoisScreen> {
               MaterialPageRoute<void>(
                 builder: (_) => MarkdownInfoScreen(
                   title: l.aboutWhois,
-                  assetPath: 'assets/whois_info.md',
+                  assetName: 'whois_info.md',
                 ),
               ),
             ),
