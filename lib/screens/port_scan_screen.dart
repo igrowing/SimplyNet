@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:simply_net/l10n/app_localizations.dart';
 import 'package:simply_net/providers/settings_provider.dart';
 import 'package:simply_net/screens/markdown_info_screen.dart';
 import 'package:simply_net/services/log_service.dart';
@@ -109,27 +110,28 @@ class _PortScanScreenState extends State<PortScanScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Port Scan',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Text(
+          l.toolPortScan,
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
           IconButton(
             icon: const Icon(Icons.info_outline),
-            tooltip: 'About Port Scan',
+            tooltip: l.aboutPortScan,
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
-                builder: (_) => const MarkdownInfoScreen(
-                  title: 'About Port Scan',
-                  assetPath: 'assets/portscan_info.md',
+                builder: (_) => MarkdownInfoScreen(
+                  title: l.aboutPortScan,
+                  assetName: 'portscan_info.md',
                 ),
               ),
             ),
           ),
           IconButton(
-            tooltip: _settingsVisible ? 'Hide settings' : 'Settings',
+            tooltip: _settingsVisible ? l.hideSettings : l.settings,
             icon: Icon(
               Icons.settings,
               color: _settingsVisible
@@ -156,7 +158,7 @@ class _PortScanScreenState extends State<PortScanScreen> {
                     onSubmitted: (_) => _scanning ? null : _startScan(),
                     enabled: !_scanning,
                     decoration: InputDecoration(
-                      hintText: 'IP address or hostname',
+                      hintText: l.hostHint,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -172,7 +174,7 @@ class _PortScanScreenState extends State<PortScanScreen> {
                           key: const ValueKey('stop'),
                           onPressed: _stopScan,
                           icon: const Icon(Icons.stop_rounded),
-                          label: const Text('Stop'),
+                          label: Text(l.stop),
                           style: FilledButton.styleFrom(
                             backgroundColor: Theme.of(
                               context,
@@ -183,7 +185,7 @@ class _PortScanScreenState extends State<PortScanScreen> {
                           key: const ValueKey('scan'),
                           onPressed: _startScan,
                           icon: const Icon(Icons.search),
-                          label: const Text('Scan'),
+                          label: Text(l.scan),
                         ),
                 ),
               ],
@@ -209,10 +211,10 @@ class _PortScanScreenState extends State<PortScanScreen> {
           // ── Results ──────────────────────────────────────────────────────────
           Expanded(
             child: _openLines.isEmpty && !_scanning
-                ? const Center(
+                ? Center(
                     child: Text(
-                      'Enter a host and tap Scan',
-                      style: TextStyle(color: Colors.grey),
+                      l.enterHostScan,
+                      style: const TextStyle(color: Colors.grey),
                     ),
                   )
                 : ListView.builder(
@@ -248,7 +250,7 @@ class _PortScanScreenState extends State<PortScanScreen> {
                             if (isOpen)
                               IconButton(
                                 icon: const Icon(Icons.copy, size: 14),
-                                tooltip: 'Copy',
+                                tooltip: l.copy,
                                 padding: EdgeInsets.zero,
                                 constraints: const BoxConstraints(
                                   minWidth: 24,
@@ -270,6 +272,7 @@ class _PortScanScreenState extends State<PortScanScreen> {
   }
 
   Widget _buildSettings() {
+    final l = AppLocalizations.of(context);
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
       padding: const EdgeInsets.all(12),
@@ -285,19 +288,19 @@ class _PortScanScreenState extends State<PortScanScreen> {
           // Port source
           Row(
             children: [
-              const Text(
-                'Ports:',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+              Text(
+                l.portsLabel,
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
               ),
               const SizedBox(width: 12),
               ChoiceChip(
-                label: const Text('Well-known'),
+                label: Text(l.wellKnown),
                 selected: _useWellKnown,
                 onSelected: (_) => setState(() => _useWellKnown = true),
               ),
               const SizedBox(width: 8),
               ChoiceChip(
-                label: const Text('Range'),
+                label: Text(l.rangeLabel),
                 selected: !_useWellKnown,
                 onSelected: (_) => setState(() => _useWellKnown = false),
               ),
@@ -308,7 +311,7 @@ class _PortScanScreenState extends State<PortScanScreen> {
               padding: const EdgeInsets.only(top: 8),
               child: Row(
                 children: [
-                  const Text('From:', style: TextStyle(fontSize: 12)),
+                  Text(l.fromLabel, style: const TextStyle(fontSize: 12)),
                   const SizedBox(width: 6),
                   SizedBox(
                     width: 70,
@@ -322,7 +325,7 @@ class _PortScanScreenState extends State<PortScanScreen> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  const Text('To:', style: TextStyle(fontSize: 12)),
+                  Text(l.toLabel, style: const TextStyle(fontSize: 12)),
                   const SizedBox(width: 6),
                   SizedBox(
                     width: 70,
@@ -342,9 +345,9 @@ class _PortScanScreenState extends State<PortScanScreen> {
           // Protocol
           Row(
             children: [
-              const Text(
-                'Protocol:',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+              Text(
+                l.protocolLabel,
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
               ),
               const SizedBox(width: 8),
               FilterChip(

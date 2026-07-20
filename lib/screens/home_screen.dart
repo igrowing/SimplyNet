@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:simply_net/l10n/app_localizations.dart';
 import 'package:simply_net/providers/scan_provider.dart';
 import 'package:simply_net/screens/cellular_screen.dart';
 import 'package:simply_net/screens/mqtt_screen.dart';
@@ -126,13 +127,13 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
           // ── Settings gear ──────────────────────────────────────────────────
           IconButton(
             icon: const Icon(Icons.settings_outlined),
-            tooltip: 'Settings',
+            tooltip: AppLocalizations.of(context).settings,
             onPressed: () => Navigator.pushNamed(context, '/settings'),
           ),
           // ── About / README ─────────────────────────────────────────────────
           IconButton(
             icon: const Icon(Icons.info_outline),
-            tooltip: 'About SimplyNet',
+            tooltip: AppLocalizations.of(context).aboutSimplyNet,
             onPressed: () => Navigator.pushNamed(context, '/about'),
           ),
         ],
@@ -180,8 +181,9 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
   // ── "Scan" group ──────────────────────────────────────────────────────────
 
   Widget _buildScanGroup(ThemeData theme, BuildContext ctx) {
+    final l = AppLocalizations.of(ctx);
     return _GroupBox(
-      label: 'Scan',
+      label: l.scan,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -195,10 +197,10 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
             textInputAction: TextInputAction.go,
             keyboardType: TextInputType.number,
             decoration: InputDecoration(
-              labelText: 'Network Target',
-              hintText: 'e.g. 192.168.1.0/24',
+              labelText: l.networkTarget,
+              hintText: l.networkTargetHint,
               errorText: _hasError
-                  ? 'Invalid CIDR — use format like 192.168.1.0/24'
+                  ? l.invalidCidr
                   : null,
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               isDense: true,
@@ -212,7 +214,7 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
                     )
                   : IconButton(
                       icon: const Icon(Icons.my_location),
-                      tooltip: 'Detect my network',
+                      tooltip: l.detectMyNetwork,
                       onPressed: _detect,
                     ),
             ),
@@ -224,7 +226,7 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
               child: FilledButton.icon(
                 onPressed: () => Navigator.pushNamed(ctx, '/scan'),
                 icon: const Icon(Icons.network_check),
-                label: const Text('Scan'),
+                label: Text(l.scan),
               ),
             ),
             const SizedBox(width: 10),
@@ -232,7 +234,7 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
               child: OutlinedButton.icon(
                 onPressed: () => Navigator.pushNamed(ctx, '/logs'),
                 icon: const Icon(Icons.article),
-                label: const Text('Logs'),
+                label: Text(l.logs),
               ),
             ),
           ]),
@@ -249,20 +251,21 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
     void push(Widget screen) =>
         Navigator.push(ctx, MaterialPageRoute(builder: (_) => screen));
     final scanTarget = ctx.read<ScanProvider>().target;
+    final l = AppLocalizations.of(ctx);
 
     final tools = [
-      _ToolBtn(Icons.speed,         'Speed Test',     'Download & upload speed',        () => push(const SpeedTestScreen()),              Colors.blue),
-      _ToolBtn(Icons.public,        'Public IP',      'Your IP, ISP & location',        () => push(const PublicIpScreen()),               Colors.green),
-      _ToolBtn(Icons.videocam,      'IP Cameras',     'Find cameras on your LAN',       () => push(IpCameraScanScreen(cidr: scanTarget)), Colors.orange),
-      _ToolBtn(Icons.memory,        'IoT Devices',    'Matter, Tasmota, Shelly & more', () => push(IotScanScreen(cidr: scanTarget)),      Colors.deepPurple),
-      _ToolBtn(Icons.subscriptions, 'MQTT Sub',       'Subscribe to an MQTT topic',     () => push(MqttSubScreen(appScreenTimeoutMode: ctx.read<SettingsProvider>().settings.screenTimeout.index)), Colors.brown),
-      _ToolBtn(Icons.publish,       'MQTT Pub',       'Publish to an MQTT topic',       () => push(MqttPubScreen(appScreenTimeoutMode: ctx.read<SettingsProvider>().settings.screenTimeout.index)), Colors.deepOrange),
-      _ToolBtn(Icons.radar,         'Port Scan',      'Open TCP/UDP ports on any host', () => push(const PortScanScreen()),               Colors.purple),
-      _ToolBtn(Icons.network_ping,  'Ping',           'Live ping with graph',           () => push(const PingScreen()),                   Colors.teal),
-      _ToolBtn(Icons.route,         'Traceroute',     'Hop-by-hop path to any host',    () => push(const TracerouteScreen()),             Colors.deepOrange),
-      _ToolBtn(Icons.manage_search, 'Who Is…',   'WHOIS, DNS & reverse lookup',    () => push(const WhoisScreen()),                  Colors.indigo),
-      _ToolBtn(Icons.wifi_find,     'Wi-Fi Channels', '2.4 & 5 GHz interference map',   () => push(const WifiChannelsScreen()),           Colors.cyan),
-      _ToolBtn(Icons.cell_tower,    'Cellular Info',  'Signal, cell ID & tower data',   () => push(const CellularScreen()),               Colors.deepPurple),
+      _ToolBtn(Icons.speed,         l.toolSpeedTest,     l.toolSpeedTestSub,     () => push(const SpeedTestScreen()),              Colors.blue),
+      _ToolBtn(Icons.public,        l.toolPublicIp,      l.toolPublicIpSub,      () => push(const PublicIpScreen()),               Colors.green),
+      _ToolBtn(Icons.videocam,      l.toolIpCameras,     l.toolIpCamerasSub,     () => push(IpCameraScanScreen(cidr: scanTarget)), Colors.orange),
+      _ToolBtn(Icons.memory,        l.toolIotDevices,    l.toolIotDevicesSub,    () => push(IotScanScreen(cidr: scanTarget)),      Colors.deepPurple),
+      _ToolBtn(Icons.subscriptions, l.toolMqttSub,       l.toolMqttSubSub,       () => push(MqttSubScreen(appScreenTimeoutMode: ctx.read<SettingsProvider>().settings.screenTimeout.index)), Colors.brown),
+      _ToolBtn(Icons.publish,       l.toolMqttPub,       l.toolMqttPubSub,       () => push(MqttPubScreen(appScreenTimeoutMode: ctx.read<SettingsProvider>().settings.screenTimeout.index)), Colors.deepOrange),
+      _ToolBtn(Icons.radar,         l.toolPortScan,      l.toolPortScanSub,      () => push(const PortScanScreen()),               Colors.purple),
+      _ToolBtn(Icons.network_ping,  l.toolPing,          l.toolPingSub,          () => push(const PingScreen()),                   Colors.teal),
+      _ToolBtn(Icons.route,         l.toolTraceroute,    l.toolTracerouteSub,    () => push(const TracerouteScreen()),             Colors.deepOrange),
+      _ToolBtn(Icons.manage_search, l.toolWhois,         l.toolWhoisSub,         () => push(const WhoisScreen()),                  Colors.indigo),
+      _ToolBtn(Icons.wifi_find,     l.toolWifiChannels,  l.toolWifiChannelsSub,  () => push(const WifiChannelsScreen()),           Colors.cyan),
+      _ToolBtn(Icons.cell_tower,    l.toolCellularInfo,  l.toolCellularInfoSub,  () => push(const CellularScreen()),               Colors.deepPurple),
     ];
 
     // Column of 2-item rows → each button takes intrinsic height so
@@ -289,7 +292,7 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
     }
 
     return _GroupBox(
-      label: 'Network Tools',
+      label: l.networkTools,
       child: Column(children: rows),
     );
   }

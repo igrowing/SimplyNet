@@ -113,7 +113,8 @@ Checklist before publishing:
 Pro tip: Use `flutter rename` package to automate some of this:
 ```
 dart pub global activate rename
-rename --appname "SymplyNet" --bundleId com.simplytools.simplynet
+dart pub global run rename setAppName --value "SimplyNet"           
+dart pub global run rename setBundleId --value "com.simplytools.simplynet"  
 ```
 
 Then verify all changes manually before submitting to stores!
@@ -323,9 +324,6 @@ When the GitHub runner finishes its job, the virtual environment is completely d
 
 # TODO
 * Enhance device detection list: qnap, fritz, eero, samsung mobile, redmi mobile, huawei mobile, espressif, hui zhou camera reolin dahua, 
-* Convert input text fields to dropdown boxes, remembering previous inputs for easy choice.
-* Add translations.
-* Add Ok-pop up when user turns screen constant on.
 * Add Snmp mib browser
 * Add more MQ: rabbitmq, zmq, kafka, amazon sqs, google cloud pub/sub
 

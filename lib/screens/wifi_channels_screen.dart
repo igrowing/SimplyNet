@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:simply_net/widgets/pulsing_icon.dart';
+import 'package:simply_net/l10n/app_localizations.dart';
 
 class WifiChannelsScreen extends StatefulWidget {
   const WifiChannelsScreen({super.key});
@@ -33,31 +34,18 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
   }
 
   void _showBandInfo() {
+    final l = AppLocalizations.of(context);
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Dual access point detection in 5 GHz network'),
-        content: const SingleChildScrollView(
-          child: Text(
-            '💡 Hold SSID to see full Access Point name.\n\n'
-            'ℹ️ On the 5 GHz band you will usually see each access point appear on '
-            'two (or more) channels at once. That is normal.\n\n'
-            'To go faster, modern routers glue neighbouring 20 MHz channels '
-            'together into one wider lane — 40, 80, or even 160 MHz. This is '
-            'called "channel bonding". A wider lane carries more data, just '
-            'like a wider road carries more cars.\n\n'
-            'With "dynamic channel width" the router picks the widest lane it '
-            'can and narrows it automatically when the air gets busy or noisy, '
-            'so it stays fast without stepping on the neighbours.\n\n'
-            'So a single 5 GHz network showing on channels 36 and 40, for '
-            'example, is just one access point using an 40 MHz-wide bonded '
-            'channel — not two separate networks.',
-          ),
+        title: Text(l.wifiBandInfoTitle),
+        content: SingleChildScrollView(
+          child: Text(l.wifiBandInfoBody),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('OK'),
+            child: Text(l.ok),
           ),
         ],
       ),
@@ -72,6 +60,7 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
   static const _passGap = Duration(milliseconds: 400);
 
   Future<void> _scan() async {
+    final l = AppLocalizations.of(context);
     setState(() {
       _scanning = true;
       _error = '';
@@ -103,7 +92,7 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
           }
         }
       } on PlatformException catch (e) {
-        err = 'Scan error: ${e.message}';
+        err = '${l.scanErrorPrefix}: ${e.message}';
       } catch (e) {
         err = '$e';
       }
@@ -115,7 +104,7 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
     if (!mounted) return;
     setState(() {
       if (merged.isEmpty) {
-        _error = err.isEmpty ? 'No results.' : err;
+        _error = err.isEmpty ? l.noResults : err;
         _networks = _demo();
       } else {
         _error = '';
@@ -198,16 +187,17 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Wi-Fi Channels',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Text(
+          l.toolWifiChannels,
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
           IconButton(
             icon: const Icon(Icons.info_outline),
-            tooltip: 'About 5 GHz channels',
+            tooltip: l.about5GhzChannels,
             onPressed: _showBandInfo,
           ),
           if (_scanning)
@@ -225,7 +215,7 @@ class _WifiChannelsScreenState extends State<WifiChannelsScreen>
           else
             IconButton(
               icon: const PulsingIcon(child: Icon(Icons.refresh)),
-              tooltip: 'Re-scan',
+              tooltip: l.reScan,
               onPressed: _scan,
             ),
         ],
@@ -384,7 +374,8 @@ class _ChannelChartState extends State<_ChannelChart> {
     final channels = widget.channels;
     final band = widget.band;
     if (networks.isEmpty) {
-      return Center(child: Text('No $band networks detected.'));
+      return Center(child: Text(
+          AppLocalizations.of(context).noBandNetworks(band)));
     }
 
     final ssids = networks.map((n) => n.ssid).toSet().toList();
@@ -529,7 +520,7 @@ class _ChannelChartState extends State<_ChannelChart> {
               SizedBox(
                 width: _securityWidth,
                 child: Text(
-                  'Security',
+                  AppLocalizations.of(context).securityLabel,
                   style: const TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
@@ -541,7 +532,8 @@ class _ChannelChartState extends State<_ChannelChart> {
               SizedBox(width: _rssiWidth, child: _headerCell('RSSI', _WifiSort.rssi, true)),
               SizedBox(
                 width: _qualityWidth,
-                child: _headerCell('Quality', _WifiSort.quality, true),
+                child: _headerCell(
+                    AppLocalizations.of(context).qualityLabel, _WifiSort.quality, true),
               ),
             ],
           ),
@@ -634,7 +626,7 @@ class _ChannelChartState extends State<_ChannelChart> {
           SizedBox(
             width: _qualityWidth,
             child: Text(
-              _quality(n.rssi),
+              _quality(context, n.rssi),
               style: TextStyle(fontSize: 11, color: _qColor(n.rssi)),
               textAlign: TextAlign.right,
             ),
@@ -644,12 +636,13 @@ class _ChannelChartState extends State<_ChannelChart> {
     );
   }
 
-  static String _quality(int r) {
-    if (r >= -50) return 'Excellent';
-    if (r >= -60) return 'Good';
-    if (r >= -70) return 'Fair';
-    if (r >= -80) return 'Weak';
-    return 'Poor';
+  static String _quality(BuildContext context, int r) {
+    final l = AppLocalizations.of(context);
+    if (r >= -50) return l.qExcellent;
+    if (r >= -60) return l.qGood;
+    if (r >= -70) return l.qFair;
+    if (r >= -80) return l.qWeak;
+    return l.qPoor;
   }
 
   static Color _qColor(int r) {

@@ -1,5 +1,8 @@
+import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:simply_net/l10n/app_languages.dart';
+import 'package:simply_net/l10n/app_localizations.dart';
 import 'package:simply_net/models/app_settings.dart';
 import 'package:simply_net/providers/settings_provider.dart';
 
@@ -10,40 +13,44 @@ class SettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final prov = context.watch<SettingsProvider>();
     final settings = prov.settings;
+    final l = AppLocalizations.of(context);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Settings',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Text(
+          l.settingsTitle,
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 8),
         children: [
           // ── Appearance ──────────────────────────────────────────────────
-          _SectionHeader('Appearance'),
+          _SectionHeader(l.appearance),
+
+          // Language (first Appearance setting)
+          _LanguageTile(current: prov.language, onSelected: prov.setLanguage),
 
           // Theme
           _SegmentedTile(
             icon: Icons.brightness_4,
-            label: 'Theme',
+            label: l.theme,
             child: SegmentedButton<AppTheme>(
-              segments: const [
+              segments: [
                 ButtonSegment(
                   value: AppTheme.light,
-                  icon: Icon(Icons.light_mode),
-                  label: Text('Light'),
+                  icon: const Icon(Icons.light_mode),
+                  label: Text(l.themeLight),
                 ),
                 ButtonSegment(
                   value: AppTheme.dark,
-                  icon: Icon(Icons.dark_mode),
-                  label: Text('Dark'),
+                  icon: const Icon(Icons.dark_mode),
+                  label: Text(l.themeDark),
                 ),
                 ButtonSegment(
                   value: AppTheme.system,
-                  icon: Icon(Icons.brightness_auto),
-                  label: Text('Auto'),
+                  icon: const Icon(Icons.brightness_auto),
+                  label: Text(l.themeAuto),
                 ),
               ],
               selected: {settings.theme},
@@ -54,23 +61,23 @@ class SettingsScreen extends StatelessWidget {
           // Screen on timeout
           _SegmentedTile(
             icon: Icons.screen_lock_portrait_outlined,
-            label: 'Screen On Timeout',
+            label: l.screenOnTimeout,
             child: SegmentedButton<AppScreenTimeout>(
-              segments: const [
+              segments: [
                 ButtonSegment(
                   value: AppScreenTimeout.system,
-                  icon: Icon(Icons.phone_android),
-                  label: Text('System'),
+                  icon: const Icon(Icons.phone_android),
+                  label: Text(l.timeoutSystem),
                 ),
                 ButtonSegment(
                   value: AppScreenTimeout.triple,
-                  icon: Icon(Icons.timer_3_select),
-                  label: Text('3× System'),
+                  icon: const Icon(Icons.timer_3_select),
+                  label: Text(l.timeoutTriple),
                 ),
                 ButtonSegment(
                   value: AppScreenTimeout.stayOn,
-                  icon: Icon(Icons.lock_open_outlined),
-                  label: Text('Stay On'),
+                  icon: const Icon(Icons.lock_open_outlined),
+                  label: Text(l.timeoutStayOn),
                 ),
               ],
               selected: {settings.screenTimeout},
@@ -79,16 +86,15 @@ class SettingsScreen extends StatelessWidget {
           ),
 
           const Divider(height: 24),
-          _SectionHeader('Scanning'),
+          _SectionHeader(l.scanning),
 
           SwitchListTile(
             secondary: const Icon(Icons.router_outlined),
-            title: const Text('Show MAC Address'),
+            title: Text(l.showMacAddress),
             subtitle: Text(
               prov.macResolutionBlocked
-                  ? 'Disabled on Android v.11 and up due to Google '
-                        'privacy concerns'
-                  : 'Display MAC column in scan results',
+                  ? l.showMacBlocked
+                  : l.showMacSubtitle,
             ),
             value: settings.showMac,
             onChanged: prov.macResolutionBlocked ? null : prov.setShowMac,
@@ -96,27 +102,27 @@ class SettingsScreen extends StatelessWidget {
 
           SwitchListTile(
             secondary: const Icon(Icons.dns_outlined),
-            title: const Text('Resolve Hostnames'),
-            subtitle: const Text('Perform reverse-DNS + mDNS during scan'),
+            title: Text(l.resolveHostnames),
+            subtitle: Text(l.resolveHostnamesSubtitle),
             value: settings.resolveNames,
             onChanged: prov.setResolveNames,
           ),
 
           SwitchListTile(
             secondary: const Icon(Icons.save_alt),
-            title: const Text('Enable Logging'),
-            subtitle: const Text('Save scan and tool output to log files'),
+            title: Text(l.enableLogging),
+            subtitle: Text(l.enableLoggingSubtitle),
             value: settings.loggingEnabled,
             onChanged: prov.setLoggingEnabled,
           ),
 
           const Divider(height: 24),
-          _SectionHeader('Account'),
+          _SectionHeader(l.account),
 
           ListTile(
             leading: const Icon(Icons.account_circle),
-            title: const Text('Log In'),
-            subtitle: const Text('Coming soon'),
+            title: Text(l.logIn),
+            subtitle: Text(l.comingSoon),
             trailing: const Icon(Icons.chevron_right),
             enabled: false,
           ),
@@ -124,6 +130,59 @@ class SettingsScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+// ── Language picker tile ──────────────────────────────────────────────────────
+
+class _LanguageTile extends StatelessWidget {
+  final AppLanguage current;
+  final ValueChanged<AppLanguage> onSelected;
+
+  const _LanguageTile({required this.current, required this.onSelected});
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    return ListTile(
+      leading: _flag(current.countryCode),
+      title: Text(l.language),
+      subtitle: Text(current.endonym),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () async {
+        final picked = await showModalBottomSheet<AppLanguage>(
+          context: context,
+          showDragHandle: true,
+          builder: (ctx) => SafeArea(
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                for (final lang in AppLanguage.supported)
+                  ListTile(
+                    leading: _flag(lang.countryCode),
+                    title: Text(lang.endonym),
+                    trailing: lang.tag == current.tag
+                        ? Icon(Icons.check,
+                            color: Theme.of(ctx).colorScheme.primary)
+                        : null,
+                    onTap: () => Navigator.pop(ctx, lang),
+                  ),
+              ],
+            ),
+          ),
+        );
+        if (picked != null && picked.tag != current.tag) onSelected(picked);
+      },
+    );
+  }
+
+  Widget _flag(String countryCode) => CountryFlag.fromCountryCode(
+        countryCode,
+        theme: const ImageTheme(
+          width: 32,
+          height: 24,
+          shape: RoundedRectangle(4),
+        ),
+      );
 }
 
 // ── Segmented setting tile ────────────────────────────────────────────────────

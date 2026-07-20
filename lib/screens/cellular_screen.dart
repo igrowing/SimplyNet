@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:simply_net/providers/settings_provider.dart';
 import 'package:simply_net/services/log_service.dart';
 import 'package:simply_net/widgets/pulsing_icon.dart';
+import 'package:simply_net/l10n/app_localizations.dart';
 
 /// Cellular Info screen.
 /// Shows Rx/Tx signal levels, connected cell tower data, provider, and
@@ -43,6 +44,7 @@ class _CellularScreenState extends State<CellularScreen> {
   }
 
   Future<void> _refresh() async {
+    final l = AppLocalizations.of(context);
     setState(() { _loading = true; _error = ''; });
     try {
       final raw = await _channel.invokeMethod<Map>('getCellularInfo');
@@ -50,11 +52,11 @@ class _CellularScreenState extends State<CellularScreen> {
         setState(() => _data = raw.map(
             (k, v) => MapEntry(k.toString(), v.toString())));
       } else {
-        setState(() => _error = 'No data returned from device.');
+        setState(() => _error = l.noDataReturned);
       }
     } on PlatformException catch (e) {
       setState(() {
-        _error = 'Platform error: ${e.message}';
+        _error = '${l.platformErrorPrefix}: ${e.message}';
         _data  = _demoData();
       });
     } catch (e) {
@@ -85,6 +87,7 @@ class _CellularScreenState extends State<CellularScreen> {
   }
 
   Future<void> _fetchLocation() async {
+    final l = AppLocalizations.of(context);
     setState(() { _locationBusy = true; _locationLine = ''; _placeName = ''; });
     try {
       // Check permission — we only use what's already granted.
@@ -97,7 +100,7 @@ class _CellularScreenState extends State<CellularScreen> {
       if (perm == LocationPermission.denied ||
           perm == LocationPermission.deniedForever) {
         setState(() {
-          _locationLine = 'Denied by the user';
+          _locationLine = l.deniedByUser;
           _placeName    = '';
           _locationBusy = false;
         });
@@ -132,7 +135,7 @@ class _CellularScreenState extends State<CellularScreen> {
       });
     } catch (e) {
       setState(() {
-        _locationLine = 'Unavailable: $e';
+        _locationLine = '${l.unavailablePrefix}: $e';
         _locationBusy = false;
       });
     }
@@ -188,10 +191,11 @@ class _CellularScreenState extends State<CellularScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Cellular Info',
-            style: TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(l.toolCellularInfo,
+            style: const TextStyle(fontWeight: FontWeight.bold)),
         actions: [
           if (_loading)
             const Padding(
@@ -203,7 +207,7 @@ class _CellularScreenState extends State<CellularScreen> {
           else
             IconButton(
               icon: const PulsingIcon(child: Icon(Icons.refresh)),
-              tooltip: 'Refresh',
+              tooltip: l.refresh,
               onPressed: _refresh,
             ),
         ],
@@ -220,7 +224,7 @@ class _CellularScreenState extends State<CellularScreen> {
                     color: Theme.of(context).colorScheme.onErrorContainer),
                 const SizedBox(width: 6),
                 Expanded(
-                  child: Text('$_error\nShowing demo data.',
+                  child: Text('$_error\n${l.cellShowingDemo}',
                       style: TextStyle(fontSize: 12,
                           color: Theme.of(context).colorScheme.onErrorContainer)),
                 ),
@@ -232,69 +236,43 @@ class _CellularScreenState extends State<CellularScreen> {
                 : ListView(
                     padding: const EdgeInsets.all(12),
                     children: [
-                      _section('Carrier', [
-                        _row('Provider',    _data['provider']    ?? '—'),
-                        _row('Technology',  _data['technology']  ?? '—'),
+                      _section(l.carrier, [
+                        _row(l.provider,    _data['provider']    ?? '—'),
+                        _row(l.technology,  _data['technology']  ?? '—'),
                         _row('MCC-MNC',     _data['mcc_mnc']     ?? '—'),
-                        _row('Roaming',     _data['roaming']     ?? '—'),
-                        _row('Data state',  _data['data_state']  ?? '—'),
+                        _row(l.roaming,     _data['roaming']     ?? '—'),
+                        _row(l.dataState,   _data['data_state']  ?? '—'),
                       ]),
                       const SizedBox(height: 12),
-                      _section('Signal Quality', [
+                      _section(l.signalQuality, [
                         _row('RSSI',        _data['rssi']        ?? '—'),
                         _row('RSRP',        _data['rsrp']        ?? '—',
-                            hint: 'RSRP — Reference Signal Received Power.\n\n'
-                                'The average power of the cell\u0027s reference '
-                                'signals, measured in dBm. It reflects raw '
-                                'signal strength.\n\nTypical range: about '
-                                '\u221280 dBm (excellent) down to \u2212120 dBm '
-                                '(very weak). Higher (closer to zero) is '
-                                'better.'),
+                            hint: l.rsrpHint),
                         _row('RSRQ',        _data['rsrq']        ?? '—',
-                            hint: 'RSRQ — Reference Signal Received Quality.\n\n'
-                                'Signal quality in dB, factoring in '
-                                'interference and network load alongside '
-                                'strength.\n\nTypical range: about \u22123 dB '
-                                '(excellent) down to \u221220 dB (poor). '
-                                'Higher is better.'),
+                            hint: l.rsrqHint),
                         _row('SINR',        _data['sinr']        ?? '—',
-                            hint: 'SINR — Signal to Interference-plus-Noise '
-                                'Ratio.\n\nHow much the wanted signal exceeds '
-                                'interference plus background noise, in dB.\n\n'
-                                'Higher is better: above ~20 dB is excellent, '
-                                'around 0 dB or below is poor.'),
+                            hint: l.sinrHint),
                         const SizedBox(height: 4),
                         _signalBar(context, _data['rsrp'] ?? ''),
                       ]),
                       const SizedBox(height: 12),
-                      _section('Cell Tower', [
-                        _row('Cell ID',     _data['cell_id']     ?? '—'),
+                      _section(l.cellTower, [
+                        _row(l.cellId,      _data['cell_id']     ?? '—'),
                         _row('LAC / TAC',   _data['lac_tac']     ?? '—'),
                         _row('PCI',         _data['pci']         ?? '—',
-                            hint: 'PCI — Physical Cell ID.\n\nA number '
-                                '(0\u2013503 on LTE) that identifies the '
-                                'serving cell on the radio interface. '
-                                'Neighbouring cells use different PCIs so the '
-                                'phone can tell them apart.'),
-                        _row('Band',        _data['band']        ?? '—'),
+                            hint: l.pciHint),
+                        _row(l.bandLabel,   _data['band']        ?? '—'),
                         _row('EARFCN',      _data['earfcn']      ?? '—',
-                            hint: 'EARFCN — E-UTRA Absolute Radio Frequency '
-                                'Channel Number.\n\nIdentifies the exact '
-                                'carrier frequency the device is using; it '
-                                'maps to a specific LTE band and channel.'),
-                        _row('Est. distance', _data['tower_est_dist'] ?? '—',
-                            hint: 'Estimated distance to the cell tower.\n\n'
-                                'Derived from signal strength (RSRP) using a '
-                                'radio propagation model. It is a very rough, '
-                                'order-of-magnitude indication only \u2014 not '
-                                'a precise measurement.'),
+                            hint: l.earfcnHint),
+                        _row(l.estDistance, _data['tower_est_dist'] ?? '—',
+                            hint: l.estDistHint),
                       ]),
                       const SizedBox(height: 12),
                       // ── Location section ──────────────────────────────────
-                      _section('Location', [
-                        _row('Coordinates',
+                      _section(l.location, [
+                        _row(l.coordinates,
                           _locationBusy
-                              ? 'Locating…'
+                              ? l.locating
                               : _locationLine.isEmpty ? '—' : _locationLine),
                         if (_locationBusy)
                           const Padding(
@@ -302,7 +280,7 @@ class _CellularScreenState extends State<CellularScreen> {
                             child: LinearProgressIndicator(),
                           ),
                         if (_placeName.isNotEmpty)
-                          _row('Nearest place', _placeName),
+                          _row(l.nearestPlace, _placeName),
                       ]),
                     ],
                   ),
@@ -336,7 +314,7 @@ class _CellularScreenState extends State<CellularScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('OK'),
+            child: Text(AppLocalizations.of(ctx).ok),
           ),
         ],
       ),
@@ -392,7 +370,8 @@ class _CellularScreenState extends State<CellularScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Signal strength', style: TextStyle(fontSize: 12)),
+          Text(AppLocalizations.of(context).signalStrength,
+              style: const TextStyle(fontSize: 12)),
           const SizedBox(height: 4),
           ClipRRect(
             borderRadius: BorderRadius.circular(6),
@@ -406,10 +385,10 @@ class _CellularScreenState extends State<CellularScreen> {
           const SizedBox(height: 2),
           Text(
             frac > 0.7
-                ? 'Excellent'
+                ? AppLocalizations.of(context).qExcellent
                 : frac > 0.4
-                    ? 'Fair'
-                    : 'Poor',
+                    ? AppLocalizations.of(context).qFair
+                    : AppLocalizations.of(context).qPoor,
             style: TextStyle(fontSize: 11, color: color),
           ),
         ],

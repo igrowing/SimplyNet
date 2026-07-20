@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:simply_net/models/log_entry.dart';
 import 'package:simply_net/providers/log_provider.dart';
+import 'package:simply_net/l10n/app_localizations.dart';
 
 final _fmt = DateFormat('yyyy-MM-dd HH:mm:ss');
 
@@ -24,14 +25,15 @@ class _LogsScreenState extends State<LogsScreen> {
   @override
   Widget build(BuildContext context) {
     final prov = context.watch<LogProvider>();
+    final l = AppLocalizations.of(context);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Logs', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(l.logs, style: const TextStyle(fontWeight: FontWeight.bold)),
         actions: [
           IconButton(
             icon: const Icon(Icons.delete_sweep_outlined),
-            tooltip: 'Delete all logs',
+            tooltip: l.deleteAllLogs,
             onPressed:
                 prov.logs.isEmpty ? null : () => _confirmDeleteAll(context, prov),
           ),
@@ -58,21 +60,22 @@ class _LogsScreenState extends State<LogsScreen> {
   }
 
   void _confirmDeleteAll(BuildContext ctx, LogProvider prov) {
+    final l = AppLocalizations.of(ctx);
     showDialog(
       context: ctx,
       builder: (_) => AlertDialog(
-        title: const Text('Delete all logs?'),
-        content: const Text('This cannot be undone.'),
+        title: Text(l.deleteAllLogsQ),
+        content: Text(l.cannotBeUndone),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel')),
+              child: Text(l.cancel)),
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);
               prov.deleteAll();
             },
-            child: Text('Delete all',
+            child: Text(l.deleteAll,
                 style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
           ),
         ],
@@ -82,21 +85,22 @@ class _LogsScreenState extends State<LogsScreen> {
 
   void _confirmDelete(
       BuildContext ctx, LogProvider prov, LogEntry entry) {
+    final l = AppLocalizations.of(ctx);
     showDialog(
       context: ctx,
       builder: (_) => AlertDialog(
-        title: const Text('Delete log?'),
-        content: const Text('This cannot be undone.'),
+        title: Text(l.deleteLogQ),
+        content: Text(l.cannotBeUndone),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel')),
+              child: Text(l.cancel)),
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);
               prov.deleteLog(entry);
             },
-            child: Text('Delete',
+            child: Text(l.delete,
                 style: TextStyle(
                     color: Theme.of(ctx).colorScheme.error)),
           ),
@@ -149,7 +153,7 @@ class _EmptyLogs extends StatelessWidget {
               size: 72,
               color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.2)),
           const SizedBox(height: 16),
-          Text('No logs yet',
+          Text(AppLocalizations.of(context).noLogsYet,
               style: TextStyle(
                   color: Theme.of(context)
                       .colorScheme
