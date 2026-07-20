@@ -15,15 +15,37 @@ class AboutScreen extends StatefulWidget {
 
 class _AboutScreenState extends State<AboutScreen> {
   String _raw = '';
+  bool _loaded = false;
 
   @override
-  void initState() {
-    super.initState();
-    rootBundle.loadString('README.md').then((s) {
-      if (mounted) setState(() => _raw = s);
-    }).catchError((_) {
-      if (mounted) setState(() => _raw = '# SimplyNet\n\nREADME not available.');
-    });
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_loaded) return;
+    _loaded = true;
+    _load();
+  }
+
+  /// Loads the README matching the active locale from
+  /// `assets/help/<tag>/readme.md`, falling back to the English copy.
+  Future<void> _load() async {
+    final locale = Localizations.localeOf(context);
+    final tag = locale.scriptCode == null
+        ? locale.languageCode
+        : '${locale.languageCode}_${locale.scriptCode}';
+    final candidates = <String>[
+      'assets/help/$tag/readme.md',
+      'assets/help/en/readme.md',
+    ];
+    for (final path in candidates) {
+      try {
+        final s = await rootBundle.loadString(path);
+        if (mounted) setState(() => _raw = s);
+        return;
+      } catch (_) {
+        // try next candidate
+      }
+    }
+    if (mounted) setState(() => _raw = '# SimplyNet\n\nREADME not available.');
   }
 
   @override
