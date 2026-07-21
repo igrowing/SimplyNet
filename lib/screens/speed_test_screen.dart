@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:simply_net/l10n/app_localizations.dart';
 import 'package:simply_net/screens/markdown_info_screen.dart';
 import 'package:simply_net/services/log_service.dart';
 import 'package:simply_net/services/ookla_speed_test.dart';
@@ -62,7 +63,8 @@ class _SpeedTestState extends State<SpeedTestScreen> {
   double? _upload;
   double? _ping;
   bool _testing = false;
-  String _status = 'Ready';
+  String _status = 'ready';
+  String _errorMsg = '';
   double _progress = 0;
 
   bool _aborted = false;
@@ -191,34 +193,34 @@ class _SpeedTestState extends State<SpeedTestScreen> {
     await _persistProvider();
   }
 
-  Future<bool?> _showOoklaConsent() => showDialog<bool>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      title: const Text('Switch to Ookla?'),
-      content: const Text(
-        'Switching to Ookla requires connecting to third-party '
-        'servers. Ookla collects and shares your IP address, device '
-        'identifiers, and location data.',
+  Future<bool?> _showOoklaConsent() {
+    final l = AppLocalizations.of(context);
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l.switchToOokla),
+        content: Text(l.ooklaConsentBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(l.decline),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(l.accept),
+          ),
+        ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx, false),
-          child: const Text('Decline'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.pop(ctx, true),
-          child: const Text('Accept'),
-        ),
-      ],
-    ),
-  );
+    );
+  }
 
   void _openInfo() {
+    final l = AppLocalizations.of(context);
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => const MarkdownInfoScreen(
-          title: 'Speed Test Info',
-          assetPath: 'assets/speedtest_info.md',
+        builder: (_) => MarkdownInfoScreen(
+          title: l.speedTestInfo,
+          assetName: 'speedtest_info.md',
         ),
       ),
     );
@@ -253,14 +255,12 @@ class _SpeedTestState extends State<SpeedTestScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Clear History?'),
-        content: const Text(
-          'This will permanently delete all measurement records.',
-        ),
+        title: Text(AppLocalizations.of(context).clearHistoryTitle),
+        content: Text(AppLocalizations.of(context).clearHistoryBody),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: Text(AppLocalizations.of(context).cancel),
           ),
           TextButton(
             onPressed: () async {
@@ -273,7 +273,7 @@ class _SpeedTestState extends State<SpeedTestScreen> {
               }
               if (context.mounted) Navigator.pop(ctx);
             },
-            child: const Text('Clear'),
+            child: Text(AppLocalizations.of(context).clear),
           ),
         ],
       ),
@@ -289,8 +289,8 @@ class _SpeedTestState extends State<SpeedTestScreen> {
       _ping = null;
       _progress = 0;
       _status = _provider == SpeedProvider.ookla
-          ? 'Finding server…'
-          : 'Measuring ping…';
+          ? 'finding'
+          : 'measuringPing';
     });
 
     try {
@@ -312,7 +312,7 @@ class _SpeedTestState extends State<SpeedTestScreen> {
       setState(() {
         _upload = r.ul;
         _progress = 1.0;
-        _status = 'Done';
+        _status = 'done';
         _testing = false;
         _history.insert(0, record); // newest first
       });
@@ -322,7 +322,8 @@ class _SpeedTestState extends State<SpeedTestScreen> {
       // Discard incomplete results if the user aborted the run.
       if (_aborted || !mounted) return;
       setState(() {
-        _status = 'Error: $e';
+        _status = 'error';
+        _errorMsg = '$e';
         _testing = false;
       });
       await _logError(e, st);
@@ -342,12 +343,32 @@ class _SpeedTestState extends State<SpeedTestScreen> {
     }
     setState(() {
       _testing = false;
-      _status = 'Ready';
+      _status = 'ready';
       _download = null;
       _upload = null;
       _ping = null;
       _progress = 0;
     });
+  }
+
+  /// Map the internal status token to a localized status string.
+  String _statusText(AppLocalizations l) {
+    switch (_status) {
+      case 'finding':
+        return l.findingServer;
+      case 'measuringPing':
+        return l.measuringPing;
+      case 'download':
+        return l.testingDownload;
+      case 'upload':
+        return l.testingUpload;
+      case 'done':
+        return l.statusDone;
+      case 'error':
+        return '${l.errorLabel}: $_errorMsg';
+      default:
+        return l.statusReady;
+    }
   }
 
   /// Persist a diagnostic log only when a test fails (never on success).
@@ -380,7 +401,7 @@ class _SpeedTestState extends State<SpeedTestScreen> {
     setState(() {
       _ping = pingMs;
       _progress = 0.15;
-      _status = 'Testing download…';
+      _status = 'download';
     });
 
     // Request 500MB to ensure high-speed networks don't finish before 10 seconds
@@ -390,7 +411,7 @@ class _SpeedTestState extends State<SpeedTestScreen> {
 
     setState(() {
       _progress = 0.6;
-      _status = 'Testing upload…';
+      _status = 'upload';
     });
 
     final ulMbps = await _runUploadTest(
@@ -409,7 +430,7 @@ class _SpeedTestState extends State<SpeedTestScreen> {
     setState(() {
       _ping = best.pingMs;
       _progress = 0.15;
-      _status = 'Testing download…';
+      _status = 'download';
     });
 
     final dlMbps = await _runDownloadTest(
@@ -418,7 +439,7 @@ class _SpeedTestState extends State<SpeedTestScreen> {
     
     setState(() {
       _progress = 0.6;
-      _status = 'Testing upload…';
+      _status = 'upload';
     });
     
     final ulMbps = await _runUploadTest(server.uploadUri());
@@ -619,11 +640,12 @@ class _SpeedTestState extends State<SpeedTestScreen> {
   @override
   Widget build(BuildContext context) {
     final primary = Theme.of(context).colorScheme.primary;
+    final l = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Speed Test',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Text(
+          l.toolSpeedTest,
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
       body: ListView(
@@ -631,7 +653,7 @@ class _SpeedTestState extends State<SpeedTestScreen> {
         children: [
           // ── Current test section ────────────────────────────────────
           Text(
-            'Speed Test',
+            l.toolSpeedTest,
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.bold,
               color: primary,
@@ -642,21 +664,21 @@ class _SpeedTestState extends State<SpeedTestScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               _SpeedGauge(
-                label: 'Download',
+                label: l.download,
                 value: _download,
                 unit: 'Mbps',
                 icon: Icons.download,
                 color: Colors.blue,
               ),
               _SpeedGauge(
-                label: 'Upload',
+                label: l.upload,
                 value: _upload,
                 unit: 'Mbps',
                 icon: Icons.upload,
                 color: Colors.orange,
               ),
               _SpeedGauge(
-                label: 'Ping',
+                label: l.toolPing,
                 value: _ping,
                 unit: 'ms',
                 icon: Icons.timer,
@@ -669,7 +691,7 @@ class _SpeedTestState extends State<SpeedTestScreen> {
             LinearProgressIndicator(value: _progress),
             const SizedBox(height: 10),
             Text(
-              _status,
+              _statusText(l),
               textAlign: TextAlign.center,
               style: TextStyle(color: primary, fontWeight: FontWeight.w500),
             ),
@@ -686,7 +708,7 @@ class _SpeedTestState extends State<SpeedTestScreen> {
                   foregroundColor: Colors.white,
                 ),
                 icon: const Icon(Icons.stop),
-                label: const Text('Stop'),
+                label: Text(l.stop),
               )
             : FilledButton.icon(
                 onPressed: _runTest,
@@ -699,7 +721,7 @@ class _SpeedTestState extends State<SpeedTestScreen> {
                       : Colors.white,
                 ),
                 icon: const Icon(Icons.play_arrow),
-                label: const Text('Start Test'),
+                label: Text(l.startTest),
               ),
           ),            
           const SizedBox(height: 8),
@@ -713,26 +735,26 @@ class _SpeedTestState extends State<SpeedTestScreen> {
                     : (p) {
                         if (p != null) _onProviderSelected(p);
                       },
-                items: const [
+                items: [
                   DropdownMenuItem(
                     value: SpeedProvider.cloudflare,
-                    child: Text('Via Cloudflare'),
+                    child: Text(l.viaCloudflare),
                   ),
                   DropdownMenuItem(
                     value: SpeedProvider.ookla,
-                    child: Text('Via Ookla'),
+                    child: Text(l.viaOokla),
                   ),
                 ],
               ),
               const SizedBox(width: 4),
               IconButton(
                 icon: const Icon(Icons.info_outline),
-                tooltip: 'About the speed test',
+                tooltip: l.aboutSpeedTestTip,
                 onPressed: _openInfo,
               ),
             ],
           ),
-          if (!_testing && _status.startsWith('Error'))
+          if (!_testing && _status == 'error')
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
@@ -745,7 +767,7 @@ class _SpeedTestState extends State<SpeedTestScreen> {
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      _status,
+                      '${l.errorLabel}: $_errorMsg',
                       style: TextStyle(
                         color: Theme.of(context).colorScheme.error,
                       ),
@@ -763,7 +785,7 @@ class _SpeedTestState extends State<SpeedTestScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Previous Measurements',
+                l.previousMeasurements,
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                   color: primary,
@@ -773,7 +795,7 @@ class _SpeedTestState extends State<SpeedTestScreen> {
                 TextButton.icon(
                   onPressed: _clearHistory,
                   icon: const Icon(Icons.delete_outline, size: 18),
-                  label: const Text('Clear'),
+                  label: Text(l.clear),
                 ),
             ],
           ),
@@ -783,7 +805,7 @@ class _SpeedTestState extends State<SpeedTestScreen> {
               padding: const EdgeInsets.symmetric(vertical: 16),
               child: Center(
                 child: Text(
-                  'No measurements yet.',
+                  l.noMeasurements,
                   style: TextStyle(
                     color: Theme.of(
                       context,
@@ -801,7 +823,7 @@ class _SpeedTestState extends State<SpeedTestScreen> {
                   child: Row(
                     children: [
                       _HistHeader(
-                        'Date / Time',
+                        l.dateTime,
                         flex: 4,
                         active: _sortColumn == 0,
                         ascending: _sortAsc,

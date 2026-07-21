@@ -6,6 +6,7 @@ import 'package:simply_net/providers/settings_provider.dart';
 import 'package:simply_net/services/ip_camera_detector.dart';
 import 'package:simply_net/services/network_scanner.dart';
 import 'package:simply_net/widgets/pulsing_icon.dart';
+import 'package:simply_net/l10n/app_localizations.dart';
 
 // ════════════════════════════════════════════════════════════════════
 //  3. IP CAMERA SCAN  (fixed: always terminates; toggle button)
@@ -57,12 +58,15 @@ class _IpCameraScanState extends State<IpCameraScanScreen> {
 
   // ── Label helpers ──────────────────────────────────────────────────────────
 
-  String _methodLabel(CameraDetectionMethod m) => switch (m) {
-    CameraDetectionMethod.specificPort => 'Protocol port',
-    CameraDetectionMethod.genericPortMfr => 'Known vendor',
-    CameraDetectionMethod.genericPortHttp => 'HTTP fingerprint',
-    CameraDetectionMethod.wsDiscovery => 'WS-Discovery',
-  };
+  String _methodLabel(CameraDetectionMethod m) {
+    final l = AppLocalizations.of(context);
+    return switch (m) {
+      CameraDetectionMethod.specificPort => l.camMethodProtocolPort,
+      CameraDetectionMethod.genericPortMfr => l.camMethodKnownVendor,
+      CameraDetectionMethod.genericPortHttp => l.camMethodHttpFingerprint,
+      CameraDetectionMethod.wsDiscovery => l.camMethodWsDiscovery,
+    };
+  }
 
   Color _methodColor(CameraDetectionMethod m) => switch (m) {
     CameraDetectionMethod.specificPort => Colors.green,
@@ -85,11 +89,12 @@ class _IpCameraScanState extends State<IpCameraScanScreen> {
     final scanning = cams.scanning;
     final done = cams.done;
     final total = cams.total;
+    final l = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'IP Camera Scan',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Text(
+          l.ipCameraScan,
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
           IconButton(
@@ -106,7 +111,7 @@ class _IpCameraScanState extends State<IpCameraScanScreen> {
                       child: Icon(Icons.refresh_rounded, size: 24),
                     ),
             ),
-            tooltip: scanning ? 'Stop scan' : 'Re-scan',
+            tooltip: scanning ? l.stopScan : l.reScan,
             onPressed: _toggle,
           ),
         ],
@@ -121,10 +126,10 @@ class _IpCameraScanState extends State<IpCameraScanScreen> {
               alignment: Alignment.centerLeft,
               child: Text(
                 scanning
-                    ? 'Scanning… $done/$total hosts — ${results.length} camera(s)'
+                    ? l.camScanningStatus(done, results.length, total)
                     : results.isEmpty
-                    ? 'No saved results — tap refresh to scan ${widget.cidr}'
-                    : '${results.length} camera(s) found — ${widget.cidr}',
+                    ? l.camNoSaved(widget.cidr)
+                    : l.camFound(widget.cidr, results.length),
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
@@ -165,7 +170,7 @@ class _IpCameraScanState extends State<IpCameraScanScreen> {
           const SizedBox(height: 4),
           Expanded(
             child: results.isEmpty && !scanning
-                ? const Center(child: Text('No cameras found.'))
+                ? Center(child: Text(l.noCamerasFound))
                 : ListView.separated(
                     itemCount: results.length,
                     separatorBuilder: (_, _) =>

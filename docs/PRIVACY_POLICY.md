@@ -114,7 +114,7 @@ It does not target children and does not knowingly collect any data from anyone.
 If the app ever changes in a way that affects privacy (e.g., a new permission
 is added), this policy will be updated and the "Last updated" date will change.
 The policy is always available at:
-[https://igrowing.github.io/SimplyNet/privacy](https://igrowing.github.io/SimplyNet/privacy)
+[https://raw.githubusercontent.com/igrowing/SimplyNet/refs/heads/main/docs/PRIVACY_POLICY.md](https://raw.githubusercontent.com/igrowing/SimplyNet/refs/heads/main/docs/PRIVACY_POLICY.md)
 
 ---
 

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:simply_net/l10n/app_localizations.dart';
 import 'package:simply_net/widgets/pulsing_icon.dart';
 
 // ════════════════════════════════════════════════════════════════════
@@ -55,11 +56,12 @@ class _PublicIpState extends State<PublicIpScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'My Public IP',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Text(
+          l.myPublicIp,
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
           IconButton(
@@ -74,7 +76,7 @@ class _PublicIpState extends State<PublicIpScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-          ? Center(child: Text('Error: $_error'))
+          ? Center(child: Text('${l.errorLabel}: $_error'))
           : ListView(
               padding: const EdgeInsets.all(16),
               children: (_info ?? {}).entries

@@ -1,4 +1,46 @@
 # Update app icon
+**Step 1 — Create padded foreground PNG**
+
+Open `assets/simplynet.png` in any image editor (GIMP, Photoshop, Affinity Photo).
+- Canvas must be **1024×1024** (or any square)
+- Resize the artwork DOWN to **66% of canvas** (≈680px in a 1024 canvas)
+- Center it, leave 17% transparent padding on all four sides
+- Save as `assets/simplynet_fg.png` (PNG with transparency)
+
+**Step 2 — Create transparent background PNG**
+
+Create a 1024×1024 fully transparent PNG and save as `assets/icon_bg.png`.
+(Or use your brand color — just make sure the artwork edges don't bleed over it.)
+
+**Step 3 - configure Flutter**
+
+In root folder of the project create `flutter_launcher_icons.yaml` with content (adapt for your icon names):
+
+```
+flutter_launcher_icons:
+  android: true                     # generates ic_launcher and related res
+  adaptive_icon_background: "assets/icon_bg.png"    # transparent PNG
+  adaptive_icon_foreground: "assets/simplynet_fg.png"  # artwork with 20% padding
+  image_path_android: "assets/simplynet_fg.png"
+  ios: true
+  image_path_ios: "assets/simplynet.png"
+  min_sdk_android: 21
+  web:
+    generate: false
+```
+
+Add to `pubspec.yaml` in `dev_depencides:` section:
+
+```
+  flutter_launcher_icons: ^0.14.4
+```
+
+**Step 4 — Regenerate icons**
+
+```bash
+flutter pub run flutter_launcher_icons:main
+```
+
 1. Change `assets/simplynet.png`.
 2. Run in terminal:
 ```
@@ -16,10 +58,8 @@ pubspec.yaml:
 name: simply_net
 description: "SimplyTools network toolkit"
 publish_to: 'none'
+homepage: "https://github.com/igrowing/SimplyNet"  # Update if applicable
 ```
-
-android/app/build.gradle.kts:
-Look for app name references in build config
 
 ios/Runner/Info.plist:
 ```
@@ -57,26 +97,8 @@ Google Play: Create/use a Google Play Developer account registered to "SimplyToo
 App Store: Create/use an Apple Developer account for "SimplyTools"
 Developer name appears in store listings, not in your code
 4. Icons and Screenshots
-Android: `android/app/src/main/res/mipmap-*/ic_launcher.png`
-iOS: Update app icons in Xcode asset catalog
-Use `flutter_launcher_icons.yaml` to regenerate:
-```
-flutter_launcher_icons:
-  image_path: "assets/simplynet.png"
-  ios: true
-  android: true
-```
+Refer to **Update app icon** chapter.
 
-Then run: `flutter pub run flutter_launcher_icons`
-
-5. Metadata Files
-pubspec.yaml:
-```
-name: simply_net
-description: "Network toolkit by SimplyTools"
-author: "SimplyTools"
-homepage: "https://github.com/igrowing/SimplyNet"  # Update if applicable
-```
 
 Checklist before publishing:
 - [] Update app display name everywhere
@@ -91,7 +113,8 @@ Checklist before publishing:
 Pro tip: Use `flutter rename` package to automate some of this:
 ```
 dart pub global activate rename
-rename --appname "SymplyNet" --bundleId com.simplytools.simplynet
+dart pub global run rename setAppName --value "SimplyNet"           
+dart pub global run rename setBundleId --value "com.simplytools.simplynet"  
 ```
 
 Then verify all changes manually before submitting to stores!
@@ -169,9 +192,9 @@ Adapted for Kotlin from: https://dev.to/teerasej/step-by-step-to-publish-your-fl
 ## 1. Create your Keystore
 Keystore is the file you should have to sign your AAB file.
 
-Run the following command in Terminal at **your project's root directory**.
+Run the following command in Terminal (NOT PowerShell!) at **your project's root directory**.
 
-`keytool -genkey -v -keystore upload-keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload`
+`keytool.exe -genkey -v -keystore upload-keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload`
 
 After entering this command, you will be asked to fill key's password and some information.
 
@@ -182,7 +205,7 @@ Create a file named `key.properties` at `[project root]/android/`
 storePassword=<password from previous step>
 keyPassword=<password from previous step>
 keyAlias=upload
-storeFile=../upload-keystore.jks
+storeFile=../../upload-keystore.jks
 ```
 
 ## 3. Modify app/build.gradle
@@ -201,6 +224,11 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 ```
+
+## 4. Add environment files
+Must have:
+- android\app\proguard-rules.pro
+
 
 ### Replace buildTypes block
 find buildTypes and signingConfigs blocks. replace them with following code:
@@ -296,9 +324,6 @@ When the GitHub runner finishes its job, the virtual environment is completely d
 
 # TODO
 * Enhance device detection list: qnap, fritz, eero, samsung mobile, redmi mobile, huawei mobile, espressif, hui zhou camera reolin dahua, 
-* Convert input text fields to dropdown boxes, remembering previous inputs for easy choice.
-* Add translations.
-* Add Ok-pop up when user turns screen constant on.
 * Add Snmp mib browser
 * Add more MQ: rabbitmq, zmq, kafka, amazon sqs, google cloud pub/sub
 

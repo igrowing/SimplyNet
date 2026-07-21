@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:simply_net/l10n/app_localizations.dart';
 import 'package:simply_net/providers/camera_scan_provider.dart';
 import 'package:simply_net/providers/iot_scan_provider.dart';
 import 'package:simply_net/providers/log_provider.dart';
@@ -50,6 +51,9 @@ class SimplyNetApp extends StatelessWidget {
           return MaterialApp(
             title: 'SimplyNet',
             debugShowCheckedModeBanner: false,
+            locale: settings.locale,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             themeMode: settings.themeMode,
             theme: _buildTheme(Brightness.light),
             darkTheme: _buildTheme(Brightness.dark),
