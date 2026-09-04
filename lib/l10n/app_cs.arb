@@ -248,5 +248,9 @@
   "sinrHint": "SINR — poměr signálu k rušení a šumu.\n\nO kolik požadovaný signál převyšuje rušení plus šum pozadí, v dB.\n\nVyšší je lepší: nad ~20 dB je vynikající, kolem 0 dB nebo méně je špatné.",
   "pciHint": "PCI — fyzický identifikátor buňky.\n\nČíslo (0–503 v LTE) identifikující obsluhující buňku na rádiovém rozhraní. Sousední buňky používají různá PCI, aby je telefon mohl rozlišit.",
   "earfcnHint": "EARFCN — absolutní číslo rádiového frekvenčního kanálu E-UTRA.\n\nUrčuje přesnou nosnou frekvenci, kterou zařízení používá; odpovídá konkrétnímu pásmu a kanálu LTE.",
-  "estDistHint": "Odhadovaná vzdálenost k buňkové věži.\n\nOdvozena ze síly signálu (RSRP) pomocí modelu šíření rádiových vln. Jde jen o velmi hrubý řádový odhad — nikoli přesné měření."
+  "estDistHint": "Odhadovaná vzdálenost k buňkové věži.\n\nOdvozena ze síly signálu (RSRP) pomocí modelu šíření rádiových vln. Jde jen o velmi hrubý řádový odhad — nikoli přesné měření.",
+  "version": "Verze",
+  "sendFeedback": "Odeslat zpětnou vazbu / návrh na vylepšení",
+  "buyMeCoffee": "Kup mi kávu",
+  "shareAction": "Sdílet"
 }

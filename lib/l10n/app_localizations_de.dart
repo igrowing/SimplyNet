@@ -791,4 +791,16 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String get estDistHint =>
       'Geschätzte Entfernung zum Mobilfunkmast.\n\nAbgeleitet aus der Signalstärke (RSRP) mit einem Funkausbreitungsmodell. Es ist nur ein sehr grober Anhaltspunkt in der Größenordnung — keine präzise Messung.';
+
+  @override
+  String get version => 'Version';
+
+  @override
+  String get sendFeedback => 'Feedback / Verbesserungsidee senden';
+
+  @override
+  String get buyMeCoffee => 'Spendier mir einen Kaffee';
+
+  @override
+  String get shareAction => 'Teilen';
 }

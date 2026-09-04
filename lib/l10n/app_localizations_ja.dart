@@ -781,4 +781,16 @@ class AppLocalizationsJa extends AppLocalizations {
   @override
   String get estDistHint =>
       '基地局までの推定距離。\n\n電波伝搬モデルを用いて信号強度（RSRP）から算出しています。これは非常におおまかな桁数レベルの目安であり — 正確な測定値ではありません。';
+
+  @override
+  String get version => 'バージョン';
+
+  @override
+  String get sendFeedback => 'フィードバック / 改善案を送る';
+
+  @override
+  String get buyMeCoffee => 'コーヒーをおごる';
+
+  @override
+  String get shareAction => '共有';
 }

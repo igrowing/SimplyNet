@@ -791,4 +791,16 @@ class AppLocalizationsCs extends AppLocalizations {
   @override
   String get estDistHint =>
       'Odhadovaná vzdálenost k buňkové věži.\n\nOdvozena ze síly signálu (RSRP) pomocí modelu šíření rádiových vln. Jde jen o velmi hrubý řádový odhad — nikoli přesné měření.';
+
+  @override
+  String get version => 'Verze';
+
+  @override
+  String get sendFeedback => 'Odeslat zpětnou vazbu / návrh na vylepšení';
+
+  @override
+  String get buyMeCoffee => 'Kup mi kávu';
+
+  @override
+  String get shareAction => 'Sdílet';
 }

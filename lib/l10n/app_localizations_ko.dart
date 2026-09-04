@@ -780,4 +780,16 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get estDistHint =>
       '기지국까지의 예상 거리.\n\n전파 전파 모델을 사용해 신호 강도(RSRP)에서 산출됩니다. 이는 매우 대략적인 자릿수 수준의 참고일 뿐이며 — 정밀한 측정값이 아닙니다.';
+
+  @override
+  String get version => '버전';
+
+  @override
+  String get sendFeedback => '의견 / 개선 아이디어 보내기';
+
+  @override
+  String get buyMeCoffee => '커피 한 잔 사주기';
+
+  @override
+  String get shareAction => '공유';
 }

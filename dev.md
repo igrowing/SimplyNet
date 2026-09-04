@@ -29,7 +29,7 @@ flutter_launcher_icons:
     generate: false
 ```
 
-Add to `pubspec.yaml` in `dev_depencides:` section:
+Add to `pubspec.yaml` in `dev_dependencies:` section:
 
 ```
   flutter_launcher_icons: ^0.14.4
@@ -184,6 +184,23 @@ For personal accounts, Google disables the "Production" track out of the box. Yo
   * Click Review release, and then click Start rollout to Production.
   * Your app will undergo one final, standard policy review. Within a few days, your app will be officially searchable and downloadable by anyone worldwide on the Google Play Store.
 
+## Phase 5: Maintaining the Store Listing
+
+### How to update the app description
+* In the Play Console, open your app and go to Grow > Store presence > Main store listing.
+* The default listing (short description, full description, app name) applies to the language selected at the top of the page.
+* To update a translated description, use the language dropdown at the top of the Main store listing page and switch to the target locale before editing — each locale's copy is stored independently.
+* To add a locale that doesn't exist yet, click Manage translations > Add your own translation (or Add translations via a translation service), pick the language, and Play Console will scaffold empty fields for that locale's title/short/full description.
+* Keep translated copy in sync with `lib/l10n/` locale coverage — if a locale ships in-app but has no store listing translation, Play Store falls back to the default language listing for that locale.
+* Click Save, then Save as draft or Publish (a store-listing-only change like this does not require a new app binary/release).
+
+### How to update app screenshots
+* In the same Main store listing page (per-locale, same language dropdown as above), scroll to the Phone/Tablet/Graphics section.
+* Screenshots are also per-locale: switch the language dropdown before uploading/removing images so you don't overwrite the wrong locale's set.
+* Requirements: PNG or JPEG, 16:9 or 9:16 aspect ratio, min 320px and max 3840px on the longer side; at least 2 phone screenshots are required (Google recommends 4-8).
+* Remove outdated screenshots first (hover > trash icon), then drag-and-drop or click Upload to add the new ones in the order you want them displayed.
+* Click Save, then Save as draft or Publish. Screenshot/graphics updates, like description updates, go live without needing a new app bundle release.
+
 
 # Build signed app bundle locally
 
@@ -228,6 +245,7 @@ if (keystorePropertiesFile.exists()) {
 ## 4. Add environment files
 Must have:
 - android\app\proguard-rules.pro
+Copy it from project to ptoject.
 
 
 ### Replace buildTypes block
@@ -319,6 +337,10 @@ In your `.github/workflows/` YAML file, insert a step right before your flutter 
 When the GitHub runner finishes its job, the virtual environment is completely destroyed, leaving no trace of your keys or passwords behind. You get a fully signed, production-ready `.aab` file ready for Google Play without risking your security.
 
 
+## Run the app in Chrome on PC:
+```
+flutter run -d chrome
+```
 
 
 

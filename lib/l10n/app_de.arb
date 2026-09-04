@@ -248,5 +248,9 @@
   "sinrHint": "SINR — Signal-zu-Interferenz-plus-Rausch-Verhältnis.\n\nUm wie viel das Nutzsignal die Interferenz plus das Hintergrundrauschen übersteigt, in dB.\n\nHöher ist besser: über ~20 dB ist ausgezeichnet, um 0 dB oder darunter ist schlecht.",
   "pciHint": "PCI — Physical Cell ID (physische Zellkennung).\n\nEine Zahl (0–503 bei LTE), die die versorgende Zelle auf der Funkschnittstelle identifiziert. Benachbarte Zellen verwenden unterschiedliche PCIs, damit das Telefon sie unterscheiden kann.",
   "earfcnHint": "EARFCN — E-UTRA Absolute Radio Frequency Channel Number.\n\nIdentifiziert die exakte Trägerfrequenz, die das Gerät verwendet; sie ordnet sich einem bestimmten LTE-Band und -Kanal zu.",
-  "estDistHint": "Geschätzte Entfernung zum Mobilfunkmast.\n\nAbgeleitet aus der Signalstärke (RSRP) mit einem Funkausbreitungsmodell. Es ist nur ein sehr grober Anhaltspunkt in der Größenordnung — keine präzise Messung."
+  "estDistHint": "Geschätzte Entfernung zum Mobilfunkmast.\n\nAbgeleitet aus der Signalstärke (RSRP) mit einem Funkausbreitungsmodell. Es ist nur ein sehr grober Anhaltspunkt in der Größenordnung — keine präzise Messung.",
+  "version": "Version",
+  "sendFeedback": "Feedback / Verbesserungsidee senden",
+  "buyMeCoffee": "Spendier mir einen Kaffee",
+  "shareAction": "Teilen"
 }

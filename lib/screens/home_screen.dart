@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:simply_net/l10n/app_localizations.dart';
 import 'package:simply_net/providers/scan_provider.dart';
@@ -23,7 +22,6 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> with RouteAware {
-  String _appVersion = '';
   late TextEditingController _ctrl;
   final FocusNode _focusNode = FocusNode();
   bool _hasError  = false;
@@ -32,16 +30,6 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
   @override
   void initState() {
     super.initState();
-    rootBundle.loadString('pubspec.yaml').then((yaml) {
-      for (final line in yaml.split('\n')) {
-        if (line.startsWith('version:')) {
-          final raw = line.replaceFirst('version:', '').trim();
-          setState(() => _appVersion = 'v${raw.split('-').first}');
-          if (mounted) setState(() => _appVersion = 'v${raw.split('+').first.split('-').first}');
-          break;
-        }
-      }
-    }).catchError((_) {});
     final prov = context.read<ScanProvider>();
     _ctrl = TextEditingController(text: prov.target);
     WidgetsBinding.instance.addPostFrameCallback((_) => _detect());
@@ -112,15 +100,8 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
           children: [
             Image.asset('assets/simplynet.png', height: 32, width: 32),
             const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('SimplyNet',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
-                Text(_appVersion, style: const TextStyle(fontSize: 11)),
-              ],
-            ),
+            const Text('SimplyNet',
+                style: TextStyle(fontWeight: FontWeight.bold)),
           ],
         ),
         actions: [

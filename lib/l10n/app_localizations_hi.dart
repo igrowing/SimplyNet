@@ -789,4 +789,16 @@ class AppLocalizationsHi extends AppLocalizations {
   @override
   String get estDistHint =>
       'सेल टावर तक अनुमानित दूरी।\n\nरेडियो प्रसार मॉडल का उपयोग करके सिग्नल शक्ति (RSRP) से निकाली गई। यह केवल एक बहुत मोटा, परिमाण-क्रम का संकेत है — सटीक माप नहीं।';
+
+  @override
+  String get version => 'संस्करण';
+
+  @override
+  String get sendFeedback => 'प्रतिक्रिया / सुधार का सुझाव भेजें';
+
+  @override
+  String get buyMeCoffee => 'मुझे एक कॉफ़ी पिलाएँ';
+
+  @override
+  String get shareAction => 'साझा करें';
 }

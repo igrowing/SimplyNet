@@ -780,6 +780,18 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get estDistHint =>
       '到基站的估计距离。\n\n通过无线传播模型从信号强度（RSRP）推算而来。这只是一个非常粗略的数量级参考 — 并非精确测量。';
+
+  @override
+  String get version => '版本';
+
+  @override
+  String get sendFeedback => '发送反馈 / 改进建议';
+
+  @override
+  String get buyMeCoffee => '请我喝杯咖啡';
+
+  @override
+  String get shareAction => '分享';
 }
 
 /// The translations for Chinese, using the Han script (`zh_Hans`).
@@ -1558,6 +1570,18 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
   @override
   String get estDistHint =>
       '到基站的估计距离。\n\n通过无线传播模型从信号强度（RSRP）推算而来。这只是一个非常粗略的数量级参考 — 并非精确测量。';
+
+  @override
+  String get version => '版本';
+
+  @override
+  String get sendFeedback => '发送反馈 / 改进建议';
+
+  @override
+  String get buyMeCoffee => '请我喝杯咖啡';
+
+  @override
+  String get shareAction => '分享';
 }
 
 /// The translations for Chinese, using the Han script (`zh_Hant`).
@@ -2336,4 +2360,16 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   @override
   String get estDistHint =>
       '到基地台的估計距離。\n\n透過無線傳播模型從訊號強度（RSRP）推算而來。這只是一個非常粗略的數量級參考 — 並非精確測量。';
+
+  @override
+  String get version => '版本';
+
+  @override
+  String get sendFeedback => '傳送意見 / 改進建議';
+
+  @override
+  String get buyMeCoffee => '請我喝杯咖啡';
+
+  @override
+  String get shareAction => '分享';
 }

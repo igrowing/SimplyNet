@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:simply_net/models/log_entry.dart';
 import 'package:simply_net/providers/log_provider.dart';
 import 'package:simply_net/l10n/app_localizations.dart';
+import 'package:simply_net/utils/log_sharing.dart';
 
 final _fmt = DateFormat('yyyy-MM-dd HH:mm:ss');
 
@@ -182,12 +184,23 @@ class _LogDetailScreenState extends State<_LogDetailScreen> {
   void initState() {
     super.initState();
     context.read<LogProvider>().readLog(widget.entry.filePath).then((c) {
-      setState(() => _content = c);
+      if (mounted) setState(() => _content = c);
     });
+  }
+
+  Future<void> _copy() async {
+    if (_content == null) return;
+    await Clipboard.setData(ClipboardData(text: _content!));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AppLocalizations.of(context).copied)),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(
         title: Column(
@@ -199,6 +212,18 @@ class _LogDetailScreenState extends State<_LogDetailScreen> {
                 style: const TextStyle(fontSize: 12)),
           ],
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.copy_outlined),
+            tooltip: l.copy,
+            onPressed: _content == null ? null : _copy,
+          ),
+          IconButton(
+            icon: const Icon(Icons.share_outlined),
+            tooltip: l.shareAction,
+            onPressed: () => shareLog(widget.entry),
+          ),
+        ],
       ),
       body: _content == null
           ? const Center(child: CircularProgressIndicator())

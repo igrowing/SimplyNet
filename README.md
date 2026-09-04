@@ -43,5 +43,7 @@ Ever wondered what's actually connected to your WiFi? SimplyNet gives you comple
 
 * [Open an issue](https://github.com/igrowing/SimplyNet/issues) if you found a bug or want a new feature.
 
+* Help translate the app into your language — see [add_translation.md](add_translation.md) for a step-by-step guide.
+
 *  <a href="https://www.buymeacoffee.com/igrowing" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="41" width="174"></a>
 if you like the app and it makes your life a bit simpler.

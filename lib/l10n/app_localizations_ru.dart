@@ -790,4 +790,16 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String get estDistHint =>
       'Оценочное расстояние до сотовой вышки.\n\nВычислено из уровня сигнала (RSRP) с помощью модели распространения радиоволн. Это лишь очень грубая оценка порядка величины — не точное измерение.';
+
+  @override
+  String get version => 'Версия';
+
+  @override
+  String get sendFeedback => 'Отправить отзыв / идею улучшения';
+
+  @override
+  String get buyMeCoffee => 'Купить мне кофе';
+
+  @override
+  String get shareAction => 'Поделиться';
 }
