@@ -138,15 +138,16 @@ class _AboutSection extends StatefulWidget {
 }
 
 class _AboutSectionState extends State<_AboutSection> {
-  String _version = '';
+  String _version = ''; // "1.1.0" — shown in the About row
 
   @override
   void initState() {
     super.initState();
     PackageInfo.fromPlatform().then((info) {
       if (mounted) {
-        setState(() =>
-            _version = formatAppVersion(info.version, info.buildNumber));
+        setState(() {
+          _version = info.version;
+        });
       }
     });
   }
@@ -170,10 +171,7 @@ class _AboutSectionState extends State<_AboutSection> {
       children: [
         ListTile(
           leading: const Icon(Icons.info_outline),
-          title: const Text('SimplyNet'),
-          subtitle: Text(
-            _version.isEmpty ? '' : '${l.version} $_version',
-          ),
+          title: Text(aboutTitle(_version)),
         ),
         ListTile(
           leading: const Icon(Icons.lightbulb_outline),

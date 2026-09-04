@@ -12,6 +12,16 @@ void main() {
     });
   });
 
+  group('aboutTitle', () {
+    test('is a single line: name + v-prefixed version, no build number', () {
+      expect(aboutTitle('1.1.0'), 'SimplyNet v1.1.0');
+    });
+
+    test('falls back to the bare name before PackageInfo resolves', () {
+      expect(aboutTitle(''), 'SimplyNet');
+    });
+  });
+
   group('feedbackMailtoUri', () {
     test('targets the support address with the fixed subject', () {
       final uri = feedbackMailtoUri();

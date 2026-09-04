@@ -6,8 +6,13 @@ const feedbackSubject = 'SimplyNet: idea for improvement';
 const coffeeUrl = 'https://www.buymeacoffee.com/igrowing';
 
 /// `"1.1.0 (8)"` — or just `"1.1.0"` when the build number is missing.
+/// Used for feedback triage, where the build number matters.
 String formatAppVersion(String version, String buildNumber) =>
     buildNumber.isEmpty ? version : '$version ($buildNumber)';
+
+/// Single-line title for the About row: `"SimplyNet v1.1.0"` (no build number).
+String aboutTitle(String version) =>
+    version.isEmpty ? 'SimplyNet' : 'SimplyNet v$version';
 
 /// `mailto:` URI for the feedback action, with the subject and a pre-filled
 /// body carrying the app version and platform for triage.
