@@ -1619,6 +1619,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Estimated distance to the cell tower.\n\nDerived from signal strength (RSRP) using a radio propagation model. It is a very rough, order-of-magnitude indication only — not a precise measurement.'**
   String get estDistHint;
+
+  /// No description provided for @version.
+  ///
+  /// In en, this message translates to:
+  /// **'Version'**
+  String get version;
+
+  /// No description provided for @sendFeedback.
+  ///
+  /// In en, this message translates to:
+  /// **'Send feedback / improvement idea'**
+  String get sendFeedback;
+
+  /// No description provided for @buyMeCoffee.
+  ///
+  /// In en, this message translates to:
+  /// **'Buy me a coffee'**
+  String get buyMeCoffee;
+
+  /// No description provided for @shareAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Share'**
+  String get shareAction;
 }
 
 class _AppLocalizationsDelegate

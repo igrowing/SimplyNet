@@ -248,5 +248,9 @@
   "sinrHint": "SINR — stosunek sygnału do interferencji i szumu.\n\nO ile pożądany sygnał przewyższa interferencję plus szum tła, w dB.\n\nWyżej jest lepiej: powyżej ~20 dB jest doskonale, około 0 dB lub poniżej jest słabo.",
   "pciHint": "PCI — fizyczny identyfikator komórki.\n\nLiczba (0–503 w LTE) identyfikująca komórkę obsługującą na interfejsie radiowym. Sąsiednie komórki używają różnych PCI, aby telefon mógł je rozróżnić.",
   "earfcnHint": "EARFCN — bezwzględny numer kanału częstotliwości radiowej E-UTRA.\n\nIdentyfikuje dokładną częstotliwość nośną używaną przez urządzenie; odpowiada konkretnemu pasmu i kanałowi LTE.",
-  "estDistHint": "Szacowana odległość do masztu komórkowego.\n\nWyznaczona z siły sygnału (RSRP) za pomocą modelu propagacji radiowej. To tylko bardzo zgrubne wskazanie rzędu wielkości — nie precyzyjny pomiar."
+  "estDistHint": "Szacowana odległość do masztu komórkowego.\n\nWyznaczona z siły sygnału (RSRP) za pomocą modelu propagacji radiowej. To tylko bardzo zgrubne wskazanie rzędu wielkości — nie precyzyjny pomiar.",
+  "version": "Wersja",
+  "sendFeedback": "Wyślij opinię / pomysł na ulepszenie",
+  "buyMeCoffee": "Postaw mi kawę",
+  "shareAction": "Udostępnij"
 }

@@ -1,10 +1,13 @@
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:simply_net/l10n/app_languages.dart';
 import 'package:simply_net/l10n/app_localizations.dart';
 import 'package:simply_net/models/app_settings.dart';
 import 'package:simply_net/providers/settings_provider.dart';
+import 'package:simply_net/utils/support_links.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -117,17 +120,74 @@ class SettingsScreen extends StatelessWidget {
           ),
 
           const Divider(height: 24),
-          _SectionHeader(l.account),
-
-          ListTile(
-            leading: const Icon(Icons.account_circle),
-            title: Text(l.logIn),
-            subtitle: Text(l.comingSoon),
-            trailing: const Icon(Icons.chevron_right),
-            enabled: false,
-          ),
+          _SectionHeader(l.about),
+          const _AboutSection(),
         ],
       ),
+    );
+  }
+}
+
+// ── About section ────────────────────────────────────────────────────────────
+
+class _AboutSection extends StatefulWidget {
+  const _AboutSection();
+
+  @override
+  State<_AboutSection> createState() => _AboutSectionState();
+}
+
+class _AboutSectionState extends State<_AboutSection> {
+  String _version = '';
+
+  @override
+  void initState() {
+    super.initState();
+    PackageInfo.fromPlatform().then((info) {
+      if (mounted) {
+        setState(() =>
+            _version = formatAppVersion(info.version, info.buildNumber));
+      }
+    });
+  }
+
+  Future<void> _sendFeedback() async {
+    final uri = feedbackMailtoUri(
+      appVersion: _version,
+      platform: Theme.of(context).platform.name,
+    );
+    await launchUrl(uri);
+  }
+
+  Future<void> _openCoffee() async {
+    await launchUrl(Uri.parse(coffeeUrl), mode: LaunchMode.externalApplication);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    return Column(
+      children: [
+        ListTile(
+          leading: const Icon(Icons.info_outline),
+          title: const Text('SimplyNet'),
+          subtitle: Text(
+            _version.isEmpty ? '' : '${l.version} $_version',
+          ),
+        ),
+        ListTile(
+          leading: const Icon(Icons.lightbulb_outline),
+          title: Text(l.sendFeedback),
+          trailing: const Icon(Icons.open_in_new, size: 18),
+          onTap: _sendFeedback,
+        ),
+        ListTile(
+          leading: const Text('☕', style: TextStyle(fontSize: 20)),
+          title: Text(l.buyMeCoffee),
+          trailing: const Icon(Icons.open_in_new, size: 18),
+          onTap: _openCoffee,
+        ),
+      ],
     );
   }
 }

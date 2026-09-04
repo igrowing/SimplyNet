@@ -2731,6 +2731,47 @@ T = {
         "hi": "सेल टावर तक अनुमानित दूरी।\n\nरेडियो प्रसार मॉडल का उपयोग करके सिग्नल शक्ति (RSRP) से निकाली "
               "गई। यह केवल एक बहुत मोटा, परिमाण-क्रम का संकेत है \u2014 सटीक माप नहीं।",
     },
+
+    # -- Settings: About section + Share --------------------------------------
+    "version": {
+        "en": "Version", "it": "Versione", "es": "Versión", "de": "Version",
+        "pt": "Versão", "fr": "Version", "zh_Hans": "版本", "zh_Hant": "版本",
+        "ja": "バージョン", "th": "เวอร์ชัน", "ru": "Версия", "uk": "Версія",
+        "pl": "Wersja", "cs": "Verze", "ko": "버전", "hi": "संस्करण",
+    },
+    "sendFeedback": {
+        "en": "Send feedback / improvement idea",
+        "it": "Invia un feedback / idea di miglioramento",
+        "es": "Enviar comentarios / idea de mejora",
+        "de": "Feedback / Verbesserungsidee senden",
+        "pt": "Enviar feedback / ideia de melhoria",
+        "fr": "Envoyer un retour / une idée d'amélioration",
+        "zh_Hans": "发送反馈 / 改进建议", "zh_Hant": "傳送意見 / 改進建議",
+        "ja": "フィードバック / 改善案を送る",
+        "th": "ส่งความคิดเห็น / ไอเดียการปรับปรุง",
+        "ru": "Отправить отзыв / идею улучшения",
+        "uk": "Надіслати відгук / ідею покращення",
+        "pl": "Wyślij opinię / pomysł na ulepszenie",
+        "cs": "Odeslat zpětnou vazbu / návrh na vylepšení",
+        "ko": "의견 / 개선 아이디어 보내기",
+        "hi": "प्रतिक्रिया / सुधार का सुझाव भेजें",
+    },
+    "buyMeCoffee": {
+        "en": "Buy me a coffee", "it": "Offrimi un caffè",
+        "es": "Invítame a un café", "de": "Spendier mir einen Kaffee",
+        "pt": "Paga-me um café", "fr": "Offre-moi un café",
+        "zh_Hans": "请我喝杯咖啡", "zh_Hant": "請我喝杯咖啡",
+        "ja": "コーヒーをおごる", "th": "เลี้ยงกาแฟฉันสักแก้ว",
+        "ru": "Купить мне кофе", "uk": "Купити мені каву",
+        "pl": "Postaw mi kawę", "cs": "Kup mi kávu",
+        "ko": "커피 한 잔 사주기", "hi": "मुझे एक कॉफ़ी पिलाएँ",
+    },
+    "shareAction": {
+        "en": "Share", "it": "Condividi", "es": "Compartir", "de": "Teilen",
+        "pt": "Partilhar", "fr": "Partager", "zh_Hans": "分享", "zh_Hant": "分享",
+        "ja": "共有", "th": "แชร์", "ru": "Поделиться", "uk": "Поділитися",
+        "pl": "Udostępnij", "cs": "Sdílet", "ko": "공유", "hi": "साझा करें",
+    },
 }
 
 

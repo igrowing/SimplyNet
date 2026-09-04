@@ -785,4 +785,16 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get estDistHint =>
       'Estimated distance to the cell tower.\n\nDerived from signal strength (RSRP) using a radio propagation model. It is a very rough, order-of-magnitude indication only — not a precise measurement.';
+
+  @override
+  String get version => 'Version';
+
+  @override
+  String get sendFeedback => 'Send feedback / improvement idea';
+
+  @override
+  String get buyMeCoffee => 'Buy me a coffee';
+
+  @override
+  String get shareAction => 'Share';
 }

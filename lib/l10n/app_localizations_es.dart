@@ -791,4 +791,16 @@ class AppLocalizationsEs extends AppLocalizations {
   @override
   String get estDistHint =>
       'Distancia estimada a la torre de telefonía.\n\nDerivada de la intensidad de señal (RSRP) usando un modelo de propagación de radio. Es solo una indicación muy aproximada, de orden de magnitud — no una medición precisa.';
+
+  @override
+  String get version => 'Versión';
+
+  @override
+  String get sendFeedback => 'Enviar comentarios / idea de mejora';
+
+  @override
+  String get buyMeCoffee => 'Invítame a un café';
+
+  @override
+  String get shareAction => 'Compartir';
 }

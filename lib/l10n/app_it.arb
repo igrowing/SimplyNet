@@ -248,5 +248,9 @@
   "sinrHint": "SINR — rapporto segnale/interferenza+rumore.\n\nDi quanto il segnale desiderato supera l'interferenza più il rumore di fondo, in dB.\n\nPiù alto è meglio: sopra ~20 dB è eccellente, intorno a 0 dB o meno è scarso.",
   "pciHint": "PCI — Physical Cell ID (identificatore fisico della cella).\n\nUn numero (0–503 su LTE) che identifica la cella servente sull'interfaccia radio. Le celle vicine usano PCI diversi così il telefono può distinguerle.",
   "earfcnHint": "EARFCN — numero assoluto di canale in radiofrequenza E-UTRA.\n\nIdentifica la frequenza portante esatta usata dal dispositivo; corrisponde a una specifica banda e canale LTE.",
-  "estDistHint": "Distanza stimata dalla cella.\n\nDerivata dall'intensità del segnale (RSRP) usando un modello di propagazione radio. È solo un'indicazione molto approssimativa, dell'ordine di grandezza — non una misura precisa."
+  "estDistHint": "Distanza stimata dalla cella.\n\nDerivata dall'intensità del segnale (RSRP) usando un modello di propagazione radio. È solo un'indicazione molto approssimativa, dell'ordine di grandezza — non una misura precisa.",
+  "version": "Versione",
+  "sendFeedback": "Invia un feedback / idea di miglioramento",
+  "buyMeCoffee": "Offrimi un caffè",
+  "shareAction": "Condividi"
 }

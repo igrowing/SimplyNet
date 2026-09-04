@@ -790,4 +790,16 @@ class AppLocalizationsUk extends AppLocalizations {
   @override
   String get estDistHint =>
       'Оцінена відстань до стільникової вежі.\n\nОбчислено з рівня сигналу (RSRP) за допомогою моделі поширення радіохвиль. Це лише дуже груба оцінка порядку величини — не точне вимірювання.';
+
+  @override
+  String get version => 'Версія';
+
+  @override
+  String get sendFeedback => 'Надіслати відгук / ідею покращення';
+
+  @override
+  String get buyMeCoffee => 'Купити мені каву';
+
+  @override
+  String get shareAction => 'Поділитися';
 }

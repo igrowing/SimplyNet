@@ -791,4 +791,16 @@ class AppLocalizationsPt extends AppLocalizations {
   @override
   String get estDistHint =>
       'Distância estimada até à torre de celular.\n\nDerivada da força do sinal (RSRP) usando um modelo de propagação de rádio. É apenas uma indicação muito aproximada, da ordem de grandeza — não uma medição precisa.';
+
+  @override
+  String get version => 'Versão';
+
+  @override
+  String get sendFeedback => 'Enviar feedback / ideia de melhoria';
+
+  @override
+  String get buyMeCoffee => 'Paga-me um café';
+
+  @override
+  String get shareAction => 'Partilhar';
 }

@@ -792,4 +792,16 @@ class AppLocalizationsIt extends AppLocalizations {
   @override
   String get estDistHint =>
       'Distanza stimata dalla cella.\n\nDerivata dall\'intensità del segnale (RSRP) usando un modello di propagazione radio. È solo un\'indicazione molto approssimativa, dell\'ordine di grandezza — non una misura precisa.';
+
+  @override
+  String get version => 'Versione';
+
+  @override
+  String get sendFeedback => 'Invia un feedback / idea di miglioramento';
+
+  @override
+  String get buyMeCoffee => 'Offrimi un caffè';
+
+  @override
+  String get shareAction => 'Condividi';
 }

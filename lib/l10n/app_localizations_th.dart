@@ -784,4 +784,16 @@ class AppLocalizationsTh extends AppLocalizations {
   @override
   String get estDistHint =>
       'ระยะโดยประมาณถึงเสาสัญญาณ\n\nคำนวณจากความแรงสัญญาณ (RSRP) โดยใช้แบบจำลองการแพร่กระจายคลื่นวิทยุ เป็นเพียงการบ่งชี้แบบคร่าว ๆ ในระดับลำดับความสำคัญเท่านั้น — ไม่ใช่การวัดที่แม่นยำ';
+
+  @override
+  String get version => 'เวอร์ชัน';
+
+  @override
+  String get sendFeedback => 'ส่งความคิดเห็น / ไอเดียการปรับปรุง';
+
+  @override
+  String get buyMeCoffee => 'เลี้ยงกาแฟฉันสักแก้ว';
+
+  @override
+  String get shareAction => 'แชร์';
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:simply_net/services/network_scanner.dart';
 
 /// Tests for the I/O-touching NetworkScanner methods.
@@ -19,6 +20,9 @@ void main() {
   const pathProvider = MethodChannel('plugins.flutter.io/path_provider');
 
   setUp(() {
+    // network_scanner writes a diagnostic log (→ SharedPreferences) when the
+    // host ARP/neighbour table can't be read, which is the norm in a sandbox.
+    SharedPreferences.setMockInitialValues({});
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(pathProvider, (call) async {
       if (call.method == 'getApplicationDocumentsDirectory') {

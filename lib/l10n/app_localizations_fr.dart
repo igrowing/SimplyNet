@@ -795,4 +795,16 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get estDistHint =>
       'Distance estimée jusqu\'à l\'antenne-relais.\n\nDérivée de la force du signal (RSRP) à l\'aide d\'un modèle de propagation radio. Ce n\'est qu\'une indication très approximative, d\'ordre de grandeur — pas une mesure précise.';
+
+  @override
+  String get version => 'Version';
+
+  @override
+  String get sendFeedback => 'Envoyer un retour / une idée d\'amélioration';
+
+  @override
+  String get buyMeCoffee => 'Offre-moi un café';
+
+  @override
+  String get shareAction => 'Partager';
 }

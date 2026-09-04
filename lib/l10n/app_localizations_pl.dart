@@ -790,4 +790,16 @@ class AppLocalizationsPl extends AppLocalizations {
   @override
   String get estDistHint =>
       'Szacowana odległość do masztu komórkowego.\n\nWyznaczona z siły sygnału (RSRP) za pomocą modelu propagacji radiowej. To tylko bardzo zgrubne wskazanie rzędu wielkości — nie precyzyjny pomiar.';
+
+  @override
+  String get version => 'Wersja';
+
+  @override
+  String get sendFeedback => 'Wyślij opinię / pomysł na ulepszenie';
+
+  @override
+  String get buyMeCoffee => 'Postaw mi kawę';
+
+  @override
+  String get shareAction => 'Udostępnij';
 }
