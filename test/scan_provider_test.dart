@@ -292,6 +292,7 @@ void main() {
           'resolveNames=$resolveNames logging=$logging: logs + finds nothing',
           () async {
             final p = ScanProvider();
+            final logVersionBefore = p.logVersion.value;
             p.setTarget('192.0.2.0/30');
             p.startScan(resolveNames: resolveNames, logging: logging);
 
@@ -305,6 +306,17 @@ void main() {
               const Duration(seconds: 15),
             );
             expect(finished, isTrue, reason: 'scan did not complete in time');
+
+            // isScanning flips to false before the log file is written. Wait
+            // for logVersion (bumped once createLog completes) so the file I/O
+            // is done before tearDown deletes the temp directory.
+            if (logging) {
+              final logged = await _waitUntil(
+                () => p.logVersion.value > logVersionBefore,
+                const Duration(seconds: 15),
+              );
+              expect(logged, isTrue, reason: 'log was not written in time');
+            }
 
             expect(p.results, isEmpty);
             // Either the normal completion banner or the error banner is written,
