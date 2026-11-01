@@ -13,6 +13,7 @@
 migrate_working_dir/
 upload-keystore.jks
 *.bak
+devtools_options.yaml
 
 # IntelliJ related
 *.iml
@@ -47,6 +48,7 @@ app.*.map.json
 /android/app/release
 android/local.properties
 android/.gradle/
+android/.kotlin/
 android/key.properties
 android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
 android/build/

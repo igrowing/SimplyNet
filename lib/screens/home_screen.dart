@@ -15,8 +15,20 @@ import 'package:simply_net/widgets/history_field.dart';
 import 'package:simply_net/main.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+/// Requests location permission where needed, then detects the LAN CIDR.
+Future<String?> detectLanCidrWithPermission() async {
+  if (!kIsWeb) {
+    final status = await Permission.locationWhenInUse.status;
+    if (status.isDenied) await Permission.locationWhenInUse.request();
+  }
+  return detectLanCidr();
+}
+
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({super.key, this.detectCidr = detectLanCidrWithPermission});
+
+  /// Resolves the local network CIDR, or null when it cannot be detected.
+  final Future<String?> Function() detectCidr;
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -24,7 +36,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with RouteAware {
   late TextEditingController _ctrl;
   final FocusNode _focusNode = FocusNode();
-  bool _hasError  = false;
+  bool _hasError = false;
   bool _detecting = false;
 
   @override
@@ -60,17 +72,10 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
     if (_detecting) return;
     setState(() => _detecting = true);
     try {
-      if (!kIsWeb) {
-        final status = await Permission.locationWhenInUse.status;
-        if (status.isDenied) await Permission.locationWhenInUse.request();
-      }
-      final cidr = await detectLanCidr();
-      if (cidr != null && mounted) {
-        context.read<ScanProvider>().setTarget(cidr);
-        _ctrl.text = cidr;
+      final cidr = await widget.detectCidr();
+      if (mounted) {
+        _ctrl.text = context.read<ScanProvider>().applyDetectedTarget(cidr);
         setState(() => _hasError = false);
-      } else {
-        _ctrl.text = '192.168.178.0/24';
       }
     } finally {
       if (mounted) setState(() => _detecting = false);
@@ -84,13 +89,15 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
 
   void _onSubmitted(String v) {
     _focusNode.unfocus();
-    if (NetworkScanner.isValidCidr(v)) context.read<ScanProvider>().setTarget(v);
+    if (NetworkScanner.isValidCidr(v)) {
+      context.read<ScanProvider>().setTarget(v);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme  = Theme.of(context);
-    final size   = MediaQuery.of(context).size;
+    final theme = Theme.of(context);
+    final size = MediaQuery.of(context).size;
     final isWide = size.width > 600;
 
     return Scaffold(
@@ -100,8 +107,10 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
           children: [
             Image.asset('assets/simplynet.png', height: 32, width: 32),
             const SizedBox(width: 12),
-            const Text('SimplyNet',
-                style: TextStyle(fontWeight: FontWeight.bold)),
+            const Text(
+              'SimplyNet',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
           ],
         ),
         actions: [
@@ -180,16 +189,17 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
             decoration: InputDecoration(
               labelText: l.networkTarget,
               hintText: l.networkTargetHint,
-              errorText: _hasError
-                  ? l.invalidCidr
-                  : null,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              errorText: _hasError ? l.invalidCidr : null,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
               isDense: true,
               suffixIcon: _detecting
                   ? const Padding(
                       padding: EdgeInsets.all(12),
                       child: SizedBox(
-                        width: 18, height: 18,
+                        width: 18,
+                        height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       ),
                     )
@@ -202,23 +212,25 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
           ),
           const SizedBox(height: 10),
           // Scan + Logs on one row
-          Row(children: [
-            Expanded(
-              child: FilledButton.icon(
-                onPressed: () => Navigator.pushNamed(ctx, '/scan'),
-                icon: const Icon(Icons.network_check),
-                label: Text(l.scan),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: () => Navigator.pushNamed(ctx, '/scan'),
+                  icon: const Icon(Icons.network_check),
+                  label: Text(l.scan),
+                ),
               ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () => Navigator.pushNamed(ctx, '/logs'),
-                icon: const Icon(Icons.article),
-                label: Text(l.logs),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => Navigator.pushNamed(ctx, '/logs'),
+                  icon: const Icon(Icons.article),
+                  label: Text(l.logs),
+                ),
               ),
-            ),
-          ]),
+            ],
+          ),
         ],
       ),
     );
@@ -235,25 +247,113 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
     final l = AppLocalizations.of(ctx);
 
     final tools = [
-      _ToolBtn(Icons.speed,         l.toolSpeedTest,     l.toolSpeedTestSub,     () => push(const SpeedTestScreen()),              Colors.blue),
-      _ToolBtn(Icons.public,        l.toolPublicIp,      l.toolPublicIpSub,      () => push(const PublicIpScreen()),               Colors.green),
-      _ToolBtn(Icons.videocam,      l.toolIpCameras,     l.toolIpCamerasSub,     () => push(IpCameraScanScreen(cidr: scanTarget)), Colors.orange),
-      _ToolBtn(Icons.memory,        l.toolIotDevices,    l.toolIotDevicesSub,    () => push(IotScanScreen(cidr: scanTarget)),      Colors.deepPurple),
-      _ToolBtn(Icons.subscriptions, l.toolMqttSub,       l.toolMqttSubSub,       () => push(MqttSubScreen(appScreenTimeoutMode: ctx.read<SettingsProvider>().settings.screenTimeout.index)), Colors.brown),
-      _ToolBtn(Icons.publish,       l.toolMqttPub,       l.toolMqttPubSub,       () => push(MqttPubScreen(appScreenTimeoutMode: ctx.read<SettingsProvider>().settings.screenTimeout.index)), Colors.deepOrange),
-      _ToolBtn(Icons.radar,         l.toolPortScan,      l.toolPortScanSub,      () => push(const PortScanScreen()),               Colors.purple),
-      _ToolBtn(Icons.network_ping,  l.toolPing,          l.toolPingSub,          () => push(const PingScreen()),                   Colors.teal),
-      _ToolBtn(Icons.route,         l.toolTraceroute,    l.toolTracerouteSub,    () => push(const TracerouteScreen()),             Colors.deepOrange),
-      _ToolBtn(Icons.manage_search, l.toolWhois,         l.toolWhoisSub,         () => push(const WhoisScreen()),                  Colors.indigo),
-      _ToolBtn(Icons.wifi_find,     l.toolWifiChannels,  l.toolWifiChannelsSub,  () => push(const WifiChannelsScreen()),           Colors.cyan),
-      _ToolBtn(Icons.cell_tower,    l.toolCellularInfo,  l.toolCellularInfoSub,  () => push(const CellularScreen()),               Colors.deepPurple),
+      _ToolBtn(
+        Icons.speed,
+        l.toolSpeedTest,
+        l.toolSpeedTestSub,
+        () => push(const SpeedTestScreen()),
+        Colors.blue,
+      ),
+      _ToolBtn(
+        Icons.public,
+        l.toolPublicIp,
+        l.toolPublicIpSub,
+        () => push(const PublicIpScreen()),
+        Colors.green,
+      ),
+      _ToolBtn(
+        Icons.videocam,
+        l.toolIpCameras,
+        l.toolIpCamerasSub,
+        () => push(IpCameraScanScreen(cidr: scanTarget)),
+        Colors.orange,
+      ),
+      _ToolBtn(
+        Icons.memory,
+        l.toolIotDevices,
+        l.toolIotDevicesSub,
+        () => push(IotScanScreen(cidr: scanTarget)),
+        Colors.deepPurple,
+      ),
+      _ToolBtn(
+        Icons.subscriptions,
+        l.toolMqttSub,
+        l.toolMqttSubSub,
+        () => push(
+          MqttSubScreen(
+            appScreenTimeoutMode: ctx
+                .read<SettingsProvider>()
+                .settings
+                .screenTimeout
+                .index,
+          ),
+        ),
+        Colors.brown,
+      ),
+      _ToolBtn(
+        Icons.publish,
+        l.toolMqttPub,
+        l.toolMqttPubSub,
+        () => push(
+          MqttPubScreen(
+            appScreenTimeoutMode: ctx
+                .read<SettingsProvider>()
+                .settings
+                .screenTimeout
+                .index,
+          ),
+        ),
+        Colors.deepOrange,
+      ),
+      _ToolBtn(
+        Icons.radar,
+        l.toolPortScan,
+        l.toolPortScanSub,
+        () => push(const PortScanScreen()),
+        Colors.purple,
+      ),
+      _ToolBtn(
+        Icons.network_ping,
+        l.toolPing,
+        l.toolPingSub,
+        () => push(const PingScreen()),
+        Colors.teal,
+      ),
+      _ToolBtn(
+        Icons.route,
+        l.toolTraceroute,
+        l.toolTracerouteSub,
+        () => push(const TracerouteScreen()),
+        Colors.deepOrange,
+      ),
+      _ToolBtn(
+        Icons.manage_search,
+        l.toolWhois,
+        l.toolWhoisSub,
+        () => push(const WhoisScreen()),
+        Colors.indigo,
+      ),
+      _ToolBtn(
+        Icons.wifi_find,
+        l.toolWifiChannels,
+        l.toolWifiChannelsSub,
+        () => push(const WifiChannelsScreen()),
+        Colors.cyan,
+      ),
+      _ToolBtn(
+        Icons.cell_tower,
+        l.toolCellularInfo,
+        l.toolCellularInfoSub,
+        () => push(const CellularScreen()),
+        Colors.deepPurple,
+      ),
     ];
 
     // Column of 2-item rows → each button takes intrinsic height so
     // the subtitle text wraps fully and is never clipped or ellipsised.
     final rows = <Widget>[];
     for (var i = 0; i < tools.length; i += 2) {
-      final left  = tools[i];
+      final left = tools[i];
       final right = i + 1 < tools.length ? tools[i + 1] : null;
       rows.add(
         IntrinsicHeight(
@@ -262,9 +362,9 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
             children: [
               Expanded(child: _SmallToolBtn(left)),
               const SizedBox(width: 10),
-              Expanded(child: right != null
-                  ? _SmallToolBtn(right)
-                  : const SizedBox()),
+              Expanded(
+                child: right != null ? _SmallToolBtn(right) : const SizedBox(),
+              ),
             ],
           ),
         ),
@@ -277,7 +377,6 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
       child: Column(children: rows),
     );
   }
-
 }
 
 // ── Shared group box ──────────────────────────────────────────────────────────
@@ -308,11 +407,14 @@ class _GroupBox extends StatelessWidget {
             child: Container(
               color: Theme.of(context).scaffoldBackgroundColor,
               padding: const EdgeInsets.symmetric(horizontal: 6),
-              child: Text(label,
-                  style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: color)),
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
+              ),
             ),
           ),
         ],
@@ -321,15 +423,14 @@ class _GroupBox extends StatelessWidget {
   }
 }
 
-
 // ── Small tool button for the 2-column grid ───────────────────────────────────
 
 class _ToolBtn {
-  final IconData     icon;
-  final String       label;
-  final String       subtitle;
+  final IconData icon;
+  final String label;
+  final String subtitle;
   final VoidCallback onTap;
-  final Color        color;
+  final Color color;
   const _ToolBtn(this.icon, this.label, this.subtitle, this.onTap, this.color);
 }
 
@@ -344,7 +445,10 @@ class _SmallToolBtn extends StatelessWidget {
       borderRadius: BorderRadius.circular(10),
       child: Container(
         decoration: BoxDecoration(
-          border: Border.all(color: tool.color.withValues(alpha: 0.55), width: 1.5),
+          border: Border.all(
+            color: tool.color.withValues(alpha: 0.55),
+            width: 1.5,
+          ),
           borderRadius: BorderRadius.circular(10),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -357,17 +461,26 @@ class _SmallToolBtn extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(tool.label,
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1),
+                  Text(
+                    tool.label,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
                   if (tool.subtitle.isNotEmpty)
-                    Text(tool.subtitle,
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
-                        ),
-                        softWrap: true),
+                    Text(
+                      tool.subtitle,
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withValues(alpha: 0.6),
+                      ),
+                      softWrap: true,
+                    ),
                 ],
               ),
             ),

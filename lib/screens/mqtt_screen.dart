@@ -496,7 +496,10 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
 
   Future<void> _openSettings() async {
     // Stop active session before changing connection params.
-    if (_listening) await _stopListening();
+    if (_listening) {
+      await _stopListening();
+      if (!mounted) return;
+    }
     final updated = await showMqttSettingsDialog(context, _cfg);
     if (updated == null || !mounted) return;
     setState(() => _cfg = updated);
@@ -579,12 +582,15 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
     client.connectionMessage = connMsg;
     _mqttService.setClient(client);
 
-    client.connect().catchError((e) {
-      if (mounted) setState(() {
-        _listening  = false;
-        _connecting = false;
-        _statusMsg  = l.connFailed('$e');
-      });
+    client.connect().catchError((Object e) {
+      if (mounted) {
+        setState(() {
+          _listening  = false;
+          _connecting = false;
+          _statusMsg  = l.connFailed('$e');
+        });
+      }
+      return null;
     });
   }
 
@@ -785,7 +791,7 @@ class _MqttSubScreenState extends State<MqttSubScreen> {
                             controller:  _scroll,
                             padding: const EdgeInsets.fromLTRB(12, 4, 20, 12),
                             itemCount:   _messages.length,
-                            separatorBuilder: (_, _2) =>
+                            separatorBuilder: (_, _) =>
                                 const Divider(height: 8, thickness: 0.5),
                             itemBuilder: (_, i) => SelectableText(
                               _messages[i],
@@ -939,11 +945,14 @@ class _MqttPubScreenState extends State<MqttPubScreen> {
     client.connectionMessage = connMsg;
     _client = client;
 
-    client.connect().catchError((e) {
-      if (mounted) setState(() {
-        _connecting = false;
-        _statusMsg  = l.connFailed('$e');
-      });
+    client.connect().catchError((Object e) {
+      if (mounted) {
+        setState(() {
+          _connecting = false;
+          _statusMsg  = l.connFailed('$e');
+        });
+      }
+      return null;
     });
   }
 

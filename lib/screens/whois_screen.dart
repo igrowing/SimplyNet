@@ -120,7 +120,9 @@ class _WhoisState extends State<WhoisScreen> {
           if (ns.isNotEmpty) {
             _put('');
             _put('Nameservers:');
-            for (final n in ns) _put('  ${n['ldhName']}');
+            for (final n in ns) {
+              _put('  ${n['ldhName']}');
+            }
           }
         }
         for (final entity in (data['entities'] as List?) ?? []) {
@@ -158,19 +160,18 @@ class _WhoisState extends State<WhoisScreen> {
       _put('DNS detail unavailable: $e');
     }
 
+    if (!mounted) return;
     setState(() {
       _loading = false;
     });
     // Log the lookup result
-    if (context.mounted) {
-      final settings = context.read<SettingsProvider>().settings;
-      if (settings.loggingEnabled) {
-        await LogService.createLog(
-          function: 'whois',
-          content: _buf.toString(),
-          summary: 'Who Is → ${_ctrl.text.trim()}',
-        );
-      }
+    final settings = context.read<SettingsProvider>().settings;
+    if (settings.loggingEnabled) {
+      await LogService.createLog(
+        function: 'whois',
+        content: _buf.toString(),
+        summary: 'Who Is → ${_ctrl.text.trim()}',
+      );
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scroll.hasClients) {

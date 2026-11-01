@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:simply_net/constants/network_ports.dart';
 
 /// Wrappers for diagnostic network tools.
-/// Each returns a Stream<String> so callers can display output progressively.
+/// Each returns a `Stream<String>` so callers can display output progressively.
 class NetworkTools {
   // ── Ping ───────────────────────────────────────────────────────────────────
   /// [count] how many ICMP echo requests to send (default 10 per spec).
@@ -333,7 +333,7 @@ class NetworkTools {
   /// Well-known ports dictionary: port number → service name.
   /// Defined centrally in [NetworkPorts]; aliased here so existing callers
   /// (`NetworkTools.wellKnownPortNames`) keep working unchanged.
-  /// Use .keys.toList() wherever a List<int> of port numbers is needed.
+  /// Use .keys.toList() wherever a `List<int>` of port numbers is needed.
   static const wellKnownPortNames = NetworkPorts.wellKnownPortNames;
 
   // Legacy aliases — keep existing callers compiling without changes.

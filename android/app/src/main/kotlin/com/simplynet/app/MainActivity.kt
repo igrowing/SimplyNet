@@ -29,6 +29,7 @@ class MainActivity : FlutterActivity() {
         private const val WIFI_CHANNEL     = "simplynet/wifi"
         private const val CELLULAR_CHANNEL = "simplynet/cellular"
         private const val MAC_CHANNEL      = "com.simplytools.simplynet/mac"
+        private const val MULTICAST_CHANNEL = "simplynet/multicast"
     }
 
     // ── Foreground service initialization is handled by the plugin ──────────
@@ -82,6 +83,25 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
+        // ── Multicast lock (mDNS discovery) ──────────────────────────────────
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, MULTICAST_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "acquire" -> {
+                        try {
+                            result.success(acquireMulticastLock())
+                        } catch (e: Exception) {
+                            result.error("MULTICAST_ERROR", e.message, null)
+                        }
+                    }
+                    "release" -> {
+                        releaseMulticastLock()
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
         // ── MAC address for local interface ─────────────────────────────────
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, MAC_CHANNEL)
             .setMethodCallHandler { call, result ->
@@ -103,6 +123,33 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    // ── Multicast lock ───────────────────────────────────────────────────────
+    // Android filters incoming multicast packets to save battery, so mDNS
+    // answers never reach the app unless a MulticastLock is held while
+    // browsing. Not reference counted: acquire() twice, release() once.
+    private var multicastLock: WifiManager.MulticastLock? = null
+
+    private fun acquireMulticastLock(): Boolean {
+        val lock = multicastLock ?: (applicationContext
+            .getSystemService(WIFI_SERVICE) as WifiManager)
+            .createMulticastLock("simplynet-mdns")
+            .also {
+                it.setReferenceCounted(false)
+                multicastLock = it
+            }
+        if (!lock.isHeld) lock.acquire()
+        return lock.isHeld
+    }
+
+    private fun releaseMulticastLock() {
+        multicastLock?.let { if (it.isHeld) it.release() }
+    }
+
+    override fun onDestroy() {
+        releaseMulticastLock()
+        super.onDestroy()
     }
 
     // ── Wi-Fi scan ───────────────────────────────────────────────────────────

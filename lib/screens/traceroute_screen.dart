@@ -62,7 +62,7 @@ class _TracerouteScreenState extends State<TracerouteScreen> {
       onDone: () async {
         setState(() => _running = false);
         FgService.stop(doneBody: 'Traceroute complete.');
-        if (context.mounted) {
+        if (mounted) {
           final settings = context.read<SettingsProvider>().settings;
           if (settings.loggingEnabled) {
             await LogService.createLog(

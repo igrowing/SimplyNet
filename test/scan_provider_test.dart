@@ -17,11 +17,11 @@ void main() {
     tmp = await Directory.systemTemp.createTemp('simplynet_scan_prov_test');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(pathProvider, (call) async {
-      if (call.method == 'getApplicationDocumentsDirectory') {
-        return tmp.path;
-      }
-      return null;
-    });
+          if (call.method == 'getApplicationDocumentsDirectory') {
+            return tmp.path;
+          }
+          return null;
+        });
   });
 
   tearDown(() {
@@ -167,9 +167,14 @@ void main() {
   group('ScanProvider.ipCompare', () {
     test('orders numerically, not lexicographically', () {
       // Lexicographic order would put "192.168.1.10" before "192.168.1.9".
-      expect(ScanProvider.ipCompare('192.168.1.9', '192.168.1.10'), lessThan(0));
-      expect(ScanProvider.ipCompare('192.168.1.10', '192.168.1.9'),
-          greaterThan(0));
+      expect(
+        ScanProvider.ipCompare('192.168.1.9', '192.168.1.10'),
+        lessThan(0),
+      );
+      expect(
+        ScanProvider.ipCompare('192.168.1.10', '192.168.1.9'),
+        greaterThan(0),
+      );
     });
 
     test('returns zero for equal addresses', () {
@@ -178,7 +183,10 @@ void main() {
 
     test('compares across every octet position', () {
       expect(ScanProvider.ipCompare('10.0.0.1', '11.0.0.0'), lessThan(0));
-      expect(ScanProvider.ipCompare('10.1.0.0', '10.0.255.255'), greaterThan(0));
+      expect(
+        ScanProvider.ipCompare('10.1.0.0', '10.0.255.255'),
+        greaterThan(0),
+      );
       expect(ScanProvider.ipCompare('10.0.1.0', '10.0.0.255'), greaterThan(0));
     });
   });
@@ -195,12 +203,18 @@ void main() {
 
     test('sorts by IP ascending and descending', () {
       final asc = ScanProvider.sortHosts(unsorted, ScanSortColumn.ip, true);
-      expect(asc.map((e) => e.ip),
-          ['192.168.1.2', '192.168.1.10', '192.168.1.100']);
+      expect(asc.map((e) => e.ip), [
+        '192.168.1.2',
+        '192.168.1.10',
+        '192.168.1.100',
+      ]);
 
       final desc = ScanProvider.sortHosts(unsorted, ScanSortColumn.ip, false);
-      expect(desc.map((e) => e.ip),
-          ['192.168.1.100', '192.168.1.10', '192.168.1.2']);
+      expect(desc.map((e) => e.ip), [
+        '192.168.1.100',
+        '192.168.1.10',
+        '192.168.1.2',
+      ]);
     });
 
     test('sorts by MAC ascending and descending', () {
@@ -211,18 +225,28 @@ void main() {
     });
 
     test('sorts by hostname ascending and descending', () {
-      final asc = ScanProvider.sortHosts(unsorted, ScanSortColumn.hostname, true);
+      final asc = ScanProvider.sortHosts(
+        unsorted,
+        ScanSortColumn.hostname,
+        true,
+      );
       expect(asc.map((e) => e.hostname), ['alpha', 'bravo', 'charlie']);
-      final desc =
-          ScanProvider.sortHosts(unsorted, ScanSortColumn.hostname, false);
+      final desc = ScanProvider.sortHosts(
+        unsorted,
+        ScanSortColumn.hostname,
+        false,
+      );
       expect(desc.map((e) => e.hostname), ['charlie', 'bravo', 'alpha']);
     });
 
     test('does not mutate the input list', () {
       final input = [...unsorted];
       ScanProvider.sortHosts(input, ScanSortColumn.ip, true);
-      expect(input.map((e) => e.ip),
-          ['192.168.1.10', '192.168.1.2', '192.168.1.100']);
+      expect(input.map((e) => e.ip), [
+        '192.168.1.10',
+        '192.168.1.2',
+        '192.168.1.100',
+      ]);
     });
 
     test('results getter applies the active sort column/direction', () {
@@ -264,28 +288,46 @@ void main() {
     // immediately regardless of the (empty) result set.
     for (final resolveNames in [true, false]) {
       for (final logging in [true, false]) {
-        test('resolveNames=$resolveNames logging=$logging: logs + finds nothing',
-            () async {
-          final p = ScanProvider();
-          p.setTarget('192.0.2.0/30');
-          p.startScan(resolveNames: resolveNames, logging: logging);
+        test(
+          'resolveNames=$resolveNames logging=$logging: logs + finds nothing',
+          () async {
+            final p = ScanProvider();
+            final logVersionBefore = p.logVersion.value;
+            p.setTarget('192.0.2.0/30');
+            p.startScan(resolveNames: resolveNames, logging: logging);
 
-          // Banner written synchronously before any async work.
-          expect(p.isScanning, isTrue);
-          expect(p.logText, isNotEmpty);
-          expect(p.logText, contains('Scan started'));
+            // Banner written synchronously before any async work.
+            expect(p.isScanning, isTrue);
+            expect(p.logText, isNotEmpty);
+            expect(p.logText, contains('Scan started'));
 
-          final finished = await _waitUntil(
-              () => !p.isScanning, const Duration(seconds: 15));
-          expect(finished, isTrue, reason: 'scan did not complete in time');
+            final finished = await _waitUntil(
+              () => !p.isScanning,
+              const Duration(seconds: 15),
+            );
+            expect(finished, isTrue, reason: 'scan did not complete in time');
 
-          expect(p.results, isEmpty);
-          // Either the normal completion banner or the error banner is written,
-          // both of which prove the onDone/onError log path executed.
-          expect(p.logText,
-              anyOf(contains('Scan complete'), contains('Scan ERROR')));
-          p.dispose();
-        });
+            // isScanning flips to false before the log file is written. Wait
+            // for logVersion (bumped once createLog completes) so the file I/O
+            // is done before tearDown deletes the temp directory.
+            if (logging) {
+              final logged = await _waitUntil(
+                () => p.logVersion.value > logVersionBefore,
+                const Duration(seconds: 15),
+              );
+              expect(logged, isTrue, reason: 'log was not written in time');
+            }
+
+            expect(p.results, isEmpty);
+            // Either the normal completion banner or the error banner is written,
+            // both of which prove the onDone/onError log path executed.
+            expect(
+              p.logText,
+              anyOf(contains('Scan complete'), contains('Scan ERROR')),
+            );
+            p.dispose();
+          },
+        );
       }
     }
   });
@@ -304,6 +346,27 @@ void main() {
       // dispose cancels _sub and disposes logVersion; must not throw even while
       // the background probe futures are still resolving.
       expect(p.dispose, returnsNormally);
+    });
+  });
+
+  // Bug: when LAN detection returns null (always on web), the Home screen
+  // pre-filled the CIDR field with a default but never set it as the scan
+  // target, so the Scan screen reported "No network target set".
+  group('ScanProvider.applyDetectedTarget', () {
+    test('uses the detected CIDR as the target', () {
+      final p = ScanProvider();
+      final applied = p.applyDetectedTarget('10.0.0.0/24');
+      expect(applied, '10.0.0.0/24');
+      expect(p.target, '10.0.0.0/24');
+      expect(p.isValidTarget, isTrue);
+    });
+
+    test('falls back to a valid default target when detection fails', () {
+      final p = ScanProvider();
+      final applied = p.applyDetectedTarget(null);
+      expect(applied, ScanProvider.defaultTarget);
+      expect(p.target, ScanProvider.defaultTarget);
+      expect(p.isValidTarget, isTrue);
     });
   });
 }

@@ -14,9 +14,21 @@ class ScanProvider extends ChangeNotifier {
   String get target => _target;
   bool get isValidTarget => NetworkScanner.isValidCidr(_target);
 
+  /// Pre-filled target shown when the LAN cannot be detected (e.g. on web).
+  static const defaultTarget = '192.168.178.0/24';
+
   void setTarget(String v) {
     _target = v;
     notifyListeners();
+  }
+
+  /// Sets the target to the detected `cidr`, or to `defaultTarget` when
+  /// detection yielded nothing, so the field the user sees and the scan
+  /// target never diverge. Returns the applied target.
+  String applyDetectedTarget(String? cidr) {
+    final applied = cidr ?? defaultTarget;
+    setTarget(applied);
+    return applied;
   }
 
   // ── Scan state ────────────────────────────────────────────────────────────
@@ -83,7 +95,8 @@ class ScanProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  List<HostResult> _sortedResults() => sortHosts(_results, _sortColumn, _sortAsc);
+  List<HostResult> _sortedResults() =>
+      sortHosts(_results, _sortColumn, _sortAsc);
 
   /// Pure sort used by [results]. Returns a new list of [hosts] ordered by
   /// [column]; [ascending] reverses the order. Kept side-effect free so the
@@ -113,8 +126,12 @@ class ScanProvider extends ChangeNotifier {
   static int ipCompare(String a, String b) {
     int toInt(String ip) {
       final ipOctets = ip.split('.').map(int.parse).toList();
-      return (ipOctets[0] << 24) | (ipOctets[1] << 16) | (ipOctets[2] << 8) | ipOctets[3];
+      return (ipOctets[0] << 24) |
+          (ipOctets[1] << 16) |
+          (ipOctets[2] << 8) |
+          ipOctets[3];
     }
+
     return toInt(a).compareTo(toInt(b));
   }
 
@@ -124,13 +141,16 @@ class ScanProvider extends ChangeNotifier {
     _results = [];
     _isScanning = true;
     _logBuffer.clear();
-    _logBuffer.writeln('=== Scan started: $_target @ ${DateTime.now().toIso8601String()} ===');
+    _logBuffer.writeln(
+      '=== Scan started: $_target @ ${DateTime.now().toIso8601String()} ===',
+    );
     notifyListeners();
 
     // Start foreground service so Android doesn't freeze/kill the scan.
     FgService.start(title: 'Network scan', body: 'Scanning $_target…');
 
-    _sub = NetworkScanner.scan(_target, resolveNames: resolveNames).listen((host) {
+    _sub = NetworkScanner.scan(_target, resolveNames: resolveNames).listen(
+      (host) {
         // De-duplicate by IP: the scanner emits each host first when it is
         // discovered (MAC pending) and again once enriched with MAC/vendor.
         final idx = _results.indexWhere((h) => h.ip == host.ip);
@@ -138,7 +158,9 @@ class ScanProvider extends ChangeNotifier {
           _results[idx] = host;
         } else {
           _results.add(host);
-          _logBuffer.writeln('FOUND  ${host.ip}\t${host.mac}\t${host.hostname}\t${host.manufacturer}');
+          _logBuffer.writeln(
+            'FOUND  ${host.ip}\t${host.mac}\t${host.hostname}\t${host.manufacturer}',
+          );
         }
         notifyListeners();
       },
@@ -147,10 +169,14 @@ class ScanProvider extends ChangeNotifier {
         // Sort by IP when the scan completes.
         _sortColumn = ScanSortColumn.ip;
         _sortAsc = true;
-        _logBuffer.writeln('\nScan complete. ${_results.length} host(s) found.');
+        _logBuffer.writeln(
+          '\nScan complete. ${_results.length} host(s) found.',
+        );
         _logBuffer.writeln('=== End: ${DateTime.now().toIso8601String()} ===');
         // Stop the foreground service; show "done" in the notification briefly.
-        FgService.stop(doneBody: 'Scan complete — ${_results.length} host(s) found.');
+        FgService.stop(
+          doneBody: 'Scan complete — ${_results.length} host(s) found.',
+        );
         notifyListeners();
         await _saveCache();
         if (logging) {

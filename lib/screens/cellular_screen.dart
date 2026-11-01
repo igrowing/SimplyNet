@@ -72,7 +72,7 @@ class _CellularScreenState extends State<CellularScreen> {
     await _fetchLocation();
 
     // Log the result
-    if (context.mounted) {
+    if (mounted) {
       final settings = context.read<SettingsProvider>().settings;
       if (settings.loggingEnabled && _data.isNotEmpty) {
         final buf = StringBuffer();
