@@ -87,13 +87,16 @@ class _IotScanScreenState extends State<IotScanScreen> {
             LinearProgressIndicator(
               value: iot.total > 0 ? iot.done / iot.total : null,
             ),
-          if (scanning)
+          // Same rule as the Scan screen: shown while scanning and whenever
+          // there are results to count.
+          if (scanning || devices.isNotEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  '${l.scanningEllipsis} ${devices.length} ${l.iotDevicesFound}',
+                  '${scanning ? '${l.scanningEllipsis} ' : ''}'
+                  '${devices.length} ${l.iotDevicesFound}',
                   style: const TextStyle(fontSize: 12),
                 ),
               ),

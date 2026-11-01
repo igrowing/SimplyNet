@@ -6,7 +6,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:simply_net/models/host_result.dart';
 import 'package:simply_net/providers/iot_scan_provider.dart';
 import 'package:simply_net/services/iot_scanner.dart';
+import 'package:simply_net/services/log_service.dart';
+import 'package:simply_net/services/mdns_discovery.dart';
 import 'package:simply_net/services/scan_storage.dart';
+
+import 'support/fake_mdns_browser.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -35,14 +39,14 @@ void main() {
 
   group('IotScanProvider', () {
     test('starts empty and not scanning', () {
-      final p = IotScanProvider();
+      final p = IotScanProvider(mdnsBrowser: FakeMdnsBrowser());
       expect(p.devices, isEmpty);
       expect(p.scanning, isFalse);
       expect(p.cidr, '');
     });
 
     test('loadCache is a no-op when nothing is stored', () async {
-      final p = IotScanProvider();
+      final p = IotScanProvider(mdnsBrowser: FakeMdnsBrowser());
       await p.loadCache();
       expect(p.devices, isEmpty);
     });
@@ -62,7 +66,7 @@ void main() {
         device.toJson(),
       ]);
 
-      final p = IotScanProvider();
+      final p = IotScanProvider(mdnsBrowser: FakeMdnsBrowser());
       await p.loadCache();
       expect(p.cidr, '192.168.1.0/24');
       expect(p.devices, hasLength(1));
@@ -73,18 +77,18 @@ void main() {
       SharedPreferences.setMockInitialValues({
         ScanStorage.kIotDevices: 'not-json-at-all',
       });
-      final p = IotScanProvider();
+      final p = IotScanProvider(mdnsBrowser: FakeMdnsBrowser());
       await p.loadCache();
       expect(p.devices, isEmpty);
     });
 
     test('devices list is unmodifiable', () {
-      final p = IotScanProvider();
+      final p = IotScanProvider(mdnsBrowser: FakeMdnsBrowser());
       expect(() => p.devices.clear(), throwsUnsupportedError);
     });
 
     test('shouldAutoScan is true once when cache is empty', () async {
-      final p = IotScanProvider();
+      final p = IotScanProvider(mdnsBrowser: FakeMdnsBrowser());
       expect(await p.shouldAutoScan(), isTrue);
       expect(await p.shouldAutoScan(), isFalse);
     });
@@ -103,8 +107,64 @@ void main() {
       await ScanStorage.save(ScanStorage.kIotDevices, '192.168.1.0/24', [
         device.toJson(),
       ]);
-      final p = IotScanProvider();
+      final p = IotScanProvider(mdnsBrowser: FakeMdnsBrowser());
       expect(await p.shouldAutoScan(), isFalse);
+    });
+  });
+
+  group('IotScanProvider mDNS', () {
+    MdnsServiceInstance matter(String ip) => MdnsServiceInstance(
+      serviceType: '_matter._tcp',
+      instance: 'dev',
+      hostname: 'node-7f3a.local',
+      ip: ip,
+      port: 5540,
+    );
+
+    test(
+      'a Matter device announced over mDNS appears in the results',
+      () async {
+        final p = IotScanProvider(
+          mdnsBrowser: FakeMdnsBrowser([matter('192.0.2.50')]),
+        );
+        p.startScan(
+          '192.0.2.0/24',
+          knownHosts: [HostResult(ip: '192.0.2.1')],
+          logging: false,
+        );
+        final done = await _waitUntil(
+          () => !p.scanning,
+          const Duration(seconds: 25),
+        );
+        expect(done, isTrue, reason: 'scan did not finish in time');
+        expect(p.devices.map((d) => d.ip), ['192.0.2.50']);
+        expect(p.devices.single.protocol, 'Matter device');
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+        p.dispose();
+      },
+    );
+
+    test('the scan log lists mDNS diagnostics', () async {
+      final p = IotScanProvider(
+        mdnsBrowser: FakeMdnsBrowser(
+          const [],
+          const MdnsException('port busy'),
+        ),
+      );
+      p.startScan('192.0.2.0/24', knownHosts: [HostResult(ip: '192.0.2.1')]);
+      final done = await _waitUntil(
+        () => !p.scanning,
+        const Duration(seconds: 25),
+      );
+      expect(done, isTrue, reason: 'scan did not finish in time');
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+
+      final logs = await LogService.loadIndex();
+      final entry = logs.firstWhere((e) => e.function == 'iot_scan');
+      final text = await LogService.readLog(entry.filePath);
+      expect(text, contains('Diagnostics:'));
+      expect(text, contains('mDNS unavailable: port busy'));
+      p.dispose();
     });
   });
 
@@ -115,7 +175,7 @@ void main() {
     test(
       'startScan(knownHosts) probes only the given hosts and completes',
       () async {
-        final p = IotScanProvider();
+        final p = IotScanProvider(mdnsBrowser: FakeMdnsBrowser());
         p.startScan(
           '192.0.2.0/24',
           knownHosts: [
@@ -143,7 +203,7 @@ void main() {
     test(
       'startScan(full subnet) derives the host total and completes',
       () async {
-        final p = IotScanProvider();
+        final p = IotScanProvider(mdnsBrowser: FakeMdnsBrowser());
         p.startScan('192.0.2.0/30', logging: false); // /30 → 2 host addresses
         expect(p.scanning, isTrue);
         expect(p.total, 2);
@@ -159,7 +219,7 @@ void main() {
     );
 
     test('startScan is a no-op while a scan is already running', () {
-      final p = IotScanProvider();
+      final p = IotScanProvider(mdnsBrowser: FakeMdnsBrowser());
       p.startScan('192.0.2.0/30', logging: false);
       expect(p.scanning, isTrue);
       p.startScan('10.0.0.0/30', logging: false); // ignored — already scanning
@@ -168,7 +228,7 @@ void main() {
     });
 
     test('stopScan clears scanning state and notifies', () {
-      final p = IotScanProvider();
+      final p = IotScanProvider(mdnsBrowser: FakeMdnsBrowser());
       var notified = 0;
       p.addListener(() => notified++);
       p.startScan('192.0.2.0/30', logging: false);
@@ -179,7 +239,7 @@ void main() {
     });
 
     test('dispose during an in-flight scan does not throw', () {
-      final p = IotScanProvider();
+      final p = IotScanProvider(mdnsBrowser: FakeMdnsBrowser());
       p.startScan('192.0.2.0/30', logging: false);
       expect(p.scanning, isTrue);
       expect(p.dispose, returnsNormally);

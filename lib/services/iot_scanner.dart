@@ -6,6 +6,7 @@ import 'package:simply_net/constants/iot_signatures.dart';
 import 'package:simply_net/constants/network_ports.dart';
 import 'package:simply_net/models/host_result.dart';
 import 'package:simply_net/services/iot_classifier.dart';
+import 'package:simply_net/services/mdns_discovery.dart';
 import 'package:simply_net/services/network_scanner.dart';
 import 'package:simply_net/services/oui_service.dart';
 
@@ -254,10 +255,13 @@ class IotScanner {
   ///
   /// Hostnames and MACs come from a `NetworkScanner.scan` ping sweep, but —
   /// as the original IoT scanner did — every address is TCP-probed, because
-  /// many IoT devices ignore ping. Yields results as they are found.
+  /// many IoT devices ignore ping. [mdns] and [onSkipped]/[onDiagnostic] are
+  /// as for `scanHosts`. Yields results as they are found.
   static Stream<IotDevice> scanSubnet(
     String cidr, {
+    MdnsBrowser? mdns,
     void Function(String line)? onSkipped,
+    void Function(String line)? onDiagnostic,
   }) async* {
     if (!NetworkScanner.isValidCidr(cidr)) return;
     // The scan emits each host twice (before and after MAC enrichment); the
@@ -266,7 +270,12 @@ class IotScanner {
     await for (final host in NetworkScanner.scan(cidr)) {
       discovered[host.ip] = host;
     }
-    yield* scanHosts(subnetTargets(cidr, discovered), onSkipped: onSkipped);
+    yield* scanHosts(
+      subnetTargets(cidr, discovered),
+      mdns: mdns,
+      onSkipped: onSkipped,
+      onDiagnostic: onDiagnostic,
+    );
   }
 
   /// Every host address of [cidr]: the [discovered] (ping-answering) entry
@@ -287,30 +296,48 @@ class IotScanner {
   /// first. [onSkipped] receives a one-line description — including the
   /// open/closed/timeout counts — of every reachable host that showed no IoT
   /// evidence, so the caller can log why a device was missed.
+  ///
+  /// When [mdns] is given, the network is browsed for smart-home service
+  /// announcements (Matter, HomeKit, ESPHome, ...) first. That evidence is
+  /// conclusive, supplies hostnames the router did not, and adds devices
+  /// missing from [hosts]. A failing browse never aborts the scan; it is
+  /// reported through [onDiagnostic] together with a result summary.
   static Stream<IotDevice> scanHosts(
     List<HostResult> hosts, {
+    MdnsBrowser? mdns,
     void Function(String line)? onSkipped,
+    void Function(String line)? onDiagnostic,
   }) {
     final controller = StreamController<IotDevice>();
-    if (hosts.isEmpty) {
+    if (hosts.isEmpty && mdns == null) {
       unawaited(controller.close());
       return controller.stream;
     }
 
     Future<void> run() async {
+      final announced = mdns == null
+          ? const <String, MdnsHostInfo>{}
+          : await _browseMdns(mdns, onDiagnostic);
+      final targets = mergeMdnsHosts(hosts, announced);
+
       // Restored from the original scanner: read the ARP table during the
       // IoT scan for hosts whose MAC the LAN scan did not resolve.
-      final needsArp = hosts.any((h) => !_isMac(h.mac));
+      final needsArp = targets.any((h) => !_isMac(h.mac));
       final arp = needsArp
           ? await NetworkScanner.readArpTable(logEmpty: false)
           : const <String, String>{};
 
       final sem = _Semaphore(32);
       await Future.wait(
-        hosts.map(
+        targets.map(
           (host) => sem.run(() async {
             try {
-              final dev = await _probeHost(host, arp, onSkipped);
+              final dev = await _probeHost(
+                host,
+                arp,
+                announced[host.ip]?.serviceTypes ?? const {},
+                onSkipped,
+              );
               if (dev != null) controller.add(dev);
             } on Exception catch (e) {
               onSkipped?.call('${host.ip}  probe error: $e');
@@ -325,11 +352,61 @@ class IotScanner {
     return controller.stream;
   }
 
+  // ---------- mDNS --------------------------------------------------------------
+
+  /// Browses mDNS once. A failure yields no evidence and is reported, never
+  /// thrown, so the TCP/hostname pipeline always still runs.
+  static Future<Map<String, MdnsHostInfo>> _browseMdns(
+    MdnsBrowser browser,
+    void Function(String line)? onDiagnostic,
+  ) async {
+    try {
+      final found = await MdnsDiscovery(browser).browseHosts();
+      final services = found.values.fold<int>(
+        0,
+        (n, h) => n + h.serviceTypes.length,
+      );
+      onDiagnostic?.call(
+        'mDNS: $services service(s) announced by ${found.length} host(s)',
+      );
+      return found;
+    } on MdnsException catch (e) {
+      onDiagnostic?.call('mDNS unavailable: ${e.message}');
+      return const {};
+    }
+  }
+
+  /// Folds mDNS findings into the host list: an empty hostname is filled
+  /// from the announcement, an announcing host counts as up, and hosts only
+  /// mDNS knows are appended. Hosts mDNS says nothing about are untouched.
+  @visibleForTesting
+  static List<HostResult> mergeMdnsHosts(
+    List<HostResult> hosts,
+    Map<String, MdnsHostInfo> announced,
+  ) {
+    if (announced.isEmpty) return hosts;
+    final known = {for (final h in hosts) h.ip};
+    return [
+      for (final h in hosts)
+        announced[h.ip] == null
+            ? h
+            : h.copyWith(
+                hostname: h.hostname.isEmpty
+                    ? announced[h.ip]!.hostname
+                    : h.hostname,
+                isUp: true,
+              ),
+      for (final a in announced.values)
+        if (!known.contains(a.ip)) HostResult(ip: a.ip, hostname: a.hostname),
+    ];
+  }
+
   // ---------- per-host probe ---------------------------------------------------
 
   static Future<IotDevice?> _probeHost(
     HostResult host,
     Map<String, String> arp,
+    Set<String> mdnsServices,
     void Function(String line)? onSkipped,
   ) async {
     final ip = host.ip;
@@ -338,7 +415,8 @@ class IotScanner {
       _iotPorts.keys.toList(),
       knownAlive: host.isUp,
     );
-    final reachable = host.isUp || ports.hostResponded;
+    final reachable =
+        host.isUp || ports.hostResponded || mdnsServices.isNotEmpty;
     final openPorts = ports.open;
 
     final mac = effectiveMac(host, arp);
@@ -352,6 +430,9 @@ class IotScanner {
     String? httpProtocol;
     var model = '';
     final extra = <String, String>{};
+    if (mdnsServices.isNotEmpty) {
+      extra['mdns'] = (mdnsServices.toList()..sort()).join(', ');
+    }
     for (final port in _httpPorts.where(openPorts.contains)) {
       final result = await _httpProbe(ip, port);
       if (result != null) {
@@ -386,6 +467,7 @@ class IotScanner {
       vendor: vendor,
       openPorts: openPorts,
       httpProtocol: httpProtocol,
+      mdnsServices: mdnsServices,
     );
     if (classification == null) {
       // An empty address of a subnet sweep is not worth a log line.

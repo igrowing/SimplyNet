@@ -9,12 +9,14 @@ void main() {
     String vendor = '',
     List<int> ports = const [],
     String? http,
+    Set<String> mdns = const {},
   }) => IotClassifier.classify(
     hostname: hostname,
     mac: mac,
     vendor: vendor,
     openPorts: ports,
     httpProtocol: http,
+    mdnsServices: mdns,
   );
 
   group('IotClassifier.hostnameTokens', () {
@@ -415,6 +417,93 @@ void main() {
         expect(classify(name)!.label, IotSignatures.stockFirmware.label);
       });
     }
+  });
+
+  // Matter and other smart-home devices announce themselves over mDNS
+  // (DNS-SD); that is the reliable way to find Matter, whose own transport
+  // is UDP.
+  group('IotClassifier.classify — mDNS services', () {
+    test('_matter._tcp alone is a definite Matter device', () {
+      final c = classify('', mdns: {'_matter._tcp'})!;
+      expect(c.label, 'Matter device');
+      expect(c.confidence, IotConfidence.definite);
+      expect(c.method, contains('mDNS _matter._tcp'));
+    });
+
+    test('_matterc._udp (commissionable) is a definite Matter device', () {
+      final c = classify('', mdns: {'_matterc._udp'})!;
+      expect(c.label, 'Matter device');
+      expect(c.confidence, IotConfidence.definite);
+      expect(c.method, contains('mDNS _matterc._udp'));
+    });
+
+    test('Matter on a recognised device appends "+ Matter"', () {
+      final c = classify('plug-kitchen', mdns: {'_matter._tcp'})!;
+      expect(c.label, '${IotSignatures.smartPlug.label} + Matter');
+      expect(c.confidence, IotConfidence.definite);
+    });
+
+    test('Matter seen by port and by mDNS appends "+ Matter" once', () {
+      final c = classify(
+        'plug-kitchen',
+        ports: [5540],
+        mdns: {'_matter._tcp'},
+      )!;
+      expect(c.label, '${IotSignatures.smartPlug.label} + Matter');
+      expect(c.method, contains('Matter port'));
+      expect(c.method, contains('mDNS _matter._tcp'));
+    });
+
+    test('a Matter HTTP label is not suffixed again', () {
+      final c = classify('', http: 'Matter device', mdns: {'_matter._tcp'})!;
+      expect(c.label, 'Matter device');
+    });
+
+    test('_esphomelib._tcp is a definite ESPHome device', () {
+      final c = classify('', mdns: {'_esphomelib._tcp'})!;
+      expect(c.label, 'ESPHome');
+      expect(c.confidence, IotConfidence.definite);
+    });
+
+    for (final (service, label) in [
+      ('_hap._tcp', 'HomeKit accessory'),
+      ('_home-assistant._tcp', 'Home Assistant'),
+      ('_hue._tcp', 'Philips Hue'),
+      ('_shelly._tcp', 'Shelly'),
+      ('_googlecast._tcp', 'Google Cast'),
+      ('_octoprint._tcp', 'OctoPrint'),
+      ('_slzb-06._tcp', 'Zigbee hub'),
+    ]) {
+      test('$service → $label', () {
+        final c = classify('', mdns: {service})!;
+        expect(c.label, label);
+        expect(c.confidence, IotConfidence.definite);
+      });
+    }
+
+    test('an mDNS service label beats a hostname-only guess', () {
+      final c = classify('hub-1', mdns: {'_hap._tcp'})!;
+      expect(c.label, 'HomeKit accessory');
+    });
+
+    test('an HTTP fingerprint label beats the mDNS label', () {
+      final c = classify('', http: 'Tasmota', mdns: {'_hap._tcp'})!;
+      expect(c.label, 'Tasmota');
+      expect(c.method, contains('mDNS _hap._tcp'));
+    });
+
+    test('unlisted service types are ignored', () {
+      expect(classify('', mdns: {'_ipp._tcp', '_airplay._tcp'}), isNull);
+    });
+
+    test('mDNS evidence adds to an OUI signal', () {
+      final c = classify(
+        '',
+        vendor: 'Espressif Inc.',
+        mdns: {'_esphomelib._tcp'},
+      )!;
+      expect(c.method, allOf(contains('OUI'), contains('mDNS')));
+    });
   });
 
   group('IotClassifier.classify — must not match', () {

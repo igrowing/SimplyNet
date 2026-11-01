@@ -8,6 +8,8 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
     <!-- Required by WifiManager.startScan() to trigger a fresh dual-band scan -->
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE"/>
+    <!-- Lets mDNS (Matter, HomeKit, ESPHome discovery) receive multicast. -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE"/>
     <!-- API 33+: lets us read Wi-Fi scan results; we never derive location -->
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"

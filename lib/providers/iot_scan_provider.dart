@@ -5,11 +5,20 @@ import 'package:simply_net/providers/scan_provider.dart';
 import 'package:simply_net/services/foreground_service.dart';
 import 'package:simply_net/services/iot_scanner.dart';
 import 'package:simply_net/services/log_service.dart';
+import 'package:simply_net/services/mdns_discovery.dart';
 import 'package:simply_net/services/scan_storage.dart';
 
 /// Owns the IoT scan lifecycle so a running scan survives navigation away from
 /// the IoT screen, and the last results can be reloaded from local storage.
 class IotScanProvider extends ChangeNotifier {
+  /// Creates the provider. [mdnsBrowser] finds devices by their mDNS
+  /// announcements (Matter, HomeKit, ...); tests pass a fake so no scan
+  /// touches the multicast network.
+  IotScanProvider({MdnsBrowser? mdnsBrowser})
+    : _mdnsBrowser = mdnsBrowser ?? MulticastDnsBrowser();
+
+  final MdnsBrowser _mdnsBrowser;
+
   List<IotDevice> _devices = [];
   List<IotDevice> get devices => List.unmodifiable(_devices);
 
@@ -29,6 +38,9 @@ class IotScanProvider extends ChangeNotifier {
   /// Hosts that showed no IoT evidence in the current scan, one line each.
   /// Written to the scan log so a missed device can be diagnosed.
   final List<String> _skipped = [];
+
+  /// Scan-level notes (e.g. mDNS results or failure), one line each.
+  final List<String> _diagnostics = [];
 
   StreamSubscription<IotDevice>? _sub;
   Timer? _progressTimer;
@@ -80,6 +92,7 @@ class IotScanProvider extends ChangeNotifier {
     _loggingEnabled = logging;
     _devices = [];
     _skipped.clear();
+    _diagnostics.clear();
     _scanning = true;
     _done = 0;
     _total = 0;
@@ -92,15 +105,21 @@ class IotScanProvider extends ChangeNotifier {
         title: 'IoT Scan',
         body: 'Probing ${knownHosts.length} known hosts…',
       );
-      _sub = IotScanner.scanHosts(knownHosts, onSkipped: _skipped.add).listen(
-        (dev) {
-          _devices.add(dev);
-          _done++;
-          notifyListeners();
-        },
-        onDone: _onDone,
-        onError: (_) => _onError(),
-      );
+      _sub =
+          IotScanner.scanHosts(
+            knownHosts,
+            mdns: _mdnsBrowser,
+            onSkipped: _skipped.add,
+            onDiagnostic: _diagnostics.add,
+          ).listen(
+            (dev) {
+              _devices.add(dev);
+              _done++;
+              notifyListeners();
+            },
+            onDone: _onDone,
+            onError: (_) => _onError(),
+          );
     } else {
       // Full subnet sweep.
       final parts = cidr.split('/');
@@ -110,14 +129,20 @@ class IotScanProvider extends ChangeNotifier {
         title: 'IoT Scan',
         body: 'Scanning $cidr for IoT devices…',
       );
-      _sub = IotScanner.scanSubnet(cidr, onSkipped: _skipped.add).listen(
-        (dev) {
-          _devices.add(dev);
-          notifyListeners();
-        },
-        onDone: _onDone,
-        onError: (_) => _onError(),
-      );
+      _sub =
+          IotScanner.scanSubnet(
+            cidr,
+            mdns: _mdnsBrowser,
+            onSkipped: _skipped.add,
+            onDiagnostic: _diagnostics.add,
+          ).listen(
+            (dev) {
+              _devices.add(dev);
+              notifyListeners();
+            },
+            onDone: _onDone,
+            onError: (_) => _onError(),
+          );
       // Full scan gives no per-host progress — animate an approximate bar.
       _progressTimer = Timer.periodic(const Duration(milliseconds: 400), (t) {
         if (!_scanning) {
@@ -178,6 +203,12 @@ class IotScanProvider extends ChangeNotifier {
         '${dev.ip}  ${dev.hostname}  ${dev.protocol}  ${dev.vendor}  '
         '[${dev.detectionMethod}, ${dev.confidence.name}]',
       );
+    }
+    if (_diagnostics.isNotEmpty) {
+      buf
+        ..writeln()
+        ..writeln('Diagnostics:');
+      _diagnostics.forEach(buf.writeln);
     }
     if (_skipped.isNotEmpty) {
       buf

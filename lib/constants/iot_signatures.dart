@@ -265,4 +265,23 @@ abstract final class IotSignatures {
 
   /// TCP ports of Matter 1.3+ devices: operational and commissioning.
   static const matterPorts = <int>{5540, 20202};
+
+  /// mDNS / DNS-SD service types that identify a smart-home device, with the
+  /// label shown for each. A device announcing one of these is conclusively
+  /// IoT, whatever its hostname or open ports.
+  static const mdnsServices = <String, String>{
+    '_matter._tcp': 'Matter device',
+    '_matterc._udp': 'Matter device',
+    '_esphomelib._tcp': 'ESPHome',
+    '_hap._tcp': 'HomeKit accessory',
+    '_home-assistant._tcp': 'Home Assistant',
+    '_hue._tcp': 'Philips Hue',
+    '_shelly._tcp': 'Shelly',
+    '_googlecast._tcp': 'Google Cast',
+    '_octoprint._tcp': 'OctoPrint',
+    '_slzb-06._tcp': 'Zigbee hub',
+  };
+
+  /// The mDNS service types of Matter: operational and commissionable.
+  static const matterServices = <String>{'_matter._tcp', '_matterc._udp'};
 }

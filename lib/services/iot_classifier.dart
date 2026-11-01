@@ -69,14 +69,17 @@ abstract final class IotClassifier {
   ///
   /// [mac] is the device MAC from any source (`''` or `N/A` when unknown),
   /// [vendor] its OUI vendor name (`''` when unknown) and [httpProtocol] the
-  /// firmware recognised from its web page, if any. Returns null when there
-  /// is no IoT evidence at all.
+  /// firmware recognised from its web page, if any. [mdnsServices] are the
+  /// DNS-SD service types the host announced (`_matter._tcp`, ...); only
+  /// those in `IotSignatures.mdnsServices` count. Returns null when there is
+  /// no IoT evidence at all.
   static IotClassification? classify({
     required String hostname,
     required String mac,
     required String vendor,
     required List<int> openPorts,
     String? httpProtocol,
+    Set<String> mdnsServices = const {},
   }) {
     final lowerHost = hostname.trim().toLowerCase();
     final tokens = hostnameTokens(hostname);
@@ -90,6 +93,24 @@ abstract final class IotClassifier {
     if (httpProtocol != null) {
       conclusive = true;
       evidence.add('HTTP/$httpProtocol');
+    }
+
+    // mDNS service announcements — conclusive. Authoritative, so a service
+    // label beats a hostname-only guess (but not an HTTP fingerprint).
+    // Matter is handled below, combined with any other label.
+    final announced = [
+      for (final t in mdnsServices)
+        if (IotSignatures.mdnsServices.containsKey(t)) t,
+    ]..sort();
+    final matterService = announced
+        .where(IotSignatures.matterServices.contains)
+        .firstOrNull;
+    for (final t in announced) {
+      conclusive = true;
+      evidence.add('mDNS $t');
+      if (!IotSignatures.matterServices.contains(t)) {
+        label ??= IotSignatures.mdnsServices[t];
+      }
     }
 
     // Best hostname signature.
@@ -148,11 +169,17 @@ abstract final class IotClassifier {
       }
     }
 
-    // Matter over TCP — conclusive, combined with any other label.
-    if (ports.any(IotSignatures.matterPorts.contains)) {
+    // Matter — an open TCP Matter port or an mDNS Matter announcement is
+    // conclusive, and combines with any other label.
+    final matterPort = ports.any(IotSignatures.matterPorts.contains);
+    if (matterPort || matterService != null) {
       conclusive = true;
-      label = label == null ? 'Matter device' : '$label + Matter';
-      evidence.add('Matter port');
+      if (label == null) {
+        label = 'Matter device';
+      } else if (!label.contains('Matter')) {
+        label = '$label + Matter';
+      }
+      if (matterPort) evidence.add('Matter port');
     }
 
     if (score == 0 && !conclusive) return null;

@@ -80,6 +80,19 @@ from a MAC published as the hostname (`effectiveMac`). Vendors come from
 `OuiService` (`assets/oui.json` plus a few IoT prefixes missing from the IEEE
 registry); the IoT scanner has no OUI table of its own.
 
+Before probing, `IotScanner` browses mDNS / DNS-SD once
+(`MdnsDiscovery` over the `multicast_dns` package) for the service types in
+`IotSignatures.mdnsServices`: Matter (`_matter._tcp`, `_matterc._udp`),
+HomeKit, ESPHome, Home Assistant, Hue, Shelly, Google Cast, OctoPrint and
+SLZB. This is the reliable way to find Matter, whose own transport is UDP.
+An announcement is conclusive evidence for `IotClassifier`, supplies a
+hostname the router did not, and adds devices missing from the host list.
+On Android `MulticastLock` (`simplynet/multicast` channel,
+`WifiManager.MulticastLock`) is held while browsing, since the OS otherwise
+drops incoming multicast. The browser is injected into `IotScanProvider`
+(`MdnsBrowser`), and a failure — for example Windows cannot open the socket —
+is reported as a log diagnostic and never aborts the scan.
+
 Per host, `scanPorts` probes `NetworkPorts.iotPortNames` with a global cap on
 simultaneous connects (96), a 1.5 s timeout and one retry of timed-out ports.
 Addresses no ping answered must first reply on a short liveness gate (ports
@@ -88,7 +101,7 @@ unreachable (`PortProbeOutcome`). The scanner then fingerprints the web page
 of every open web port, tries the TP-Link Kasa protocol on 9999, and hands
 everything to `IotClassifier`. The classifier scores independent evidence —
 hostname signature (`IotSignatures`), MAC in the hostname, IoT vendor, open
-ports, HTTP fingerprint, Matter TCP port — into a label and an
+ports, HTTP fingerprint, Matter TCP port, mDNS services — into a label and an
 `IotConfidence` (one signal `possible`, two `probable`, three or a conclusive
 one `definite`). No single signal is required, so a plug with no open port is
 still found by its hostname or MAC. Reachable hosts with no evidence are
@@ -160,12 +173,25 @@ classDiagram
     }
     class IotScanner {
         <<static>>
-        +scanHosts(hosts) Stream~IotDevice~
-        +scanSubnet(cidr) Stream~IotDevice~
+        +scanHosts(hosts, mdns) Stream~IotDevice~
+        +scanSubnet(cidr, mdns) Stream~IotDevice~
+    }
+    class MdnsDiscovery {
+        +browseHosts() Map~String, MdnsHostInfo~
+    }
+    class MdnsBrowser {
+        <<interface>>
+        +browse(serviceTypes) List~MdnsServiceInstance~
+    }
+    class MulticastDnsBrowser
+    class MulticastLock {
+        <<static>>
+        +acquire() bool
+        +release()
     }
     class IotClassifier {
         <<static>>
-        +classify(hostname, mac, vendor, openPorts, httpProtocol) IotClassification
+        +classify(hostname, mac, vendor, openPorts, httpProtocol, mdnsServices) IotClassification
     }
     class IotSignatures {
         <<constants>>
@@ -208,6 +234,11 @@ classDiagram
     IotScanner --> NetworkScanner : subnet discovery
     IotScanner --> IotClassifier
     IotScanner --> OuiService
+    IotScanProvider --> MdnsBrowser
+    IotScanner --> MdnsDiscovery
+    MdnsDiscovery --> MdnsBrowser
+    MulticastDnsBrowser ..|> MdnsBrowser
+    MulticastDnsBrowser --> MulticastLock
     IotClassifier --> IotSignatures
     IotClassifier --> NetworkScanner : macFromHostname, detectDeviceType
     CameraScanProvider --> IpCameraDetector
