@@ -159,10 +159,14 @@ void main() {
       expect(ports[6668], 'Tuya local');
     });
 
-    test('UDP-only ports are not in the TCP list', () {
-      expect(ports.containsKey(5353), isFalse); // mDNS
-      expect(ports.containsKey(5540), isFalse); // Matter
-      expect(ports.containsKey(20202), isFalse); // Matter commissioning
+    test('mDNS (UDP-only) is not in the TCP list', () {
+      expect(ports.containsKey(5353), isFalse);
+    });
+
+    // Restored: Matter 1.3+ devices may listen on TCP.
+    test('Matter TCP ports are probed', () {
+      expect(ports.containsKey(5540), isTrue);
+      expect(ports.containsKey(20202), isTrue);
     });
   });
 

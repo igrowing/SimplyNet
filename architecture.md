@@ -72,18 +72,28 @@ hostname label (`macFromHostname`, 12 hex characters, e.g.
 
 **IoT scan.** `IotScanProvider` receives the full `HostResult`s (hostname,
 MAC, manufacturer) of the last LAN scan and runs `IotScanner.scanHosts`. With
-no fresh scan, `IotScanner.scanSubnet` first discovers hosts through
-`NetworkScanner.scan` and then runs the same pipeline, so there is one source
-for hostnames, MACs and vendors (`OuiService` / `assets/oui.json`; the IoT
-scanner has no OUI table of its own). Per host the scanner probes the ports
-in `NetworkPorts.iotPortNames`, fingerprints the web page of every open web
-port, and hands everything to `IotClassifier`. The classifier scores
-independent evidence — hostname signature (`IotSignatures`), MAC in the
-hostname, IoT vendor, open ports, HTTP fingerprint — into a label and a
+no fresh scan, `IotScanner.scanSubnet` takes hostnames and MACs from a
+`NetworkScanner.scan` ping sweep but TCP-probes *every* address of the subnet
+(`subnetTargets`), because many IoT devices ignore ping. Hosts whose MAC is
+still unknown get it from the ARP table read once during the IoT scan, else
+from a MAC published as the hostname (`effectiveMac`). Vendors come from
+`OuiService` (`assets/oui.json` plus a few IoT prefixes missing from the IEEE
+registry); the IoT scanner has no OUI table of its own.
+
+Per host, `scanPorts` probes `NetworkPorts.iotPortNames` with a global cap on
+simultaneous connects (96), a 1.5 s timeout and one retry of timed-out ports.
+Addresses no ping answered must first reply on a short liveness gate (ports
+80, 8123, 1883, 6668). Each port ends as open, closed (refused), timeout or
+unreachable (`PortProbeOutcome`). The scanner then fingerprints the web page
+of every open web port, tries the TP-Link Kasa protocol on 9999, and hands
+everything to `IotClassifier`. The classifier scores independent evidence —
+hostname signature (`IotSignatures`), MAC in the hostname, IoT vendor, open
+ports, HTTP fingerprint, Matter TCP port — into a label and an
 `IotConfidence` (one signal `possible`, two `probable`, three or a conclusive
 one `definite`). No single signal is required, so a plug with no open port is
-still found by its hostname or MAC. Hosts with no evidence are written to the
-scan log (`onSkipped`) so a missed device can be diagnosed.
+still found by its hostname or MAC. Reachable hosts with no evidence are
+written to the scan log (`onSkipped`) with their port outcome counts, so a
+missed device can be diagnosed.
 
 **Camera scan.** `CameraScanProvider` takes the known host IPs from the last
 scan and runs `IpCameraDetector.scanHosts`, with a subnet-wide fallback.

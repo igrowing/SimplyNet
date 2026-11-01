@@ -121,7 +121,17 @@ void main() {
       });
     }
 
-    test('the loose "chip" keyword no longer matches', () {
+    // Restored from the old scanner, but as a whole word only.
+    test('"CHIP" as a word is a Matter/CHIP device', () {
+      final r = IotScanner.classifyHttp(
+        server: '',
+        xFirmware: '',
+        body: '<title>CHIP lighting-app</title>',
+      );
+      expect(r?.$1, 'Matter/CHIP');
+    });
+
+    test('"chip" inside another word does not match', () {
       expect(
         IotScanner.classifyHttp(
           server: '',

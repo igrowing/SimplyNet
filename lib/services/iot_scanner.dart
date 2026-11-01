@@ -104,6 +104,69 @@ class IotDevice {
   }
 }
 
+// ── Port probe model ──────────────────────────────────────────────────────────
+
+/// Result of one TCP connect attempt.
+enum PortProbeOutcome {
+  /// The connection was accepted.
+  open,
+
+  /// The host refused the connection: it is alive, the port is closed.
+  closed,
+
+  /// No answer within the timeout.
+  timeout,
+
+  /// The OS reported the host or network unreachable.
+  unreachable,
+}
+
+/// Open ports and outcome counts of a host's port probe.
+@immutable
+class PortScanResult {
+  /// Creates a result from explicit counts.
+  const PortScanResult({
+    required this.open,
+    required this.closed,
+    required this.timedOut,
+    required this.unreachable,
+  });
+
+  /// Tallies per-port [outcomes].
+  factory PortScanResult.from(Map<int, PortProbeOutcome> outcomes) {
+    int count(PortProbeOutcome o) =>
+        outcomes.values.where((v) => v == o).length;
+    return PortScanResult(
+      open: [
+        for (final e in outcomes.entries)
+          if (e.value == PortProbeOutcome.open) e.key,
+      ]..sort(),
+      closed: count(PortProbeOutcome.closed),
+      timedOut: count(PortProbeOutcome.timeout),
+      unreachable: count(PortProbeOutcome.unreachable),
+    );
+  }
+
+  /// Open ports, ascending.
+  final List<int> open;
+
+  /// Ports that refused the connection.
+  final int closed;
+
+  /// Ports that did not answer in time (after the retry).
+  final int timedOut;
+
+  /// Ports for which the OS reported the host unreachable.
+  final int unreachable;
+
+  /// True when the host answered on at least one port (open or refused).
+  bool get hostResponded => open.isNotEmpty || closed > 0;
+
+  /// One-line diagnostic for the scan log.
+  String get summary =>
+      'ports=$open closed=$closed timeout=$timedOut unreachable=$unreachable';
+}
+
 // ── Scanner ───────────────────────────────────────────────────────────────────
 
 class IotScanner {
@@ -159,13 +222,39 @@ class IotScanner {
     'FRITZ': 'AVM FRITZ! (IoT router)',
   };
 
+  static final _chipWord = RegExp(r'\bchip\b');
+
+  // ---------- port-probe tuning ------------------------------------------------
+
+  /// Connect timeout for a host known to be alive. Wi-Fi IoT chips in
+  /// power-save mode answer late, so this is well above a LAN round trip.
+  static const _portTimeout = Duration(milliseconds: 1500);
+
+  /// Shorter timeout for the liveness gate of addresses no ping answered.
+  static const _gateTimeout = Duration(milliseconds: 1000);
+
+  /// Ports probed first on an address no ping answered. If none of them gets
+  /// any reply (open or refused) the address is treated as empty.
+  static const _gatePorts = [80, 8123, 1883, 6668];
+
+  /// Caps simultaneous TCP connects across all hosts, so a scan never fires
+  /// hundreds of SYNs at once over Wi-Fi.
+  static final _sockets = _Semaphore(96);
+
+  /// OS error codes for a refused connection (Linux/Android, BSD/iOS,
+  /// Windows WSA and Win32) — the host answered, the port is closed.
+  static const _refusedCodes = {111, 61, 10061, 1225};
+
+  /// OS error codes for a connect timeout (Linux/Android, BSD/iOS, Windows).
+  static const _timeoutCodes = {110, 60, 10060};
+
   // ---------- public scan entry points ----------------------------------------
 
-  /// Scans [cidr] for IoT devices.
+  /// Scans every address of [cidr] for IoT devices.
   ///
-  /// Discovers live hosts with `NetworkScanner.scan` (ping, hostname, ARP,
-  /// OUI) and then runs the same per-host pipeline as [scanHosts]. Yields
-  /// results as they are found.
+  /// Hostnames and MACs come from a `NetworkScanner.scan` ping sweep, but —
+  /// as the original IoT scanner did — every address is TCP-probed, because
+  /// many IoT devices ignore ping. Yields results as they are found.
   static Stream<IotDevice> scanSubnet(
     String cidr, {
     void Function(String line)? onSkipped,
@@ -173,48 +262,66 @@ class IotScanner {
     if (!NetworkScanner.isValidCidr(cidr)) return;
     // The scan emits each host twice (before and after MAC enrichment); the
     // map keeps the latest, enriched emission.
-    final hosts = <String, HostResult>{};
+    final discovered = <String, HostResult>{};
     await for (final host in NetworkScanner.scan(cidr)) {
-      hosts[host.ip] = host;
+      discovered[host.ip] = host;
     }
-    yield* scanHosts(hosts.values.toList(), onSkipped: onSkipped);
+    yield* scanHosts(subnetTargets(cidr, discovered), onSkipped: onSkipped);
   }
 
-  /// Probes [hosts] for IoT devices without a subnet sweep.
+  /// Every host address of [cidr]: the [discovered] (ping-answering) entry
+  /// where there is one, otherwise a bare target marked `isUp: false`.
+  @visibleForTesting
+  static List<HostResult> subnetTargets(
+    String cidr,
+    Map<String, HostResult> discovered,
+  ) => [
+    for (final ip in NetworkScanner.hostsInCidr(cidr))
+      discovered[ip] ?? HostResult(ip: ip, isUp: false),
+  ];
+
+  /// Probes [hosts] for IoT devices.
   ///
-  /// Used when `ScanProvider` already holds a fresh host list, so ARP/ping
-  /// discovery and hostname resolution are not repeated. [onSkipped] receives
-  /// a one-line description of every host that showed no IoT evidence, so the
-  /// caller can log why a device was missed.
+  /// Hosts with `isUp` (answered ping) get a full port probe with one retry
+  /// of timed-out ports; other addresses must pass a short liveness gate
+  /// first. [onSkipped] receives a one-line description — including the
+  /// open/closed/timeout counts — of every reachable host that showed no IoT
+  /// evidence, so the caller can log why a device was missed.
   static Stream<IotDevice> scanHosts(
     List<HostResult> hosts, {
     void Function(String line)? onSkipped,
   }) {
-    final sem = _Semaphore(32);
     final controller = StreamController<IotDevice>();
-    var pending = hosts.length;
-
-    if (pending == 0) {
+    if (hosts.isEmpty) {
       unawaited(controller.close());
       return controller.stream;
     }
 
-    void finishOne() {
-      pending--;
-      if (pending == 0) unawaited(controller.close());
+    Future<void> run() async {
+      // Restored from the original scanner: read the ARP table during the
+      // IoT scan for hosts whose MAC the LAN scan did not resolve.
+      final needsArp = hosts.any((h) => !_isMac(h.mac));
+      final arp = needsArp
+          ? await NetworkScanner.readArpTable(logEmpty: false)
+          : const <String, String>{};
+
+      final sem = _Semaphore(32);
+      await Future.wait(
+        hosts.map(
+          (host) => sem.run(() async {
+            try {
+              final dev = await _probeHost(host, arp, onSkipped);
+              if (dev != null) controller.add(dev);
+            } on Exception catch (e) {
+              onSkipped?.call('${host.ip}  probe error: $e');
+            }
+          }),
+        ),
+      );
+      await controller.close();
     }
 
-    for (final host in hosts) {
-      sem
-          .run(() => _probeHost(host, onSkipped))
-          .then((dev) {
-            if (dev != null) controller.add(dev);
-            finishOne();
-          })
-          .catchError((_) {
-            finishOne();
-          });
-    }
+    unawaited(run());
     return controller.stream;
   }
 
@@ -222,16 +329,24 @@ class IotScanner {
 
   static Future<IotDevice?> _probeHost(
     HostResult host,
+    Map<String, String> arp,
     void Function(String line)? onSkipped,
   ) async {
     final ip = host.ip;
-    final mac = host.mac;
-    final hasMac = mac.isNotEmpty && mac != 'N/A';
-    final vendor = host.manufacturer.isNotEmpty || !hasMac
+    final ports = await scanPorts(
+      ip,
+      _iotPorts.keys.toList(),
+      knownAlive: host.isUp,
+    );
+    final reachable = host.isUp || ports.hostResponded;
+    final openPorts = ports.open;
+
+    final mac = effectiveMac(host, arp);
+    final vendor = mac == null
+        ? ''
+        : mac == host.mac.toUpperCase() && host.manufacturer.isNotEmpty
         ? host.manufacturer
         : OuiService.lookup(mac);
-
-    final openPorts = await _scanPorts(ip, _iotPorts.keys.toList());
 
     // HTTP fingerprint: try every open web port until one is recognised.
     String? httpProtocol;
@@ -253,7 +368,7 @@ class IotScanner {
       if (kasaModel != null) {
         return IotDevice(
           ip: ip,
-          mac: hasMac ? mac : 'N/A',
+          mac: mac ?? 'N/A',
           hostname: host.hostname,
           vendor: vendor,
           protocol: 'TP-Link Kasa',
@@ -267,22 +382,25 @@ class IotScanner {
 
     final classification = IotClassifier.classify(
       hostname: host.hostname,
-      mac: mac,
+      mac: mac ?? '',
       vendor: vendor,
       openPorts: openPorts,
       httpProtocol: httpProtocol,
     );
     if (classification == null) {
-      onSkipped?.call(
-        '$ip  hostname="${host.hostname}"  mac=$mac  vendor="$vendor"  '
-        'ports=$openPorts',
-      );
+      // An empty address of a subnet sweep is not worth a log line.
+      if (reachable) {
+        onSkipped?.call(
+          '$ip  hostname="${host.hostname}"  mac=${mac ?? 'N/A'}  '
+          'vendor="$vendor"  ${ports.summary}',
+        );
+      }
       return null;
     }
 
     return IotDevice(
       ip: ip,
-      mac: hasMac ? mac : 'N/A',
+      mac: mac ?? 'N/A',
       hostname: host.hostname,
       vendor: vendor,
       protocol: classification.label,
@@ -294,24 +412,91 @@ class IotScanner {
     );
   }
 
+  static final _macRe = RegExp(r'^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$');
+
+  static bool _isMac(String mac) => _macRe.hasMatch(mac);
+
+  /// The best-known MAC of [host], upper-cased: its own (from the LAN scan),
+  /// else the ARP table read during the IoT scan, else a MAC published as its
+  /// hostname. Null when no source knows it.
+  @visibleForTesting
+  static String? effectiveMac(HostResult host, Map<String, String> arp) {
+    if (_isMac(host.mac)) return host.mac.toUpperCase();
+    final fromArp = arp[host.ip];
+    if (fromArp != null && _isMac(fromArp)) return fromArp.toUpperCase();
+    return NetworkScanner.macFromHostname(host.hostname);
+  }
+
   // ---------- port scan --------------------------------------------------------
 
-  static Future<List<int>> _scanPorts(String ip, List<int> ports) async {
-    final futs = ports.map((port) async {
-      try {
-        final sock = await Socket.connect(
-          ip,
-          port,
-          timeout: const Duration(milliseconds: 600),
-        );
-        await sock.close();
-        return port;
-      } catch (_) {
-        return null;
+  /// Probes [ports] on [ip] and reports open ports plus outcome counts.
+  ///
+  /// When [knownAlive] is false the `_gatePorts` are probed first with a
+  /// short timeout; if none of them gets any reply the address is treated
+  /// as empty and the rest is skipped. Ports that time out are retried once
+  /// on a host that is alive or has replied on another port.
+  @visibleForTesting
+  static Future<PortScanResult> scanPorts(
+    String ip,
+    List<int> ports, {
+    required bool knownAlive,
+  }) async {
+    final outcomes = <int, PortProbeOutcome>{};
+
+    Future<void> probeAll(Iterable<int> list, Duration timeout) async {
+      final results = await Future.wait(
+        list.map((p) async => (p, await _probePort(ip, p, timeout))),
+      );
+      for (final (port, outcome) in results) {
+        outcomes[port] = outcome;
       }
-    });
-    final done = await Future.wait(futs);
-    return done.whereType<int>().toList()..sort();
+    }
+
+    bool responded() => outcomes.values.any(
+      (o) => o == PortProbeOutcome.open || o == PortProbeOutcome.closed,
+    );
+
+    if (!knownAlive) {
+      await probeAll(_gatePorts.where(ports.contains), _gateTimeout);
+      if (!responded()) return PortScanResult.from(outcomes);
+    }
+    await probeAll(ports.where((p) => !outcomes.containsKey(p)), _portTimeout);
+
+    final timedOut = [
+      for (final e in outcomes.entries)
+        if (e.value == PortProbeOutcome.timeout) e.key,
+    ];
+    if (timedOut.isNotEmpty && (knownAlive || responded())) {
+      await probeAll(timedOut, _portTimeout);
+    }
+    return PortScanResult.from(outcomes);
+  }
+
+  static Future<PortProbeOutcome> _probePort(
+    String ip,
+    int port,
+    Duration timeout,
+  ) => _sockets.run(() async {
+    try {
+      final sock = await Socket.connect(ip, port, timeout: timeout);
+      sock.destroy();
+      return PortProbeOutcome.open;
+    } on SocketException catch (e) {
+      return probeOutcome(e);
+    }
+  });
+
+  /// Maps a connect failure to a probe outcome: refused → closed (the host
+  /// answered), a timeout (Dart reports its own timeout without an OS error)
+  /// → timeout, anything else (no route, network down) → unreachable.
+  @visibleForTesting
+  static PortProbeOutcome probeOutcome(SocketException e) {
+    final code = e.osError?.errorCode;
+    if (code == null || _timeoutCodes.contains(code)) {
+      return PortProbeOutcome.timeout;
+    }
+    if (_refusedCodes.contains(code)) return PortProbeOutcome.closed;
+    return PortProbeOutcome.unreachable;
   }
 
   // ---------- HTTP fingerprint probe -------------------------------------------
@@ -374,6 +559,11 @@ class IotScanner {
         protocol = entry.value;
         break;
       }
+    }
+    // Restored from the original scanner as a whole word only, so that
+    // `chipset` or `chipotle` do not match.
+    if (protocol.isEmpty && _chipWord.hasMatch(haystack)) {
+      protocol = 'Matter/CHIP';
     }
 
     // Tasmota: extract module name from body

@@ -78,9 +78,10 @@ abstract final class NetworkPorts {
   // ── IoT device discovery (IotScanner) ────────────────────────────────────
   /// IoT TCP port definitions: port number → protocol label.
   ///
-  /// Only TCP ports. Matter (5540) and mDNS (5353) are UDP, so a TCP connect
-  /// proves nothing about them. Port 22 is generic: it only corroborates a
-  /// hostname match and never makes a host an IoT device on its own.
+  /// Only TCP ports; mDNS (5353) is UDP-only and is not probed. Matter 1.3+
+  /// devices may listen on TCP 5540 (operational) and 20202 (commissioning).
+  /// Port 22 is generic: it only corroborates a hostname match and never
+  /// makes a host an IoT device on its own.
   static const Map<int, String> iotPortNames = <int, String>{
     22: 'SSH',
     80: 'HTTP',
@@ -104,6 +105,8 @@ abstract final class NetworkPorts {
     6668: 'Tuya local',
     4040: 'TP-Link Kasa',
     9999: 'TP-Link Kasa legacy',
+    5540: 'Matter',
+    20202: 'Matter commissioning',
   };
 
   // ── IP camera detection (IpCameraDetector) ───────────────────────────────

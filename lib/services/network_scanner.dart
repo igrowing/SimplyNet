@@ -42,8 +42,14 @@ class NetworkScanner {
   }
 
   // ── ARP table ─────────────────────────────────────────────────────────────
-  @visibleForTesting
-  static Future<Map<String, String>> readArpTable() async {
+  /// Reads the OS neighbour (ARP) table into an IP → MAC map.
+  ///
+  /// [logEmpty] controls the diagnostic log written when the table is empty
+  /// (the norm on Android 10+); callers that read it repeatedly in one scan
+  /// pass false so the log list is not flooded.
+  static Future<Map<String, String>> readArpTable({
+    bool logEmpty = true,
+  }) async {
     final map = <String, String>{};
     try {
       ProcessResult result;
@@ -82,7 +88,7 @@ class NetworkScanner {
         //   2. /proc/net/arp   (legacy kernel file)
         await _mergeIpNeigh(map);
         await _mergeProcNetArp(map);
-        if (map.isEmpty) {
+        if (map.isEmpty && logEmpty) {
           await LogService.createLog(
             function: 'network_scanner._readArpTable',
             content:
