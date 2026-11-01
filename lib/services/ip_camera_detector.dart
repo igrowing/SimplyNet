@@ -165,7 +165,7 @@ class IpCameraDetector {
     try {
       final client = HttpClient()
         ..connectionTimeout = const Duration(seconds: 3)
-        ..badCertificateCallback = (_, __, ___) => true; // accept self-signed
+        ..badCertificateCallback = (_, _, _) => true; // accept self-signed
       final uri  = Uri.parse('${isHttps ? "https" : "http"}://$ip:$port/');
       final req  = await client.getUrl(uri);
       req.headers.set('User-Agent', 'SimplyNet/1.0');
@@ -221,7 +221,7 @@ class IpCameraDetector {
 
   /// Send a WS-Discovery probe and collect responses for [listenDuration].
   /// Yields [CameraCandidate] for each responding device that includes
-  /// a service URL (<d:XAddrs>) in its response.
+  /// a service URL (`<d:XAddrs>`) in its response.
   static Stream<CameraCandidate> wsDiscoveryScan({
     Duration listenDuration = const Duration(seconds: 4),
   }) async* {

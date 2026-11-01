@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import 'package:simply_net/providers/iot_scan_provider.dart';
 import 'package:simply_net/providers/scan_provider.dart';
 import 'package:simply_net/providers/settings_provider.dart';
-import 'package:simply_net/screens/mqtt_screen.dart';
 import 'package:simply_net/services/iot_scanner.dart';
 import 'package:simply_net/services/network_scanner.dart';
 import 'package:simply_net/widgets/pulsing_icon.dart';
@@ -45,12 +44,6 @@ class _IotScanScreenState extends State<IotScanScreen> {
         ? scanProv.rawResults.map((h) => h.ip).toList()
         : null;
     iot.startScan(widget.cidr, knownIps: knownIps, logging: logging);
-  }
-
-  Future<void> _openMqttSettings() async {
-    final current = await MqttSettings.load();
-    if (!mounted) return;
-    await showMqttSettingsDialog(context, current);
   }
 
   @override
@@ -215,9 +208,13 @@ class _DeviceCard extends StatelessWidget {
     if (p.contains('openhab'))         return Colors.indigo;
     if (p.contains('matter'))          return Colors.purple;
     if (p.contains('ewelink') ||
-        p.contains('sonoff'))          return Colors.red;
+        p.contains('sonoff')) {
+      return Colors.red;
+    }
     if (p.contains('tp-link') ||
-        p.contains('kasa'))            return Colors.cyan;
+        p.contains('kasa')) {
+      return Colors.cyan;
+    }
     if (p.contains('xiaomi'))          return Colors.orange;
     if (p.contains('philips hue'))     return Colors.yellow.shade800;
     if (p.contains('ikea'))            return Colors.blue.shade800;
@@ -237,9 +234,13 @@ class _DeviceCard extends StatelessWidget {
     if (p.contains('tasmota') ||
         p.contains('esphome') ||
         p.contains('ewelink') ||
-        p.contains('shelly'))          return Icons.electrical_services;
+        p.contains('shelly')) {
+      return Icons.electrical_services;
+    }
     if (p.contains('tp-link') ||
-        p.contains('kasa'))            return Icons.power;
+        p.contains('kasa')) {
+      return Icons.power;
+    }
     if (p.contains('hue'))             return Icons.lightbulb;
     if (p.contains('zigbee'))          return Icons.blur_circular;
     return Icons.devices_other;

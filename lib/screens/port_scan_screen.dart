@@ -86,7 +86,7 @@ class _PortScanScreenState extends State<PortScanScreen> {
           },
           onDone: () async {
             setState(() => _scanning = false);
-            if (context.mounted) {
+            if (mounted) {
               final settings = context.read<SettingsProvider>().settings;
               if (settings.loggingEnabled) {
                 final openCount = _openLines

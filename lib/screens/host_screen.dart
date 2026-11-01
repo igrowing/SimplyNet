@@ -113,6 +113,7 @@ class _HostScreenState extends State<HostScreen> {
         }
       },
       onDone: () async {
+        if (!mounted) return;
         setState(() => _portScanning = false);
         final settings = context.read<SettingsProvider>().settings;
         if (settings.loggingEnabled) {
@@ -147,7 +148,7 @@ class _HostScreenState extends State<HostScreen> {
       _DiagTool.ping => NetworkTools.ping(widget.host.ip, count: count),
     };
 
-    int _parsedUpTo = 0;
+    int parsedUpTo = 0;
 
     _diagSub = stream.listen(
       (chunk) {
@@ -156,9 +157,9 @@ class _HostScreenState extends State<HostScreen> {
 
           if (tool == _DiagTool.ping) {
             final (newMs, cursor) =
-                parsePingTimings(_diagOutput.toString(), _parsedUpTo);
+                parsePingTimings(_diagOutput.toString(), parsedUpTo);
             _pingTimings.addAll(newMs);
-            _parsedUpTo = cursor;
+            parsedUpTo = cursor;
           }
         });
 
@@ -174,9 +175,10 @@ class _HostScreenState extends State<HostScreen> {
         });
       },
       onDone: () async {
+        if (!mounted) return;
         // Final scan: catch any partial line at end of stream.
         if (tool == _DiagTool.ping) {
-          final (tail, _) = parsePingTimings(_diagOutput.toString(), _parsedUpTo);
+          final (tail, _) = parsePingTimings(_diagOutput.toString(), parsedUpTo);
           if (tail.isNotEmpty) setState(() => _pingTimings.addAll(tail));
         }
         setState(() => _diagRunning = false);
@@ -405,7 +407,7 @@ class _HostScreenState extends State<HostScreen> {
                     child: Row(children: [
                       const Icon(Icons.circle, size: 8, color: Colors.green),
                       const SizedBox(width: 6),
-                      Text('${p.proto}',
+                      Text(p.proto,
                           style: const TextStyle(
                               fontFamily: 'monospace', fontSize: 12,
                               fontWeight: FontWeight.bold)),

@@ -7,7 +7,7 @@
 ///   - PingGraphWidget   — mini graph of ping RTT samples (ms vs index).
 ///   - PingGraphPainter  — CustomPainter backing PingGraphWidget.
 ///   - parsePingTimings  — pure function: extracts ms values from ping text.
-library diag_widgets;
+library;
 
 import 'dart:math' as math;
 import 'package:flutter/material.dart';

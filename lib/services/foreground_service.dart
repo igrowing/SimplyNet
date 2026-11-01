@@ -24,7 +24,7 @@
 ///   // … run your work …
 ///   await FgService.update(body: '12 hosts found so far…');
 ///   await FgService.stop();
-library foreground_service;
+library;
 
 import 'dart:io';
 import 'package:flutter/material.dart';

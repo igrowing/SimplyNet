@@ -182,13 +182,13 @@ class NetworkScanner {
         includeLoopback: false,
         type: InternetAddressType.IPv4,
       );
-      final _macAddressPlusPlugin = MacAddressPlus();
+      final macAddressPlusPlugin = MacAddressPlus();
       for (final iface in interfaces) {
         for (final addr in iface.addresses) {
           final ip = addr.address;
           String? macAddress;
           try {
-            macAddress = await _macAddressPlusPlugin.getMacAddress();
+            macAddress = await macAddressPlusPlugin.getMacAddress();
           } catch (_) {}
           map[ip] = macAddress ?? 'N/A';
         }

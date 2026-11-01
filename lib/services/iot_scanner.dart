@@ -1,4 +1,4 @@
-library iot_scanner;
+library;
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -301,7 +301,7 @@ class IotScanner {
 
     // Step 3 — HTTP fingerprinting
     String protocol = vendor.isNotEmpty && vendor != 'Unknown'
-        ? '${vendor} device'
+        ? '$vendor device'
         : 'Unknown IoT';
     String model   = '';
     String method  = 'TCP port';
@@ -400,7 +400,9 @@ class IotScanner {
       final server = resp.headers.value('server') ?? '';
       final xFirmware = resp.headers.value('x-firmware') ?? '';
       final bodyBytes = <int>[];
-      await for (final chunk in resp.take(2)) bodyBytes.addAll(chunk);
+      await for (final chunk in resp.take(2)) {
+        bodyBytes.addAll(chunk);
+      }
       client.close();
 
       final body    = String.fromCharCodes(bodyBytes.take(1024).toList(),
