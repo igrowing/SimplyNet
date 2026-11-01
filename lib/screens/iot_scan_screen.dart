@@ -36,29 +36,32 @@ class _IotScanScreenState extends State<IotScanScreen> {
   }
 
   void _rescan() {
-    final iot      = context.read<IotScanProvider>();
+    final iot = context.read<IotScanProvider>();
     final scanProv = context.read<ScanProvider>();
-    final logging  = context.read<SettingsProvider>().settings.loggingEnabled;
+    final logging = context.read<SettingsProvider>().settings.loggingEnabled;
     // Reuse a fresh host list from a previous full Scan when available.
-    final knownIps = scanProv.hasValidResults(widget.cidr)
-        ? scanProv.rawResults.map((h) => h.ip).toList()
+    final knownHosts = scanProv.hasValidResults(widget.cidr)
+        ? scanProv.rawResults
         : null;
-    iot.startScan(widget.cidr, knownIps: knownIps, logging: logging);
+    iot.startScan(widget.cidr, knownHosts: knownHosts, logging: logging);
   }
 
   @override
   Widget build(BuildContext context) {
-    final iot      = context.watch<IotScanProvider>();
-    final devices  = iot.devices;
+    final iot = context.watch<IotScanProvider>();
+    final devices = iot.devices;
     final scanning = iot.scanning;
-    final l        = AppLocalizations.of(context);
+    final l = AppLocalizations.of(context);
 
     return Scaffold(
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(l.toolIotDevices, style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text(
+              l.toolIotDevices,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
             Text(widget.cidr, style: const TextStyle(fontSize: 11)),
           ],
         ),
@@ -67,7 +70,7 @@ class _IotScanScreenState extends State<IotScanScreen> {
             icon: AnimatedSwitcher(
               duration: const Duration(milliseconds: 200),
               child: scanning
-                  ? const Icon(Icons.stop_rounded,   key: ValueKey('s'), size: 28)
+                  ? const Icon(Icons.stop_rounded, key: ValueKey('s'), size: 28)
                   : const PulsingIcon(
                       key: ValueKey('r'),
                       child: Icon(Icons.refresh_rounded, size: 26),
@@ -80,9 +83,10 @@ class _IotScanScreenState extends State<IotScanScreen> {
       ),
       body: Column(
         children: [
-          if (scanning) LinearProgressIndicator(
-            value: iot.total > 0 ? iot.done / iot.total : null,
-          ),
+          if (scanning)
+            LinearProgressIndicator(
+              value: iot.total > 0 ? iot.done / iot.total : null,
+            ),
           if (scanning)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -97,8 +101,7 @@ class _IotScanScreenState extends State<IotScanScreen> {
           if (!scanning && devices.isEmpty)
             Expanded(
               child: Center(
-                child: Text(l.iotNoSaved,
-                    textAlign: TextAlign.center),
+                child: Text(l.iotNoSaved, textAlign: TextAlign.center),
               ),
             )
           else
@@ -135,12 +138,17 @@ class _DeviceCard extends StatelessWidget {
           children: [
             // Protocol icon
             Container(
-              width: 40, height: 40,
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
                 color: color.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Icon(_protocolIcon(device.protocol), color: color, size: 22),
+              child: Icon(
+                _protocolIcon(device.protocol),
+                color: color,
+                size: 22,
+              ),
             ),
             const SizedBox(width: 12),
             // Details
@@ -148,16 +156,33 @@ class _DeviceCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(children: [
-                    Expanded(child: Text(device.ip,
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14))),
-                    _ConfidenceBadge(device.confidence),
-                  ]),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          device.ip,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                      _ConfidenceBadge(device.confidence),
+                    ],
+                  ),
                   const SizedBox(height: 2),
-                  Text(device.protocol.isEmpty
-                          ? AppLocalizations.of(context).unknown
-                          : device.protocol,
-                      style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 13)),
+                  Text(
+                    device.protocol.isEmpty
+                        ? AppLocalizations.of(context).unknown
+                        : device.protocol,
+                    style: TextStyle(
+                      color: color,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
+                  if (device.hostname.isNotEmpty)
+                    Text(device.hostname, style: const TextStyle(fontSize: 12)),
                   if (device.model.isNotEmpty)
                     Text(device.model, style: const TextStyle(fontSize: 12)),
                   const SizedBox(height: 3),
@@ -167,21 +192,31 @@ class _DeviceCard extends StatelessWidget {
                     children: [
                       if (device.vendor.isNotEmpty)
                         _Chip(device.vendor, Colors.blueGrey),
-                      if (device.mac != 'N/A')
-                        _Chip(device.mac, Colors.grey),
-                      ...device.openPorts.take(5).map(
-                          (p) => _Chip(':$p', Colors.teal)),
+                      if (device.mac != 'N/A') _Chip(device.mac, Colors.grey),
+                      ...device.openPorts
+                          .take(5)
+                          .map((p) => _Chip(':$p', Colors.teal)),
                     ],
                   ),
                   if (device.extra.isNotEmpty) ...[
                     const SizedBox(height: 3),
-                    ...device.extra.entries.take(3).map((e) =>
-                      Text('${e.key}: ${e.value}',
-                          style: const TextStyle(fontSize: 11, color: Colors.grey))),
+                    ...device.extra.entries
+                        .take(3)
+                        .map(
+                          (e) => Text(
+                            '${e.key}: ${e.value}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ),
                   ],
                   const SizedBox(height: 2),
-                  Text('${AppLocalizations.of(context).viaLabel} ${device.detectionMethod}',
-                      style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                  Text(
+                    '${AppLocalizations.of(context).viaLabel} ${device.detectionMethod}',
+                    style: const TextStyle(fontSize: 10, color: Colors.grey),
+                  ),
                 ],
               ),
             ),
@@ -189,7 +224,8 @@ class _DeviceCard extends StatelessWidget {
             IconButton(
               icon: const Icon(Icons.copy, size: 16),
               tooltip: AppLocalizations.of(context).copyIp,
-              onPressed: () => Clipboard.setData(ClipboardData(text: device.ip)),
+              onPressed: () =>
+                  Clipboard.setData(ClipboardData(text: device.ip)),
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
             ),
@@ -201,48 +237,54 @@ class _DeviceCard extends StatelessWidget {
 
   static Color _protocolColor(String p) {
     p = p.toLowerCase();
-    if (p.contains('tasmota'))         return Colors.orange;
-    if (p.contains('esphome'))         return Colors.teal;
-    if (p.contains('shelly'))          return Colors.green;
-    if (p.contains('home assistant'))  return Colors.blue;
-    if (p.contains('openhab'))         return Colors.indigo;
-    if (p.contains('matter'))          return Colors.purple;
-    if (p.contains('ewelink') ||
-        p.contains('sonoff')) {
+    if (p.contains('tasmota')) return Colors.orange;
+    if (p.contains('esphome')) return Colors.teal;
+    if (p.contains('shelly')) return Colors.green;
+    if (p.contains('home assistant')) return Colors.blue;
+    if (p.contains('openhab')) return Colors.indigo;
+    if (p.contains('matter')) return Colors.purple;
+    if (p.contains('ewelink') || p.contains('sonoff')) {
       return Colors.red;
     }
-    if (p.contains('tp-link') ||
-        p.contains('kasa')) {
+    if (p.contains('tp-link') || p.contains('kasa')) {
       return Colors.cyan;
     }
-    if (p.contains('xiaomi'))          return Colors.orange;
-    if (p.contains('philips hue'))     return Colors.yellow.shade800;
-    if (p.contains('ikea'))            return Colors.blue.shade800;
-    if (p.contains('mqtt'))            return Colors.deepOrange;
-    if (p.contains('zigbee'))          return Colors.green.shade800;
-    if (p.contains('meross'))          return Colors.deepPurple;
+    if (p.contains('xiaomi')) return Colors.orange;
+    if (p.contains('philips hue')) return Colors.yellow.shade800;
+    if (p.contains('ikea')) return Colors.blue.shade800;
+    if (p.contains('mqtt')) return Colors.deepOrange;
+    if (p.contains('zigbee')) return Colors.green.shade800;
+    if (p.contains('meross')) return Colors.deepPurple;
+    if (p.contains('raspberry')) return Colors.pink;
+    if (p.contains('smart plug')) return Colors.amber.shade800;
+    if (p.contains('beken')) return Colors.brown;
+    if (p.contains('espressif')) return Colors.teal;
     return Colors.blueGrey;
   }
 
   static IconData _protocolIcon(String p) {
     p = p.toLowerCase();
-    if (p.contains('camera'))          return Icons.videocam;
-    if (p.contains('home assistant'))  return Icons.home;
-    if (p.contains('openhab'))         return Icons.hub;
-    if (p.contains('matter'))          return Icons.device_hub;
-    if (p.contains('mqtt'))            return Icons.cloud_queue;
+    if (p.contains('camera')) return Icons.videocam;
+    if (p.contains('home assistant')) return Icons.home;
+    if (p.contains('openhab')) return Icons.hub;
+    if (p.contains('matter')) return Icons.device_hub;
+    if (p.contains('mqtt')) return Icons.cloud_queue;
     if (p.contains('tasmota') ||
         p.contains('esphome') ||
         p.contains('ewelink') ||
         p.contains('shelly')) {
       return Icons.electrical_services;
     }
-    if (p.contains('tp-link') ||
-        p.contains('kasa')) {
+    if (p.contains('tp-link') || p.contains('kasa')) {
       return Icons.power;
     }
-    if (p.contains('hue'))             return Icons.lightbulb;
-    if (p.contains('zigbee'))          return Icons.blur_circular;
+    if (p.contains('hue')) return Icons.lightbulb;
+    if (p.contains('zigbee')) return Icons.blur_circular;
+    if (p.contains('raspberry')) return Icons.memory;
+    if (p.contains('smart plug')) return Icons.power;
+    if (p.contains('beken') || p.contains('espressif')) {
+      return Icons.developer_board;
+    }
     return Icons.devices_other;
   }
 }
@@ -255,9 +297,9 @@ class _ConfidenceBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final (label, color) = switch (confidence) {
-      IotConfidence.definite  => ('✓ ${l.confDefinite}',  Colors.green),
-      IotConfidence.probable  => ('~ ${l.confProbable}',  Colors.orange),
-      IotConfidence.possible  => ('? ${l.confPossible}',  Colors.grey),
+      IotConfidence.definite => ('✓ ${l.confDefinite}', Colors.green),
+      IotConfidence.probable => ('~ ${l.confProbable}', Colors.orange),
+      IotConfidence.possible => ('? ${l.confPossible}', Colors.grey),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -273,7 +315,7 @@ class _ConfidenceBadge extends StatelessWidget {
 
 class _Chip extends StatelessWidget {
   final String text;
-  final Color  color;
+  final Color color;
   const _Chip(this.text, this.color);
 
   @override

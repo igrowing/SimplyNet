@@ -62,13 +62,31 @@ subscribe, accumulate, and call `notifyListeners()`. Diagnostic tools
 
 **LAN scan.** `HomeScreen` detects the CIDR via `detectLanCidr()`, then
 `ScanProvider.startScan()` starts `FgService` (foreground notification),
-consumes `NetworkScanner.scan(cidr)` (ARP table, ping/port probes, hostname
+consumes `NetworkScanner.scan(cidr)` (ARP table, ping probes, hostname
 resolution, vendor lookup through `OuiService`), updates the host list, saves
-a `ScanSnapshot` via `ScanStorage`, and writes a log via `LogService`.
+a `ScanSnapshot` via `ScanStorage`, and writes a log via `LogService`. When
+the ARP table has no MAC for a host (Android 10+ hides it),
+`NetworkScanner.applyMac` falls back to a MAC published as the leftmost
+hostname label (`macFromHostname`, 12 hex characters, e.g.
+`a4cf12aabbcc.lan`); an ARP MAC always wins.
 
-**IoT / camera scan.** The providers take the known host IPs from the last
-scan and run `IotScanner.scanHosts` or `IpCameraDetector.scanHosts`, with a
-subnet-wide fallback.
+**IoT scan.** `IotScanProvider` receives the full `HostResult`s (hostname,
+MAC, manufacturer) of the last LAN scan and runs `IotScanner.scanHosts`. With
+no fresh scan, `IotScanner.scanSubnet` first discovers hosts through
+`NetworkScanner.scan` and then runs the same pipeline, so there is one source
+for hostnames, MACs and vendors (`OuiService` / `assets/oui.json`; the IoT
+scanner has no OUI table of its own). Per host the scanner probes the ports
+in `NetworkPorts.iotPortNames`, fingerprints the web page of every open web
+port, and hands everything to `IotClassifier`. The classifier scores
+independent evidence — hostname signature (`IotSignatures`), MAC in the
+hostname, IoT vendor, open ports, HTTP fingerprint — into a label and a
+`IotConfidence` (one signal `possible`, two `probable`, three or a conclusive
+one `definite`). No single signal is required, so a plug with no open port is
+still found by its hostname or MAC. Hosts with no evidence are written to the
+scan log (`onSkipped`) so a missed device can be diagnosed.
+
+**Camera scan.** `CameraScanProvider` takes the known host IPs from the last
+scan and runs `IpCameraDetector.scanHosts`, with a subnet-wide fallback.
 
 **Logs.** `LogService` stores log files and an index under the app documents
 directory; `LogProvider` exposes them to `LogsScreen`, which can share them
@@ -84,7 +102,7 @@ limits (e.g. MAC resolution blocked).
 |---------|-----------|
 | Settings, scan caches, input history | `shared_preferences` (`ScanStorage`, `InputHistory`, `SettingsProvider`) |
 | Log files | `path_provider` + files (`LogService`) |
-| OUI vendor database | bundled `assets/oui.json` (`OuiService`) |
+| OUI vendor database | bundled `assets/oui.json` (`OuiService`) — the only OUI source in the app |
 | Background scanning | `flutter_foreground_task` (`FgService`) |
 | Connectivity info | `network_info_plus`, `geolocator`, `permission_handler`, `device_info_plus` |
 | MQTT | `mqtt_client` |
@@ -127,10 +145,22 @@ classDiagram
     class NetworkScanner {
         <<static>>
         +scan(cidr) Stream~HostResult~
+        +macFromHostname(hostname) String
+        +applyMac(host, arpTable)
     }
     class IotScanner {
         <<static>>
-        +scanHosts(ips) Stream~IotDevice~
+        +scanHosts(hosts) Stream~IotDevice~
+        +scanSubnet(cidr) Stream~IotDevice~
+    }
+    class IotClassifier {
+        <<static>>
+        +classify(hostname, mac, vendor, openPorts, httpProtocol) IotClassification
+    }
+    class IotSignatures {
+        <<constants>>
+        +all List~IotSignature~
+        +identifyingPorts Map
     }
     class IpCameraDetector {
         <<static>>
@@ -165,6 +195,11 @@ classDiagram
 
     ScanProvider --> NetworkScanner
     IotScanProvider --> IotScanner
+    IotScanner --> NetworkScanner : subnet discovery
+    IotScanner --> IotClassifier
+    IotScanner --> OuiService
+    IotClassifier --> IotSignatures
+    IotClassifier --> NetworkScanner : macFromHostname, detectDeviceType
     CameraScanProvider --> IpCameraDetector
     SettingsProvider --> NetworkCapabilityManager
 
@@ -370,7 +405,7 @@ flowchart TB
 | `_Semaphore.run` + `Future.wait` | `NetworkScanner`, `IotScanner`, `NetworkTools` | Run every probe "concurrently" but with bounded fan-out. |
 | Chunked `Future.wait` | `MqttBrokerScanner` | Probes hosts in batches of 64, awaiting each batch before the next. |
 | `Completer` | `NetworkScanner._isAlive` | Resolves as soon as one probe succeeds, or `false` after all fail. |
-| `Timer.periodic` | `IotScanProvider` | Animates an approximate progress bar during a full sweep, which gives no per-host progress. |
+| `Timer.periodic` | `IotScanProvider` | Animates an approximate progress bar during the host-discovery phase of a full subnet scan, which gives no per-host progress. |
 | Memoised `Future` | `loadCache()` in each scan provider | The first call starts loading, later callers `await` the same future. |
 | `ValueNotifier` | `ScanProvider.logVersion` | Tells the UI a new log file exists once the async write finishes. |
 | `ChangeNotifierProxyProvider` | `LogProvider` | Reacts to `ScanProvider` changes without screens wiring them together. |
@@ -413,6 +448,7 @@ sequenceDiagram
     NS->>NS: wait 200 ms for ARP to settle
     NS->>OS: read ARP table + own MACs
     OS-->>NS: IP to MAC map
+    NS->>NS: no ARP entry: macFromHostname fallback
     NS-->>SP: re-emit hosts with MAC and vendor
     Note over SP: de-duplicated by IP,<br/>rows update in place
     NS->>NS: retry once after 400 ms for unresolved MACs

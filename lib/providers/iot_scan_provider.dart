@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:simply_net/models/host_result.dart';
 import 'package:simply_net/providers/scan_provider.dart';
 import 'package:simply_net/services/foreground_service.dart';
 import 'package:simply_net/services/iot_scanner.dart';
@@ -24,6 +25,10 @@ class IotScanProvider extends ChangeNotifier {
   String get cidr => _cidr;
 
   bool _loggingEnabled = true;
+
+  /// Hosts that showed no IoT evidence in the current scan, one line each.
+  /// Written to the scan log so a missed device can be diagnosed.
+  final List<String> _skipped = [];
 
   StreamSubscription<IotDevice>? _sub;
   Timer? _progressTimer;
@@ -60,28 +65,34 @@ class IotScanProvider extends ChangeNotifier {
 
   /// Start an IoT scan of [cidr].
   ///
-  /// When [knownIps] is supplied (a fresh host list from a previous full scan)
-  /// only those hosts are probed; otherwise a full subnet sweep runs.
-  void startScan(String cidr, {List<String>? knownIps, bool logging = true}) {
+  /// When [knownHosts] is supplied (a fresh host list from a previous full
+  /// scan, with hostnames and MACs) only those hosts are probed; otherwise a
+  /// full subnet discovery runs first.
+  void startScan(
+    String cidr, {
+    List<HostResult>? knownHosts,
+    bool logging = true,
+  }) {
     if (_scanning) return;
     _sub?.cancel();
     _progressTimer?.cancel();
     _cidr = cidr;
     _loggingEnabled = logging;
     _devices = [];
+    _skipped.clear();
     _scanning = true;
     _done = 0;
     _total = 0;
     notifyListeners();
 
-    if (knownIps != null && knownIps.isNotEmpty) {
+    if (knownHosts != null && knownHosts.isNotEmpty) {
       // Fast path: probe only already-discovered live hosts.
-      _total = knownIps.length;
+      _total = knownHosts.length;
       FgService.start(
         title: 'IoT Scan',
-        body: 'Probing ${knownIps.length} known hosts…',
+        body: 'Probing ${knownHosts.length} known hosts…',
       );
-      _sub = IotScanner.scanHosts(knownIps).listen(
+      _sub = IotScanner.scanHosts(knownHosts, onSkipped: _skipped.add).listen(
         (dev) {
           _devices.add(dev);
           _done++;
@@ -99,7 +110,7 @@ class IotScanProvider extends ChangeNotifier {
         title: 'IoT Scan',
         body: 'Scanning $cidr for IoT devices…',
       );
-      _sub = IotScanner.scanSubnet(cidr).listen(
+      _sub = IotScanner.scanSubnet(cidr, onSkipped: _skipped.add).listen(
         (dev) {
           _devices.add(dev);
           notifyListeners();
@@ -164,9 +175,15 @@ class IotScanProvider extends ChangeNotifier {
     final buf = StringBuffer();
     for (final dev in _devices) {
       buf.writeln(
-        '${dev.ip}  ${dev.protocol}  ${dev.vendor}  '
+        '${dev.ip}  ${dev.hostname}  ${dev.protocol}  ${dev.vendor}  '
         '[${dev.detectionMethod}, ${dev.confidence.name}]',
       );
+    }
+    if (_skipped.isNotEmpty) {
+      buf
+        ..writeln()
+        ..writeln('Not classified as IoT (no evidence):');
+      _skipped.forEach(buf.writeln);
     }
     await LogService.createLog(
       function: 'iot_scan',

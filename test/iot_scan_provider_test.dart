@@ -1,8 +1,9 @@
 import 'dart:io';
- 
+
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:simply_net/models/host_result.dart';
 import 'package:simply_net/providers/iot_scan_provider.dart';
 import 'package:simply_net/services/iot_scanner.dart';
 import 'package:simply_net/services/scan_storage.dart';
@@ -12,24 +13,25 @@ void main() {
 
   const pathProvider = MethodChannel('plugins.flutter.io/path_provider');
   late Directory tmp;
- 
+
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     // LogService.createLog (reached on the scan-complete path) needs a docs dir.
     tmp = await Directory.systemTemp.createTemp('simplynet_iot_prov_test');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(pathProvider, (call) async {
-      if (call.method == 'getApplicationDocumentsDirectory') return tmp.path;
-      return null;
-    });
+          if (call.method == 'getApplicationDocumentsDirectory') {
+            return tmp.path;
+          }
+          return null;
+        });
   });
- 
+
   tearDown(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(pathProvider, null);
     if (tmp.existsSync()) tmp.deleteSync(recursive: true);
   });
- 
 
   group('IotScanProvider', () {
     test('starts empty and not scanning', () {
@@ -105,43 +107,57 @@ void main() {
       expect(await p.shouldAutoScan(), isFalse);
     });
   });
- 
+
   group('IotScanProvider scan lifecycle', () {
     // 192.0.2.0/24 is RFC 5737 TEST-NET-1 (reserved, unroutable): probes never
     // connect, so a scan completes with zero devices without real network I/O.
     // FgService.start/stop early-return off-Android, so they are safe to drive.
-    test('startScan(knownIps) probes only the given hosts and completes',
-        () async {
-      final p = IotScanProvider();
-      p.startScan('192.0.2.0/24',
-          knownIps: ['192.0.2.1', '192.0.2.2'], logging: true);
-      expect(p.scanning, isTrue);
-      expect(p.cidr, '192.0.2.0/24');
-      expect(p.total, 2);
- 
-      final done =
-          await _waitUntil(() => !p.scanning, const Duration(seconds: 25));
-      expect(done, isTrue, reason: 'scan did not finish in time');
-      expect(p.devices, isEmpty);
-      // Let the async onDone (save + log) settle before disposing.
-      await Future<void>.delayed(const Duration(milliseconds: 200));
-      p.dispose();
-    });
- 
-    test('startScan(full subnet) derives the host total and completes',
-        () async {
-      final p = IotScanProvider();
-      p.startScan('192.0.2.0/30', logging: false); // /30 → 2 host addresses
-      expect(p.scanning, isTrue);
-      expect(p.total, 2);
- 
-      final done =
-          await _waitUntil(() => !p.scanning, const Duration(seconds: 25));
-      expect(done, isTrue, reason: 'scan did not finish in time');
-      expect(p.devices, isEmpty);
-      p.dispose();
-    });
- 
+    test(
+      'startScan(knownHosts) probes only the given hosts and completes',
+      () async {
+        final p = IotScanProvider();
+        p.startScan(
+          '192.0.2.0/24',
+          knownHosts: [
+            HostResult(ip: '192.0.2.1'),
+            HostResult(ip: '192.0.2.2'),
+          ],
+          logging: true,
+        );
+        expect(p.scanning, isTrue);
+        expect(p.cidr, '192.0.2.0/24');
+        expect(p.total, 2);
+
+        final done = await _waitUntil(
+          () => !p.scanning,
+          const Duration(seconds: 25),
+        );
+        expect(done, isTrue, reason: 'scan did not finish in time');
+        expect(p.devices, isEmpty);
+        // Let the async onDone (save + log) settle before disposing.
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+        p.dispose();
+      },
+    );
+
+    test(
+      'startScan(full subnet) derives the host total and completes',
+      () async {
+        final p = IotScanProvider();
+        p.startScan('192.0.2.0/30', logging: false); // /30 → 2 host addresses
+        expect(p.scanning, isTrue);
+        expect(p.total, 2);
+
+        final done = await _waitUntil(
+          () => !p.scanning,
+          const Duration(seconds: 25),
+        );
+        expect(done, isTrue, reason: 'scan did not finish in time');
+        expect(p.devices, isEmpty);
+        p.dispose();
+      },
+    );
+
     test('startScan is a no-op while a scan is already running', () {
       final p = IotScanProvider();
       p.startScan('192.0.2.0/30', logging: false);
@@ -150,7 +166,7 @@ void main() {
       expect(p.cidr, '192.0.2.0/30');
       p.dispose();
     });
- 
+
     test('stopScan clears scanning state and notifies', () {
       final p = IotScanProvider();
       var notified = 0;
@@ -161,7 +177,7 @@ void main() {
       expect(notified, greaterThan(0));
       p.dispose();
     });
- 
+
     test('dispose during an in-flight scan does not throw', () {
       final p = IotScanProvider();
       p.startScan('192.0.2.0/30', logging: false);
@@ -170,7 +186,7 @@ void main() {
     });
   });
 }
- 
+
 /// Polls [cond] every 50ms until it is true or [timeout] elapses.
 Future<bool> _waitUntil(bool Function() cond, Duration timeout) async {
   final deadline = DateTime.now().add(timeout);

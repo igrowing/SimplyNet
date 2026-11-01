@@ -21,8 +21,9 @@ void main() {
       const plain = '{"system":{"get_sysinfo":{}}}';
       final encoded = IotScanner.kasaXorEncode(plain);
       // Drop the 4-byte length header before decoding (as the probe does).
-      final decoded =
-          IotScanner.kasaXorDecode(Uint8List.fromList(encoded.sublist(4)));
+      final decoded = IotScanner.kasaXorDecode(
+        Uint8List.fromList(encoded.sublist(4)),
+      );
       expect(decoded, plain);
     });
 
@@ -34,36 +35,24 @@ void main() {
     });
   });
 
-  group('IotScanner.vendorFromMac', () {
-    test('resolves a known Espressif OUI prefix', () {
-      expect(IotScanner.vendorFromMac('18:FE:34:AA:BB:CC'), 'Espressif');
-    });
-
-    test('is case-insensitive', () {
-      expect(IotScanner.vendorFromMac('18:fe:34:aa:bb:cc'), 'Espressif');
-    });
-
-    test('returns Unknown for N/A or too-short MACs', () {
-      expect(IotScanner.vendorFromMac('N/A'), 'Unknown');
-      expect(IotScanner.vendorFromMac('AA:BB'), 'Unknown');
-    });
-
-    test('returns empty string for an unmatched prefix', () {
-      expect(IotScanner.vendorFromMac('02:00:00:11:22:33'), '');
-    });
-  });
-
   group('IotScanner.classifyHttp', () {
     test('returns null when nothing matches', () {
       expect(
-        IotScanner.classifyHttp(server: 'nginx', xFirmware: '', body: '<html/>'),
+        IotScanner.classifyHttp(
+          server: 'nginx',
+          xFirmware: '',
+          body: '<html/>',
+        ),
         isNull,
       );
     });
 
     test('matches a fingerprint in the Server header', () {
       final r = IotScanner.classifyHttp(
-          server: 'Tasmota/12.0', xFirmware: '', body: '');
+        server: 'Tasmota/12.0',
+        xFirmware: '',
+        body: '',
+      );
       expect(r, isNotNull);
       expect(r!.$1, 'Tasmota');
       expect(r.$3['server'], 'Tasmota/12.0');
@@ -106,6 +95,41 @@ void main() {
         body: '',
       );
       expect(r!.$3['firmware'], 'Shelly-1.9');
+    });
+  });
+
+  group('IotScanner.classifyHttp — extra firmware', () {
+    for (final (needle, protocol) in [
+      ('OpenBeken', 'OpenBeken'),
+      ('WLED', 'WLED'),
+      ('OctoPrint', 'OctoPrint'),
+      ('motionEye', 'motionEye'),
+      ('Homebridge', 'Homebridge'),
+      ('SLZB-06', 'Zigbee hub'),
+      ('Pi-hole', 'Pi-hole'),
+      ('Homey', 'Homey'),
+      ('Hubitat', 'Hubitat'),
+      ('Aqara', 'Aqara'),
+    ]) {
+      test('$needle in the body → $protocol', () {
+        final r = IotScanner.classifyHttp(
+          server: '',
+          xFirmware: '',
+          body: '<title>$needle</title>',
+        );
+        expect(r?.$1, protocol);
+      });
+    }
+
+    test('the loose "chip" keyword no longer matches', () {
+      expect(
+        IotScanner.classifyHttp(
+          server: '',
+          xFirmware: '',
+          body: 'Welcome to chipotle-fan-club',
+        ),
+        isNull,
+      );
     });
   });
 }

@@ -279,6 +279,23 @@ class NetworkScanner {
     return '';
   }
 
+  static final _bareMacLabel = RegExp(r'^[0-9a-f]{12}$', caseSensitive: false);
+
+  /// Parses a MAC published as the leftmost FQDN label without delimiters
+  /// (e.g. `a4cf12aabbcc.lan`), as many IoT devices do. Returns it in the
+  /// `AA:BB:CC:DD:EE:FF` form, or null when the label is not exactly 12 hex
+  /// characters or is the all-zero / broadcast address. Lets the OUI lookup
+  /// work where the OS hides the ARP table (Android 10+).
+  static String? macFromHostname(String hostname) {
+    final label = hostname.trim().split('.').first;
+    if (!_bareMacLabel.hasMatch(label)) return null;
+    final hex = label.toUpperCase();
+    if (hex == '000000000000' || hex == 'FFFFFFFFFFFF') return null;
+    return [
+      for (var i = 0; i < 12; i += 2) hex.substring(i, i + 2),
+    ].join(':');
+  }
+
   // ── Device type detection ──────────────────────────────────────────────────
   // Infers device type from manufacturer name (OUI lookup).
   // Can be extended with port-based detection (e.g., 554 = IP Camera).
@@ -292,7 +309,7 @@ class NetworkScanner {
     // Chip vendors — virtually always IoT
     'espressif', 'nordic semiconductor', 'silicon labs', 'texas instruments',
     'stmicroelectronics', 'stmicro', 'nxp semiconductor', 'microchip technol',
-    'beken', 'renesas', 'ember', 'minew',
+    'beken', 'renesas', 'ember', 'minew', 'quectel',
     // Platform/firmware
     'tuya', 'shelly', 'allterco', 'itead', 'sonoff',
     'meross', 'ewelink',
@@ -371,7 +388,8 @@ class NetworkScanner {
   static String deviceTypeFromMac(String mac) =>
       detectDeviceType(OuiService.lookup(mac));
 
-  @visibleForTesting
+  /// Classifies a device by its OUI [manufacturer] name; `IoT Device` for
+  /// IoT chip and brand vendors, `''` when nothing matches.
   static String detectDeviceType(String manufacturer) {
     if (manufacturer.isEmpty) return '';
 
@@ -435,7 +453,7 @@ class NetworkScanner {
       // each host enriched with MAC, manufacturer and device type.
       var arpTable = await _resolveMacs();
       for (final host in allResults) {
-        _applyMac(host, arpTable);
+        applyMac(host, arpTable);
         controller.add(host);
       }
 
@@ -449,7 +467,7 @@ class NetworkScanner {
         arpTable = await _resolveMacs();
         for (final host in unresolved) {
           final before = host.mac;
-          _applyMac(host, arpTable);
+          applyMac(host, arpTable);
           if (host.mac != before) controller.add(host);
         }
       }
@@ -477,10 +495,13 @@ class NetworkScanner {
     return arpTable;
   }
 
-  /// Fills [host]'s MAC, manufacturer and device type from [arpTable]. When the
-  /// MAC is unknown the existing value is kept, falling back to 'N/A'.
-  static void _applyMac(HostResult host, Map<String, String> arpTable) {
-    final mac = arpTable[host.ip];
+  /// Fills [host]'s MAC, manufacturer and device type from [arpTable], or —
+  /// when the ARP table has no entry — from a MAC published as the hostname
+  /// (`macFromHostname`). An ARP MAC always wins. When the MAC is unknown the
+  /// existing value is kept, falling back to 'N/A'.
+  @visibleForTesting
+  static void applyMac(HostResult host, Map<String, String> arpTable) {
+    final mac = arpTable[host.ip] ?? macFromHostname(host.hostname);
     if (mac != null && mac.isNotEmpty) {
       host.mac = mac;
       host.manufacturer = OuiService.lookup(mac);
